@@ -353,15 +353,11 @@ tailwind.config = {
       <div class="font-bold">Tanya Senpai</div>
       <div class="text-xs text-mut">AI gratis · seputar pengembangan SubSenpai</div>
     </div>
-    <button id="chatClose" class="ml-auto w-9 h-9 grid place-items-center rounded-full border border-line hover:bg-white/10 transition" aria-label="Tutup chat"><i class="fa-solid fa-xmark"></i></button>
+    <button id="chatClear" class="ml-auto w-9 h-9 grid place-items-center rounded-full border border-line hover:bg-white/10 transition" aria-label="Hapus riwayat chat" title="Hapus riwayat chat"><i class="fa-solid fa-trash-can"></i></button>
+    <button id="chatClose" class="w-9 h-9 grid place-items-center rounded-full border border-line hover:bg-white/10 transition" aria-label="Tutup chat"><i class="fa-solid fa-xmark"></i></button>
   </div>
   <div id="chatMsgs" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm"></div>
-  <div class="px-3 pb-2 flex gap-2 flex-wrap shrink-0">
-    <button class="chip border border-line rounded-full px-3 py-1 text-xs hover:border-violet transition">Sudah sampai mana progresnya?</button>
-    <button class="chip border border-line rounded-full px-3 py-1 text-xs hover:border-violet transition">Fitur apa saja untuk pengguna?</button>
-    <button class="chip border border-line rounded-full px-3 py-1 text-xs hover:border-violet transition">Kapan aplikasinya bisa diunduh?</button>
-    <button class="chip border border-line rounded-full px-3 py-1 text-xs hover:border-violet transition">Teknologi apa yang dipakai?</button>
-  </div>
+  <div id="chatChips" class="px-3 pb-2 flex gap-2 flex-wrap shrink-0"></div>
   <form id="chatForm" class="p-3 border-t border-line flex gap-2 shrink-0">
     <input id="chatInput" type="text" maxlength="500" placeholder="Tanya seputar SubSenpai…" class="flex-1 bg-white/5 border border-line rounded-full px-4 py-2.5 text-sm outline-none focus:border-violet transition" autocomplete="off">
     <button type="submit" class="w-11 h-11 shrink-0 grid place-items-center rounded-full bg-gradient-to-r from-pink to-violet text-white hover:opacity-90 transition" aria-label="Kirim"><i class="fa-solid fa-paper-plane"></i></button>
@@ -465,8 +461,9 @@ tailwind.config = {
   }
   function refreshMsgs(){
     msgs.innerHTML = '';
-    if (!hist.length){ render('assistant', 'Halo! Aku Senpai, asisten AI di dokumentasi SubSenpai. Tanya apa saja seputar pengembangan aplikasinya - progres, fitur, teknologi, atau rencana rilisnya.'); return; }
+    if (!hist.length){ render('assistant', 'Halo! Aku Senpai, asisten AI di dokumentasi SubSenpai. Tanya apa saja seputar pengembangan aplikasinya - progres, fitur, teknologi, atau rencana rilisnya.'); renderChips(); return; }
     hist.forEach(function(m, i){ render(m.role, m.content, i); });
+    renderChips();
   }
   var WAIT_MSGS = ['Senpai sedang berpikir…','Mencari jawaban terbaik…','Menyiapkan penjelasan untukmu…','Sedikit lagi, ya…'];
   function showWait(){
@@ -485,8 +482,31 @@ tailwind.config = {
   function closeChat(){ panel.style.display = 'none'; fab.style.display = 'grid'; document.body.style.overflow = ''; }
   fab.addEventListener('click', openChat);
   document.getElementById('chatClose').addEventListener('click', closeChat);
-  document.querySelectorAll('.chip').forEach(function(c){
-    c.addEventListener('click', function(){ input.value = c.textContent.trim(); form.requestSubmit(); });
+  var SUGGESTIONS = ['Sudah sampai mana progresnya?','Fitur apa saja untuk pengguna?','Kapan aplikasinya bisa diunduh?','Teknologi apa yang dipakai?','Bagaimana subtitle otomatisnya bekerja?','Apakah SubSenpai gratis?','Bagaimana cara membaca manga di SubSenpai?','Apa itu Tanya Senpai?','Bagaimana sistem premium dan vouchernya?','Bisakah nonton bareng teman?','Bahasa apa saja yang didukung?','Bagaimana cara mendukung proyek ini?'];
+  var chipsBox = document.getElementById('chatChips');
+  function normQ(s){ return (s || '').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim(); }
+  function renderChips(){
+    if (!chipsBox) return;
+    var asked = {};
+    hist.forEach(function(m){ if (m.role === 'user') asked[normQ(m.content)] = true; });
+    var avail = SUGGESTIONS.filter(function(q){ return !asked[normQ(q)]; });
+    chipsBox.innerHTML = '';
+    chipsBox.style.display = avail.length ? 'flex' : 'none';
+    avail.slice(0, 4).forEach(function(q){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip border border-line rounded-full px-3 py-1 text-xs hover:border-violet transition';
+      b.textContent = q;
+      b.addEventListener('click', function(){ input.value = q; form.requestSubmit(); });
+      chipsBox.appendChild(b);
+    });
+  }
+  document.getElementById('chatClear').addEventListener('click', function(){
+    if (!hist.length) return;
+    if (!window.confirm('Hapus semua riwayat chat dengan Senpai?')) return;
+    hist = []; editingIdx = null;
+    try { localStorage.removeItem(KEY); } catch(e){}
+    refreshMsgs();
   });
   form.addEventListener('submit', function(ev){
     ev.preventDefault();
@@ -495,7 +515,7 @@ tailwind.config = {
     input.value = '';
     if (editingIdx !== null && editingIdx <= hist.length){ hist = hist.slice(0, editingIdx); refreshMsgs(); }
     editingIdx = null;
-    hist.push({role:'user', content:text}); render('user', text, hist.length - 1); save();
+    hist.push({role:'user', content:text}); render('user', text, hist.length - 1); save(); renderChips();
     busy = true;
     var wait = showWait();
     fetch('https://text.pollinations.ai/', {
