@@ -83,14 +83,14 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - Catatan: ambang sederhana (mis. subtitle `failed` > 10 dalam sehari) bisa dikembangkan menjadi notifikasi otomatis ke Telegram/email admin.
 - **Laporan crash aplikasi**: ringkasan/tautan ke Crashlytics/GlitchTip (jumlah crash per versi rilis) — lonjakan crash setelah sebuah rilis adalah tanda harus segera diperbaiki/rollback.
 - **Cadangan**: status dump `pg_dump` malam terakhir + tanggal **uji pemulihan** terakhir (uji berkala tiap 3 bulan: dump dipulihkan ke database kosong, hasilnya dicatat di sini).
-- **Kesehatan terjemahan gratis**: endpoint `gtx` tidak berbayar, jadi yang dipantau adalah **tingkat keberhasilannya** — panggilan gagal/ditolak per hari dan panjang antrean subtitle yang tertahan karenanya. Lonjakan kegagalan berarti IP VPS sedang di-throttle Google; worker menjeda & mencoba lagi dengan backoff (bukan gagal permanen). Cache `translations` membuat teks yang sama tidak diterjemahkan dua kali.
+- **Subtitle bahasa asal**: yang dipantau server hanyalah kesiapan subtitle sumber (`subtitles.status`) — terjemahan berjalan di perangkat user (endpoint `gtx` dipanggil aplikasi dari IP masing-masing user), jadi keberhasilan/gagalnya terjemahan tidak terlihat dari server dan memang tidak perlu dipantau: gagal terjemah di perangkat selalu berakhir menampilkan teks aslinya.
 
 ### 3.9 Pengaturan
 - Harga & durasi paket premium.
 - Batas akses tamu (bawaan: 1 episode/chapter).
 - Saklar iklan (tampil/sembunyi untuk user gratis) & mode maintenance.
 - Metode pembayaran yang aktif (Midtrans / Xendit / GoPay pihak ketiga) — jalur GoPay bisa dimatikan cepat dari sini bila API-nya bermasalah.
-- **Bahasa aktif** aplikasi & subtitle (daftar kode BCP-47 yang ditawarkan ke user; bawaan `id`) dan saklar fitur **Terjemahkan** (Google Translate gratis) — mematikan saklar menyembunyikan tombol terjemahan di aplikasi tanpa mengubah data.
+- **Bahasa aktif** aplikasi & subtitle (daftar kode BCP-47 yang ditawarkan ke user; bawaan `id`) dan saklar fitur **Terjemahkan** (Google Translate gratis dari perangkat user) — mematikan saklar menyembunyikan tombol terjemahan di aplikasi tanpa mengubah data.
 
 ### 3.10 Moderasi Chat Global
 - Pesan terlaporkan (dari `reports` bertarget `chat_message`): hapus pesan (soft-delete), bisukan pengirimnya (`chat_muted_until`, bisa berdurasi), atau abaikan laporan.
@@ -121,7 +121,6 @@ Panel admin memakai tabel yang sama dengan aplikasi utama, ditambah:
 | `vouchers` | Kode voucher premium (promo admin / dibeli user sebagai hadiah) — detail di DATABASE.md |
 | `title_requests` + `title_request_votes` | Permintaan judul dari user + suara dukungan — ditindaklanjuti dari modul Katalog |
 | `user_devices` | Registri perangkat per akun — batas perangkat premium & pencabutan sesi |
-| `translations` | Cache terjemahan Google (endpoint `gtx` gratis) per teks & bahasa target — teks yang sama tidak diterjemahkan dua kali |
 
 Detail kolom, relasi, dan SQL-nya ada di [DATABASE.md](DATABASE.md).
 
