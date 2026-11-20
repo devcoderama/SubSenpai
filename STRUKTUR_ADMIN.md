@@ -37,7 +37,7 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - Aktivitas terakhir: user baru, langganan baru, laporan belum ditangani.
 
 ### 3.2 Manajemen Katalog
-- CRUD `titles` (judul, tipe, genre, poster, status tayang).
+- CRUD `titles` (judul, tipe, genre, poster, status tayang, tanda konten 18+ `is_adult`).
 - Kelola `episodes`: tambah/edit URL HLS, nomor episode, tanggal tayang.
 - Kelola `chapters` + `chapter_pages`: unggah halaman komik (gambar dikirim ke R2, urutan halaman bisa disusun ulang).
 - Impor massal metadata dari CSV/JSON untuk mempercepat pengisian katalog awal.
@@ -72,7 +72,7 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 
 ### 3.8 Monitoring
 - **Antrean worker**: jumlah per status + episode yang paling lama menunggu; lonjakan `failed` = tanda sumber/API transkripsi bermasalah.
-- **Aktivitas platform** (agregasi dari `watch_history`, `read_history`, `guest_access`): tontonan/bacaan per hari, judul terlaris, rasio tamu yang mentok batas 1 episode (calon user login).
+- **Aktivitas platform**: dibaca dari tabel agregat `daily_stats` (dihitung worker tiap malam dari `watch_history`, `read_history`, `guest_access` agar dashboard tetap ringan): tontonan/bacaan per hari, judul terlaris, rasio tamu yang mentok batas 1 episode (calon user login).
 - **Kesehatan layanan luar**: tautan cepat ke status Supabase, VPS, Cloudflare, dan API transkripsi; sisa kuota/kuota terpakai dicatat manual di halaman ini.
 - **Penyimpanan**: perkiraan pemakaian R2 (poster + halaman komik + SRT) terhadap batas gratis 10 GB.
 - Catatan: ambang sederhana (mis. subtitle `failed` > 10 dalam sehari) bisa dikembangkan menjadi notifikasi otomatis ke Telegram/email admin.
@@ -90,6 +90,7 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - Atur filter kata terlarang dan mode lambat (jeda minimum antar-pesan) per kanal bila chat sedang rusuh.
 - Grup terlaporkan (`reports` bertarget `group`): periksa grupnya — beri peringatan ke owner, batasi, atau bubarkan grup yang melanggar. Urusan sehari-hari di dalam grup (keluarkan anggota, hapus pesan) adalah wewenang admin grup, bukan admin platform.
 - Gambar/stiker kiriman user yang dilaporkan: hapus gambarnya dari ImgBB memakai `delete_url` yang tersimpan di server, lalu soft-delete pesannya — menghapus baris pesan saja tidak menghapus gambar di ImgBB.
+- Komentar terlaporkan (`reports` bertarget `comment`) ditangani seperti pesan chat: periksa konteksnya, soft-delete bila melanggar, bisukan penulisnya bila berulang.
 
 ## 4. Tabel Pendukung
 

@@ -11,6 +11,8 @@ Rancangan struktur proyek: susunan folder, skema database, model akses, dan alur
 - **Database & Auth tetap Supabase.** PostgreSQL + Supabase Auth (login Google) tetap dipakai; backend Go mengakses PostgreSQL secara langsung (driver pgx) dan memverifikasi token JWT Supabase Auth di middleware. Yang berubah hanya tempat komputasi berjalan (VPS), bukan skema datanya.
 - **Proses berat di job latar.** Antrean subtitle, terjemahan, dan pembangunan SRT dikerjakan job latar Go, tetapi transkripsi Whisper dititipkan ke API cloud (Groq/OpenAI) — VPS tidak punya GPU. Worker Python mandiri (faster-whisper di mesin GPU) hanya opsi bila nanti perlu full offline.
 - **Gerbang akses ditegakkan di server.** Batas tamu/premium dicek di API Go, bukan sekadar menyembunyikan tombol di UI.
+- **Cache untuk bacaan terbanyak.** Katalog (beranda, telusur) di-cache di memori backend Go (TTL 1–5 menit, dibuang saat admin mengubah katalog), dan domain API berjalan di belakang **Cloudflare** (cache tepi + proteksi dasar) — VPS kecil tidak perlu menjawab query yang sama berulang kali.
+- **API hemat request.** Layar beranda dilayani satu endpoint gabungan (sorotan + per tipe + blok Lanjutkan), dan semua daftar besar memakai pagination cursor — bukan `OFFSET`.
 - **Biaya tetap & terukur.** VPS (biaya tetap per bulan) + Supabase (free) + Cloudflare R2 (free 10 GB); biaya variabel hanya API transkripsi (per menit audio) dan payment gateway (potongan per transaksi).
 
 ## 2. Struktur Folder
@@ -49,7 +51,7 @@ SubSenpai/
 └── docs/                   # Catatan tambahan (sumber data, riset iklan, dsb.)
 ```
 
-Catatan: backend Go dibangun menjadi binary (`go build`) lalu dijalankan systemd di VPS — tidak perlu Docker, Node, maupun runtime lain; VPS hanya menjalankan layanan Go + Caddy. Aplikasi Android didistribusikan sebagai APK / lewat Play Store. Rincian deployment ada di Bagian 11.
+Catatan: backend Go dibangun menjadi binary (`go build`) lalu dijalankan systemd di VPS — tidak perlu Docker, Node, maupun runtime lain; VPS hanya menjalankan layanan Go + Caddy. Aplikasi Android didistribusikan sebagai APK / lewat Play Store. Rincian deployment ada di Bagian 12.
 
 ## 3. Skema Database (Supabase / PostgreSQL)
 
@@ -69,7 +71,9 @@ Diagram ERD, detail relasi, indeks, RLS, dan draf SQL lengkap ada di **[DATABASE
 | season | text | `winter` / `spring` / `summer` / `fall` (khusus anime; boleh kosong) |
 | status | text | `ongoing` / `completed` |
 | genres | text[] | Daftar genre — kolom biasa, BUKAN database terpisah |
-| rating | numeric | Skor rata-rata (opsional) |
+| rating | numeric | Skor rata-rata (agregat dari `title_ratings`) |
+| is_adult | boolean | Konten 18+ — disembunyikan dari user yang filternya aktif |
+| search_tsv | tsvector | Kolom pencarian full-text (dari title + title_alt, indeks GIN) |
 | created_at | timestamptz | |
 
 ### `episodes` — konten video (anime/donghua/film)
@@ -94,6 +98,8 @@ Diagram ERD, detail relasi, indeks, RLS, dan draf SQL lengkap ada di **[DATABASE
 
 `chapter_pages`: id, chapter_id (FK), page_no, image_url (di R2).
 
+Reader mendukung dua mode: **halaman** (per gambar, cocok untuk manga) dan **gulir vertikal** (webtoon, cocok untuk manhwa/manhua) — pilihan mode diingat per user.
+
 ### `subtitles` — khusus konten video
 | Kolom | Tipe | Keterangan |
 | --- | --- | --- |
@@ -109,13 +115,17 @@ Diagram ERD, detail relasi, indeks, RLS, dan draf SQL lengkap ada di **[DATABASE
 - Akun dikelola **Supabase Auth** (`auth.users`) — tidak buat tabel kredensial sendiri.
 - **Login wajib Google (OAuth)** — hanya provider Google yang diaktifkan; pendaftaran email/password DIMATIKAN. Tujuannya menghindari bot: akun palsu harus lebih dulu memiliki akun Google yang lolos anti-abuse Google. Bukan anti-bot mutlak — lapisan cadangan bila masih kecolongan: Cloudflare Turnstile (captcha tak terlihat, gratis) di endpoint sensitif + rate limit API.
 - Alur login di aplikasi: user masuk lewat **Google Sign-In** di Android → token ID Google ditukar menjadi sesi Supabase Auth (`signInWithIdToken`) → JWT sesi dikirim sebagai header `Authorization` ke API Go pada setiap request, dan backend memverifikasinya.
-- `profiles` — 1:1 dengan user: nama tampil, avatar, `is_premium` (cache status), `premium_until`, `role` (`user`/`admin` — penanda akses panel admin).
+- `profiles` — 1:1 dengan user: nama tampil, avatar, `is_premium` (cache status), `premium_until`, `role` (`user`/`admin` — penanda akses panel admin), `friend_code` (kode teman yang juga berfungsi sebagai kode referral), `xp`/`level` (aktivitas, Bagian 9), `hide_adult` (saklar filter konten 18+, bawaan: sembunyi).
 - `subscriptions` — user_id, plan, status (`active`/`expired`/`cancelled`), current_period_end, provider (`midtrans`/`xendit`/`manual`/`voucher`), provider_ref.
 - `vouchers` — kode premium sekali pakai: dibuat admin (promo, bisa ditujukan ke user tertentu) atau dibeli user untuk dihadiahkan ke user lain; penukaran menambah hari premium penukar (detail di DATABASE.md).
 - `watchlist` — user_id + title_id.
 - `watch_history` — user_id + episode_id + posisi terakhir (detik) + updated_at.
 - `read_history` — user_id + chapter_id + halaman terakhir + updated_at.
 - `guest_access` — jejak akses tamu: device_key (hash cookie/device), title_id, episode_id/chapter_id, used_at. Dipakai menegakkan batas 1 episode/chapter.
+- `comments` — komentar user per episode/chapter (bisa dilaporkan & di-soft-delete, Bagian 10).
+- `title_ratings` — rating 1–10 + ulasan user per judul (satu per user, bisa diubah); agregatnya mengisi `titles.rating`.
+- `device_tokens` — token FCM per perangkat user untuk notifikasi rilis baru.
+- `daily_stats` — agregat harian untuk dashboard admin, dihitung worker dari tabel riwayat.
 
 ## 4. Model Akses (Freemium)
 
@@ -130,20 +140,27 @@ Penegakan: setiap permintaan memutar episode / membuka chapter melewati cek akse
 2. Tamu → cek `guest_access`: belum pernah membuka episode/chapter apa pun → lolos dan catat; sudah → tolak dengan ajakan login.
 3. Status premium bersumber dari `subscriptions` (diperbarui webhook payment gateway), `profiles.is_premium` hanya cache bacaan cepat.
 
+Manfaat & jalur premium tambahan:
+
+- **Download offline (khusus premium)** — episode (segmen HLS + file SRT) dan chapter bisa diunduh ke perangkat untuk ditonton/dibaca tanpa internet; berkas unduhan dienkripsi dengan kunci perangkat agar tidak disebar sebagai file mentah. Hanya berlaku untuk sumber yang segmennya memang bisa diunduh.
+- **Referral** — `friend_code` juga berfungsi sebagai kode referral: pendaftar baru yang memasukkan kode referral teman saat pertama masuk memicu sistem menerbitkan voucher `referral` untuk **kedua pihak** (pengundang & pendaftar sama-sama dapat hari premium) lewat mekanisme voucher yang sudah ada.
+- **Filter konten dewasa** — judul bertanda `is_adult` disembunyikan dari katalog & pencarian untuk user yang `hide_adult`-nya aktif (bawaan aktif); admin menandai tanda ini dari panel katalog.
+
 ## 5. Panel Admin
 
 Pengelolaan & pemantauan berjalan sebagai **layar admin di dalam aplikasi yang sama**, khusus user ber-`role = 'admin'` (menu admin disembunyikan untuk user biasa DAN tetap dicek di backend Go pada setiap request API admin). Modulnya: dashboard ringkasan, manajemen katalog, manajemen subtitle (antrean + retry), manajemen user, langganan & pembayaran, voucher premium, laporan user, monitoring, dan pengaturan platform. Rancangan lengkapnya: **[STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md)**.
 
 ## 6. Alur Data
 
-1. **Katalog masuk** — metadata judul & episode/chapter ditulis ke Supabase; poster & halaman komik diunggah ke R2.
+1. **Katalog masuk** — metadata judul & episode/chapter ditulis ke Supabase; poster & halaman komik diunggah ke R2 setelah dikonversi ke **WebP + thumbnail** (ukuran turun 30–60%, muat daftar jauh lebih ringan).
 2. **User membuka halaman nonton/baca** — API Go mengecek gerbang akses (Bagian 4) dan membaca metadata dari PostgreSQL → player memutar `video_url` langsung dari sumber / reader memuat gambar halaman dari R2.
 3. **Subtitle diminta** (video saja) — player mengecek tabel `subtitles`:
    - Sudah `done` → muat file dari R2, selesai.
    - Belum ada → buat baris `queued`; worker memprosesnya.
-4. **Worker memproses antrean** — unduh audio → (ada caption bahasa asal? terjemahkan langsung : transkripsi via API Whisper) → terjemahkan → bangun .srt → unggah ke R2 → ubah status jadi `done`.
-5. **Progres** — player/reader melaporkan posisi terakhir ke API → `watch_history` / `read_history` (user login).
+4. **Worker memproses antrean** — unduh audio → (ada caption bahasa asal? terjemahkan langsung : transkripsi via API Whisper) → terjemahkan → bangun .srt → unggah ke R2 → ubah status jadi `done`. Antrean **berprioritas**: episode baru langsung dibuatkan subtitle saat ditambahkan admin (tidak menunggu ada yang meminta), dan episode dari judul yang sedang banyak ditonton didahulukan.
+5. **Progres** — player/reader melaporkan posisi terakhir ke API → `watch_history` / `read_history` (user login). Data ini mengisi blok **"Lanjutkan"** yang menjadi blok pertama di beranda aplikasi.
 6. **Premium** — user membayar via Midtrans/Xendit (konfirmasi webhook) atau GoPay Merchant pihak ketiga (konfirmasi polling — Bagian 7) → `subscriptions` + `profiles.is_premium` diperbarui → iklan berhenti tampil. Premium juga bisa datang dari **voucher**: admin menerbitkan kode promo (atau user membeli voucher hadiah) → penerima login dan menukar kode → `premium_until` diperpanjang sejumlah hari voucher dan tercatat sebagai `subscriptions` berprovider `voucher`.
+7. **Notifikasi rilis baru** — saat episode/chapter baru ditambahkan ke sebuah judul, worker mengirim push **FCM** ke semua user yang memasukkan judul itu ke watchlist (token perangkat dari `device_tokens`).
 
 ## 7. Alur Pembayaran
 
@@ -204,7 +221,17 @@ Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
 - Bergabung: grup publik bisa langsung diikuti; grup privat lewat undangan dari daftar teman atau permintaan bergabung yang disetujui admin grup.
 - Moderasi dua lapis: admin grup mengeluarkan anggota & menghapus pesan di kanal grupnya; grup yang dilaporkan user (`reports` bertarget `group`) ditindak admin platform (peringatan sampai pembubaran) — lihat STRUKTUR_ADMIN.md.
 
-## 10. Keamanan API — Enkripsi Response (`xdata` / `xtime`)
+### Level & Lencana Aktivitas
+- User mengumpulkan **XP** (`profiles.xp`) dari aktivitas: menonton episode, membaca chapter, mengirim pesan chat, dan memberi komentar — dihitung worker dari tabel riwayat (bukan dari klien, agar tidak bisa diakali).
+- XP menaikkan **level** (`profiles.level`, cache yang dihitung ulang worker); level & lencana tampil di profil dan di samping nama pada chat — berdampingan dengan badge Premium/Admin.
+
+## 10. Komentar, Rating & Rekomendasi
+
+- **Komentar per episode & chapter** (`comments`) — kolom komentar di halaman nonton/baca untuk user login; bisa dilaporkan (`reports` bertarget `comment`) dan di-soft-delete oleh pemilik/admin, sama seperti pesan chat.
+- **Rating & ulasan** (`title_ratings`) — user memberi skor 1–10 dan ulasan singkat per judul (satu per user, bisa diubah); agregat skor mengisi `titles.rating` dan ditampilkan di katalog.
+- **Rekomendasi "karena kamu menonton ini"** — dihitung sederhana oleh worker dari genre yang sama + pola "user yang menonton X juga menonton Y" (agregat `watch_history`), disajikan sebagai satu blok di beranda lewat endpoint gabungan (Bagian 1) dengan cache — tanpa sistem ML terpisah.
+
+## 11. Keamanan API — Enkripsi Response (`xdata` / `xtime`)
 
 Semua response JSON dari backend TIDAK dikirim mentah. Backend membungkusnya dalam **envelope terenkripsi**, dan aplikasi di sisi klien membukanya kembali menjadi response asal sebelum ditampilkan:
 
@@ -226,12 +253,13 @@ Spesifikasi:
 - **Penerapan terpusat**: enkripsi dilakukan satu middleware pembungkus response di backend Go (`internal/middleware`, memakai `crypto/aes` + `crypto/cipher` bawaan Go), jadi tiap handler tidak mengimplementasikan sendiri-sendiri. Sisi aplikasi memakai modul crypto klien Android (X25519 + AES/GCM bawaan platform).
 - **Berlaku untuk**: semua endpoint JSON backend Go di `/api/v1/*` (katalog, gerbang akses, subtitle, chat, premium, admin) — kecuali endpoint handshake itu sendiri.
 - **Pengecualian**: endpoint handshake `/api/v1/session` (bootstrap kunci; dilindungi HTTPS), webhook pembayaran (server-ke-server, punya tanda tangan gateway sendiri), dan file media/HLS/SRT (bukan JSON).
+- **Rate limit handshake**: endpoint `/api/v1/session` dibatasi per IP (mis. maks 30 handshake/menit) karena operasi ECDH memakan CPU — tanpa batas ini, endpoint bootstrap bisa dipakai menguras CPU VPS.
 
 Kenapa bukan kunci dari signature URL atau kunci statis tertanam: path URL bersifat publik, jadi kunci semacam itu bertumpu pada satu secret induk yang tertanam di APK — sekali terbongkar, seluruh endpoint dan seluruh user terbuka selamanya. Dengan kunci sesi ECDH, membongkar APK tidak menghasilkan kunci apa pun, satu kunci yang bocor hanya membuka satu sesi, dan traffic lama yang terekam tidak bisa didekripsi belakangan karena kunci sementaranya sudah dibuang (*forward secrecy*).
 
 Catatan jujur soal batas lapisan ini: penyerang yang sangat berniat tetap bisa meniru handshake aplikasi dan berbicara ke API seperti aplikasi asli. Lapisan ini berfungsi sebagai **anti-scraping massal**, **integritas**, **anti-replay**, dan **kerahasiaan per sesi** — BUKAN pengganti HTTPS, login, dan gerbang akses di server.
 
-## 11. Deployment (VPS)
+## 12. Deployment (VPS)
 
 Satu VPS menjalankan seluruh aplikasi (spesifikasi awal cukup 1–2 vCPU / 1–2 GB RAM karena binary Go ringan):
 
@@ -244,11 +272,13 @@ Satu VPS menjalankan seluruh aplikasi (spesifikasi awal cukup 1–2 vCPU / 1–2
 | Berkas | Cloudflare R2 — di luar VPS | — |
 
 - Caddy meneruskan seluruh request (API publik, mis. `api.subsenpai...`) ke backend Go; hanya Caddy yang terekspos ke internet, layanan Go hanya mendengarkan di localhost.
-- Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi/terjemahan, kunci API ImgBB, kredensial R2. Tidak masuk repo (repo hanya berisi `.env.example`). Kunci sesi `xdata` TIDAK termasuk env/disk — dibuat per sesi dan hidup di memori saja (Bagian 10).
+- Domain diarahkan lewat **Cloudflare** (proxy aktif): cache tepi untuk response katalog publik, IP asli VPS tersembunyi, dan proteksi DDoS dasar — gratis.
+- Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi/terjemahan, kunci API ImgBB, kredensial R2. Tidak masuk repo (repo hanya berisi `.env.example`). Kunci sesi `xdata` TIDAK termasuk env/disk — dibuat per sesi dan hidup di memori saja (Bagian 11).
 - Alur rilis: `go build` → unggah binary → `systemctl restart subsenpai-api subsenpai-worker`. Pembaruan aplikasi Android lewat rilis APK/Play Store seperti biasa (di luar VPS).
-- Cadangan: database diurus Supabase; yang perlu dicadangkan dari VPS hanya file env dan konfigurasi `deploy/`.
+- Cadangan: `pg_dump` database berjalan terjadwal dari VPS (timer systemd, mis. tiap malam) dan hasilnya diunggah ke R2 — Supabase free tidak mempunyai pemulihan titik-waktu, jadi dump ini penyelamat utamanya. File env dan konfigurasi `deploy/` dicadangkan bersama dump.
+- Pemantauan: endpoint `GET /healthz` (jawaban polos `{ok: true}`, tanpa enkripsi) dipantau pemantau uptime eksternal gratis (mis. UptimeRobot) agar admin tahu dalam hitungan menit bila VPS atau layanan mati.
 
-## 12. Batasan yang Disadari
+## 13. Batasan yang Disadari
 
 - Satu VPS adalah titik tunggal kegagalan — bila VPS mati, seluruh layanan berhenti. Mitigasi awal: pantau uptime + restart otomatis systemd; pisahkan worker ke mesin lain bila antrean subtitle membesar.
 - Aplikasi saja, tanpa versi web: penemuan konten lewat mesin pencari (SEO) tidak ada — distribusi & pertumbuhan mengandalkan APK/Play Store dan promosi komunitas. Sebagai gantinya VPS jauh lebih ringan (komponen terberat sebelumnya, Next.js, hilang).
