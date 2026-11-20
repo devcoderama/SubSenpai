@@ -25,6 +25,9 @@ erDiagram
     profiles ||--o{ vouchers : "membuat / membeli"
     profiles ||--o{ vouchers : "menukar"
     profiles ||--o{ payment_sessions : "membayar"
+    chat_channels ||--o{ chat_messages : "kanal berisi"
+    profiles ||--o{ chat_messages : "mengirim"
+    stickers ||--o{ chat_messages : "dipakai di"
 
     titles {
         uuid id PK
@@ -79,6 +82,9 @@ erDiagram
         boolean is_premium "cache status"
         timestamptz premium_until
         text role "user|admin"
+        text name_color "warna nickname chat (premium)"
+        text name_emoji "emoji di nama chat (premium)"
+        timestamptz chat_muted_until "bisukan chat s.d."
     }
     subscriptions {
         uuid id PK
@@ -157,6 +163,30 @@ erDiagram
         timestamptz expires_at
         timestamptz created_at
     }
+    chat_channels {
+        uuid id PK
+        text slug UK
+        text name
+        text description
+        int sort_order
+    }
+    chat_messages {
+        uuid id PK
+        uuid channel_id FK
+        uuid user_id FK
+        text kind "text|sticker"
+        text body "isi teks, maks 500"
+        uuid sticker_id FK "terisi bila kind=sticker"
+        timestamptz created_at
+        timestamptz deleted_at "soft-delete moderasi"
+    }
+    stickers {
+        uuid id PK
+        text pack
+        text name
+        text image_url "R2"
+        boolean is_premium "khusus premium"
+    }
 ```
 
 Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar sebagai tabel aplikasi). `profiles.id` adalah FK 1:1 ke `auth.users.id`. Login **wajib Google OAuth**; pendaftaran email/password dimatikan.
@@ -180,6 +210,9 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 | `admin_logs` | Jejak audit aksi admin di panel | Admin |
 | `vouchers` | Kode voucher premium — dibuat admin (promo) atau dibeli user untuk dihadiahkan | Monetisasi |
 | `payment_sessions` | Sesi pembayaran jalur polling (GoPay pihak ketiga): nominal unik, status, batas waktu | Monetisasi |
+| `chat_channels` | Kanal Chat Global (Umum, Anime, Donghua, Manga, Rekomendasi) | Komunitas |
+| `chat_messages` | Pesan Chat Global (teks / stiker), soft-delete untuk moderasi | Komunitas |
+| `stickers` | Katalog stiker chat (sebagian khusus premium) | Komunitas |
 
 ## 3. Relasi (Foreign Key)
 
@@ -197,6 +230,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `admin_logs.admin_id → profiles.id`
 - `vouchers.created_by → profiles.id` (admin pembuat / user pembeli); `vouchers.assigned_to → profiles.id` (boleh kosong = siapa saja boleh menukar); `vouchers.redeemed_by → profiles.id` (kosong sampai ditukar)
 - `payment_sessions.user_id → profiles.id`; target bayarnya (langganan/voucher) dicocokkan lewat `purpose` + konteks sesi, referensi hasil pencocokan disimpan di `matched_ref`
+- `chat_messages.channel_id → chat_channels.id`; `chat_messages.user_id → profiles.id`; `chat_messages.sticker_id → stickers.id` (hanya terisi untuk pesan stiker)
 
 ## 4. Nilai yang Dibatasi (cek/enum)
 
@@ -207,7 +241,8 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `payment_sessions.purpose` ∈ `subscription, voucher`; `payment_sessions.status` ∈ `pending, paid, expired`
 - `vouchers.source` ∈ `admin, purchase`; `vouchers.status` ∈ `active, redeemed, expired, revoked`
 - `profiles.role` ∈ `user, admin`
-- `reports.target_kind` ∈ `episode, chapter, subtitle`; `reports.status` ∈ `open, resolved, dismissed`
+- `reports.target_kind` ∈ `episode, chapter, subtitle, chat_message`; `reports.status` ∈ `open, resolved, dismissed`
+- `chat_messages.kind` ∈ `text, sticker`
 
 ## 5. Indeks Penting
 
@@ -221,6 +256,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `watch_history (user_id, updated_at desc)` — "lanjutkan menonton"
 - `read_history (user_id, updated_at desc)` — "lanjutkan membaca"
 - `guest_access (device_key)` — cek batas tamu
+- `chat_messages (channel_id, created_at desc)` — riwayat & muat pesan per kanal
 
 ## 6. Row Level Security (RLS) — Supabase
 
@@ -230,6 +266,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - **`reports`**: user login bisa MEMBUAT laporan atas namanya; membaca & mengubah status hanya admin. **`admin_logs`**: ditulis service role (dari API admin), dibaca hanya admin.
 - **`vouchers`**: user membaca voucher yang ia buat/beli atau yang ditujukan kepadanya; penukaran (redeem) dan penerbitan voucher pembelian hanya lewat API (service role) agar atomik dan tidak bisa diakali; admin membaca semua.
 - **`payment_sessions`**: ditulis & diperbarui hanya oleh API server (termasuk proses polling); user hanya membaca sesi miliknya untuk melihat status pembayaran.
+- **Chat**: `chat_channels` & `stickers` baca-publik; `chat_messages` dibaca user login, ditulis hanya atas nama pengirim sendiri (`auth.uid() = user_id`) lewat API/Realtime, dan penghapusan (soft-delete) hanya oleh admin/mod. Kolom kustomisasi premium di `profiles` (`name_color`, `name_emoji`) hanya bisa diubah lewat API yang memeriksa status premium di server.
 
 ## 7. Draf SQL (titik awal migrasi)
 
@@ -297,7 +334,10 @@ create table profiles (
   avatar_url text,
   is_premium boolean not null default false,
   premium_until timestamptz,
-  role text not null default 'user' check (role in ('user','admin'))
+  role text not null default 'user' check (role in ('user','admin')),
+  name_color text,
+  name_emoji text,
+  chat_muted_until timestamptz
 );
 
 create table subscriptions (
@@ -349,7 +389,7 @@ create index guest_access_device_idx on guest_access (device_key);
 create table reports (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references profiles(id) on delete set null,
-  target_kind text not null check (target_kind in ('episode','chapter','subtitle')),
+  target_kind text not null check (target_kind in ('episode','chapter','subtitle','chat_message')),
   target_id uuid not null,
   reason text not null,
   status text not null default 'open' check (status in ('open','resolved','dismissed')),
@@ -398,4 +438,33 @@ create table payment_sessions (
 -- nominal unik tidak boleh dipakai dua sesi aktif sekaligus
 create unique index payment_sessions_amount_pending_idx
   on payment_sessions (provider, amount) where status = 'pending';
+
+create table chat_channels (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null unique,
+  name text not null,
+  description text,
+  sort_order int not null default 0
+);
+
+create table stickers (
+  id uuid primary key default gen_random_uuid(),
+  pack text not null,
+  name text not null,
+  image_url text not null,
+  is_premium boolean not null default false
+);
+
+create table chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  channel_id uuid not null references chat_channels(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  kind text not null default 'text' check (kind in ('text','sticker')),
+  body text check (char_length(body) <= 500),
+  sticker_id uuid references stickers(id) on delete set null,
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  check ((kind = 'text' and body is not null) or (kind = 'sticker' and sticker_id is not null))
+);
+create index chat_messages_channel_idx on chat_messages (channel_id, created_at desc);
 ```

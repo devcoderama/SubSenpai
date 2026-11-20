@@ -22,6 +22,7 @@ apps/web/
 │       ├── users/              # Kelola user & premium manual
 │       ├── subscriptions/      # Langganan & transaksi
 │       ├── vouchers/           # Voucher premium (buat, bagikan, pantau klaim)
+│       ├── chat/               # Moderasi Chat Global (pesan, kanal, stiker)
 │       ├── reports/            # Laporan user (link mati, subtitle salah)
 │       ├── monitoring/         # Kesehatan sistem & metrik
 │       └── settings/           # Pengaturan platform
@@ -83,6 +84,12 @@ apps/web/
 - Batas akses tamu (bawaan: 1 episode/chapter).
 - Saklar iklan (tampil/sembunyi untuk user gratis) & mode maintenance.
 - Metode pembayaran yang aktif (Midtrans / Xendit / GoPay pihak ketiga) — jalur GoPay bisa dimatikan cepat dari sini bila API-nya bermasalah.
+
+### 3.10 Moderasi Chat Global
+- Pesan terlaporkan (dari `reports` bertarget `chat_message`): hapus pesan (soft-delete), bisukan pengirimnya (`chat_muted_until`, bisa berdurasi), atau abaikan laporan.
+- Kelola kanal chat: tambah/ubah nama, deskripsi, dan urutan kanal; atur teks banner pengumuman di atas chat.
+- Kelola katalog stiker: unggah paket stiker (gambar ke R2) dan tandai mana yang khusus premium.
+- Atur filter kata terlarang dan mode lambat (jeda minimum antar-pesan) per kanal bila chat sedang rusuh.
 
 ## 4. Tabel Pendukung
 

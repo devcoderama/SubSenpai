@@ -29,6 +29,7 @@ SubSenpai/
 │       │   ├── search/                 # Pencarian
 │       │   ├── watchlist/              # Watchlist user (login)
 │       │   ├── premium/                # Halaman langganan & pembayaran
+│       │   ├── chat/                   # Chat Global (kanal realtime)
 │       │   ├── admin/                  # Panel admin (detail: STRUKTUR_ADMIN.md)
 │       │   └── api/                    # API tipis (katalog, akses, subtitle, progres, webhook bayar, admin)
 │       ├── components/                 # Komponen UI (kartu judul, player, reader, dsb.)
@@ -170,7 +171,20 @@ Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
 - Tidak ada mekanisme refund/perselisihan resmi; selisih diselesaikan manual lewat modul Langganan di panel admin.
 - Karena itu posisinya **alternatif murah untuk memulai**, bukan pengganti gateway resmi.
 
-## 8. Batasan yang Disadari
+## 8. Chat Global
+
+- Ruang obrolan publik **realtime** khusus user yang sudah login (tamu tidak ikut membaca/menulis — selaras dengan login Google wajib, sekaligus anti-spam).
+- **Kanal per topik**: Umum, Anime, Donghua, Film, Manga, Rekomendasi — dikelola admin lewat tabel `chat_channels`.
+- Teknologi: **Supabase Realtime** (tanpa server websocket terpisah) + Presence untuk menampilkan jumlah user online per kanal.
+- Tampilan pesan seperti aplikasi chat komunitas: avatar, nickname, badge Premium/Admin, stempel waktu, dan banner pengumuman di bagian atas (diatur admin — mis. peringatan anti-penipuan). Pesan teks maks 500 karakter.
+- **Kustomisasi khusus premium** (nilai jual langganan):
+  - **Warna nickname** pilihan sendiri (`profiles.name_color`)
+  - **Emoji pendamping nama** (`profiles.name_emoji`)
+  - **Paket stiker premium** — pesan bisa berupa stiker gambar (dari R2, tabel `stickers`); user gratis hanya mendapat stiker dasar + emoji standar
+  - Kustomisasi diperiksa di server. Bila langganan berakhir, tampilan kembali ke bawaan — pengaturan tetap tersimpan dan aktif lagi saat user berlangganan kembali.
+- **Moderasi**: batas laju pengiriman, filter kata terlarang, admin/mod dapat menghapus pesan (soft-delete) dan membisukan user (`chat_muted_until`); user dapat melaporkan pesan (masuk `reports` bertarget `chat_message`). Modul adminnya dirinci di STRUKTUR_ADMIN.md.
+
+## 9. Batasan yang Disadari
 
 - Fungsi serverless Vercel punya batas durasi & bandwidth — tidak dipakai untuk streaming video maupun menjalankan model Whisper.
 - Project Supabase gratis bisa di-pause bila lama tidak aktif — aktivitas berkala menjaganya tetap bangun.
