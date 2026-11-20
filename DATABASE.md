@@ -41,6 +41,8 @@ erDiagram
     profiles ||--o{ title_ratings : "menilai"
     titles ||--o{ title_ratings : "dinilai"
     profiles ||--o{ device_tokens : "perangkat"
+    profiles ||--o{ notifications : "menerima"
+    profiles ||--o{ broadcasts : "admin mengirim"
 
     titles {
         uuid id PK
@@ -116,6 +118,7 @@ erDiagram
     watchlist {
         uuid user_id PK,FK
         uuid title_id PK,FK
+        boolean notify "lonceng update judul ini"
         timestamptz created_at
     }
     watch_history {
@@ -270,6 +273,27 @@ erDiagram
         int new_users
         int chat_messages
     }
+    notifications {
+        uuid id PK
+        uuid user_id FK
+        text kind "release|broadcast|system"
+        text title
+        text body
+        uuid ref_title_id FK "judul terkait, bila ada"
+        uuid broadcast_id FK "sumber broadcast, bila ada"
+        timestamptz read_at
+        timestamptz created_at
+    }
+    broadcasts {
+        uuid id PK
+        uuid admin_id FK
+        text audience "all|premium|free"
+        text title
+        text body
+        uuid ref_title_id FK "tautan ke judul/promo, bila ada"
+        int sent_count
+        timestamptz created_at
+    }
 ```
 
 Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar sebagai tabel aplikasi). `profiles.id` adalah FK 1:1 ke `auth.users.id`. Login **wajib Google OAuth**; pendaftaran email/password dimatikan.
@@ -285,7 +309,9 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 | `subtitles` | File subtitle per episode + status antrean worker | Katalog |
 | `profiles` | Profil user (1:1 `auth.users`) + cache status premium | User |
 | `subscriptions` | Langganan premium & status pembayaran | Monetisasi |
-| `watchlist` | Judul simpanan user | User |
+| `watchlist` | Judul favorit user + saklar notifikasi per judul (`notify`) | User |
+| `notifications` | Kotak masuk notifikasi user (rilis baru, broadcast admin, sistem) | Sistem |
+| `broadcasts` | Pengumuman manual admin (promo/event) + audiens & jumlah terkirim | Admin |
 | `watch_history` | Posisi tontonan terakhir per episode | User |
 | `read_history` | Halaman terakhir per chapter | User |
 | `guest_access` | Jejak akses tamu untuk menegakkan batas 1 episode/chapter | Akses |
@@ -330,6 +356,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `comments.user_id → profiles.id`; tepat satu dari `comments.episode_id` / `comments.chapter_id` terisi
 - `title_ratings (user_id, title_id)` — kunci utama gabungan (satu penilaian per user per judul, bisa diubah)
 - `device_tokens (user_id, fcm_token)` — kunci utama gabungan; `daily_stats` tanpa FK (agregat sistem)
+- `notifications.user_id → profiles.id`; `notifications.broadcast_id → broadcasts.id` (kosong untuk notifikasi rilis/sistem); `broadcasts.admin_id → profiles.id`; `ref_title_id` di keduanya menunjuk `titles.id` bila notifikasi terkait judul tertentu
 
 ## 4. Nilai yang Dibatasi (cek/enum)
 
@@ -342,6 +369,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `profiles.role` ∈ `user, admin`
 - `reports.target_kind` ∈ `episode, chapter, subtitle, chat_message, group, comment`; `reports.status` ∈ `open, resolved, dismissed`
 - `title_ratings.score` ∈ 1–10
+- `notifications.kind` ∈ `release, broadcast, system`; `broadcasts.audience` ∈ `all, premium, free`
 - `chat_messages.kind` ∈ `text, sticker, image` (teks → `body`; stiker katalog → `sticker_id`; gambar & stiker pribadi → `image_url` berisi URL ImgBB)
 - `chat_channels.kind` ∈ `global, group` (`group_id` wajib terisi bila `group`, kosong bila `global`)
 - `friendships.status` ∈ `pending, accepted`; `group_members.role` ∈ `owner, admin, member`
@@ -376,6 +404,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - **Sosial**: `friendships` & `user_blocks` hanya terlihat oleh kedua pihak yang terlibat; perubahan (kirim/terima/tolak/blokir) lewat API. `groups` publik bisa dibaca semua user login; grup privat hanya oleh anggotanya. Pesan kanal grup hanya bisa dibaca/ditulis anggota grup itu (dicek di API/Realtime berdasarkan `group_members`).
 - **`user_stickers` & gambar chat**: dikelola pemiliknya lewat API (unggah selalu lewat backend — kunci API ImgBB tidak pernah ke klien). Kolom `delete_url` (ImgBB) bersifat internal server: tidak pernah dipilih untuk dikirim ke aplikasi, hanya dipakai admin saat menghapus gambar yang melanggar.
 - **`comments` & `title_ratings`**: dibaca user login; ditulis/diubah hanya milik sendiri lewat API; penghapusan komentar (soft-delete) juga oleh admin/mod. **`device_tokens`**: hanya pemiliknya & service role (pengirim notifikasi). **`daily_stats`**: ditulis worker agregasi, dibaca admin.
+- **`notifications`**: hanya pemiliknya yang membaca & menandai terbaca; penulisan hanya oleh worker/service role (rilis baru & broadcast). **`broadcasts`**: hanya admin (membuat lewat panel; pengiriman dijalankan worker dan tercatat di `admin_logs`).
 
 ## 7. Draf SQL (titik awal migrasi)
 
@@ -471,6 +500,7 @@ create table subscriptions (
 create table watchlist (
   user_id uuid not null references profiles(id) on delete cascade,
   title_id uuid not null references titles(id) on delete cascade,
+  notify boolean not null default false,
   created_at timestamptz not null default now(),
   primary key (user_id, title_id)
 );
@@ -684,4 +714,28 @@ create table daily_stats (
   new_users int not null default 0,
   chat_messages int not null default 0
 );
+
+create table broadcasts (
+  id uuid primary key default gen_random_uuid(),
+  admin_id uuid not null references profiles(id) on delete cascade,
+  audience text not null default 'all' check (audience in ('all','premium','free')),
+  title text not null,
+  body text not null,
+  ref_title_id uuid references titles(id) on delete set null,
+  sent_count int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  kind text not null check (kind in ('release','broadcast','system')),
+  title text not null,
+  body text not null,
+  ref_title_id uuid references titles(id) on delete set null,
+  broadcast_id uuid references broadcasts(id) on delete set null,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index notifications_user_idx on notifications (user_id, created_at desc);
 ```

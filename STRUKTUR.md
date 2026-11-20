@@ -118,7 +118,7 @@ Reader mendukung dua mode: **halaman** (per gambar, cocok untuk manga) dan **gul
 - `profiles` — 1:1 dengan user: nama tampil, avatar, `is_premium` (cache status), `premium_until`, `role` (`user`/`admin` — penanda akses panel admin), `friend_code` (kode teman yang juga berfungsi sebagai kode referral), `xp`/`level` (aktivitas, Bagian 9), `hide_adult` (saklar filter konten 18+, bawaan: sembunyi).
 - `subscriptions` — user_id, plan, status (`active`/`expired`/`cancelled`), current_period_end, provider (`midtrans`/`xendit`/`manual`/`voucher`), provider_ref.
 - `vouchers` — kode premium sekali pakai: dibuat admin (promo, bisa ditujukan ke user tertentu) atau dibeli user untuk dihadiahkan ke user lain; penukaran menambah hari premium penukar (detail di DATABASE.md).
-- `watchlist` — user_id + title_id.
+- `watchlist` — user_id + title_id + `notify` (lonceng per judul: user mengaktifkan notifikasi hanya untuk judul favorit yang ia pilih, berlaku untuk semua tipe — anime, donghua, film, manga, manhua, manhwa).
 - `watch_history` — user_id + episode_id + posisi terakhir (detik) + updated_at.
 - `read_history` — user_id + chapter_id + halaman terakhir + updated_at.
 - `guest_access` — jejak akses tamu: device_key (hash cookie/device), title_id, episode_id/chapter_id, used_at. Dipakai menegakkan batas 1 episode/chapter.
@@ -126,6 +126,8 @@ Reader mendukung dua mode: **halaman** (per gambar, cocok untuk manga) dan **gul
 - `title_ratings` — rating 1–10 + ulasan user per judul (satu per user, bisa diubah); agregatnya mengisi `titles.rating`.
 - `device_tokens` — token FCM per perangkat user untuk notifikasi rilis baru.
 - `daily_stats` — agregat harian untuk dashboard admin, dihitung worker dari tabel riwayat.
+- `notifications` — kotak masuk notifikasi tiap user (rilis baru / broadcast / sistem) + status terbaca; setiap push FCM juga disimpan di sini agar bisa dibaca ulang di aplikasi.
+- `broadcasts` — pengumuman manual dari admin (judul, isi, audiens, jumlah terkirim) — sumber notifikasi berkind `broadcast`.
 
 ## 4. Model Akses (Freemium)
 
@@ -160,7 +162,8 @@ Pengelolaan & pemantauan berjalan sebagai **layar admin di dalam aplikasi yang s
 4. **Worker memproses antrean** — unduh audio → (ada caption bahasa asal? terjemahkan langsung : transkripsi via API Whisper) → terjemahkan → bangun .srt → unggah ke R2 → ubah status jadi `done`. Antrean **berprioritas**: episode baru langsung dibuatkan subtitle saat ditambahkan admin (tidak menunggu ada yang meminta), dan episode dari judul yang sedang banyak ditonton didahulukan.
 5. **Progres** — player/reader melaporkan posisi terakhir ke API → `watch_history` / `read_history` (user login). Data ini mengisi blok **"Lanjutkan"** yang menjadi blok pertama di beranda aplikasi.
 6. **Premium** — user membayar via Midtrans/Xendit (konfirmasi webhook) atau GoPay Merchant pihak ketiga (konfirmasi polling — Bagian 7) → `subscriptions` + `profiles.is_premium` diperbarui → iklan berhenti tampil. Premium juga bisa datang dari **voucher**: admin menerbitkan kode promo (atau user membeli voucher hadiah) → penerima login dan menukar kode → `premium_until` diperpanjang sejumlah hari voucher dan tercatat sebagai `subscriptions` berprovider `voucher`.
-7. **Notifikasi rilis baru** — saat episode/chapter baru ditambahkan ke sebuah judul, worker mengirim push **FCM** ke semua user yang memasukkan judul itu ke watchlist (token perangkat dari `device_tokens`).
+7. **Notifikasi rilis baru** — saat episode/chapter baru ditambahkan ke sebuah judul, worker mengirim push **FCM** ke user yang memfavoritkan judul itu DAN mengaktifkan loncengnya (`watchlist.notify = true`; token perangkat dari `device_tokens`), sekaligus menyimpan salinannya ke kotak masuk `notifications` di aplikasi.
+8. **Broadcast admin** — admin menyusun pengumuman dari panel (mis. event promo voucher, maintenance, judul baru unggulan), memilih audiens (semua user / premium saja / gratis saja), lalu worker mengirimkannya sebagai push + baris `notifications` untuk tiap penerima; riwayat & jumlah terkirim tercatat di `broadcasts` dan aksi adminnya di `admin_logs`.
 
 ## 7. Alur Pembayaran
 

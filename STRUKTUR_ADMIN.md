@@ -23,6 +23,7 @@ apps/android/.../ui/admin/      # Layar admin di aplikasi (satu layar per modul)
 ├── ChatModerationScreen        # Moderasi Chat Global (pesan, kanal, stiker)
 ├── ReportsScreen               # Laporan user (link mati, subtitle salah)
 ├── MonitoringScreen            # Kesehatan sistem & metrik
+├── NotificationsScreen         # Broadcast notifikasi manual (promo/event)
 └── SettingsScreen              # Pengaturan platform
 
 API admin hidup di backend Go (backend/internal/httpapi, grup /api/v1/admin/*) —
@@ -91,6 +92,12 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - Grup terlaporkan (`reports` bertarget `group`): periksa grupnya — beri peringatan ke owner, batasi, atau bubarkan grup yang melanggar. Urusan sehari-hari di dalam grup (keluarkan anggota, hapus pesan) adalah wewenang admin grup, bukan admin platform.
 - Gambar/stiker kiriman user yang dilaporkan: hapus gambarnya dari ImgBB memakai `delete_url` yang tersimpan di server, lalu soft-delete pesannya — menghapus baris pesan saja tidak menghapus gambar di ImgBB.
 - Komentar terlaporkan (`reports` bertarget `comment`) ditangani seperti pesan chat: periksa konteksnya, soft-delete bila melanggar, bisukan penulisnya bila berulang.
+
+### 3.11 Notifikasi & Pengumuman (Broadcast)
+- Susun pengumuman manual: judul, isi, dan tautan tujuan opsional (mis. halaman judul atau promo voucher).
+- Pilih audiens: **semua user**, **premium saja**, atau **gratis saja** — lalu kirim sekarang (pengiriman dijalankan worker sebagai push FCM + entri kotak masuk `notifications`).
+- Riwayat broadcast: isi, audiens, jumlah terkirim (`broadcasts.sent_count`), dan waktu — tercatat juga di `admin_logs`.
+- Disiplin anti-spam: broadcast adalah alat pengumuman penting (event, promo, gangguan layanan), bukan harian — targetkan maks ±1–2 kali seminggu agar user tidak mematikan notifikasi aplikasi.
 
 ## 4. Tabel Pendukung
 
