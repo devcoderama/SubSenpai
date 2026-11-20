@@ -15,9 +15,9 @@ Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) d
 ```
 apps/android/.../ui/admin/      # Layar admin di aplikasi (satu layar per modul)
 ├── DashboardScreen             # Ringkasan
-├── TitlesScreen                # Kelola katalog (judul, episode, chapter)
+├── TitlesScreen                # Kelola katalog (judul, episode, chapter, permintaan judul)
 ├── SubtitlesScreen             # Antrean & hasil subtitle
-├── UsersScreen                 # Kelola user & premium manual
+├── UsersScreen                 # Kelola user, premium manual & perangkat akun
 ├── SubscriptionsScreen         # Langganan & transaksi
 ├── VouchersScreen              # Voucher premium (buat, bagikan, pantau klaim)
 ├── ChatModerationScreen        # Moderasi Chat Global (pesan, kanal, stiker)
@@ -42,6 +42,8 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - Kelola `episodes`: tambah/edit URL HLS, nomor episode, tanggal tayang.
 - Kelola `chapters` + `chapter_pages`: unggah halaman komik (gambar dikirim ke R2, urutan halaman bisa disusun ulang).
 - Impor massal metadata dari CSV/JSON untuk mempercepat pengisian katalog awal.
+- **Penanda intro/outro**: tiap episode bisa diberi rentang intro & outro (detik mulai–selesai) untuk tombol Lewati Opening/Outro di player.
+- **Tab Permintaan Judul**: daftar `title_requests` terurut berdasar jumlah suara (`title_request_votes`) — admin menyetujui, menolak, atau menandai `added` setelah judulnya dibuat (peminta & pendukung otomatis ternotifikasi lewat sistem notifikasi).
 - Poster diunggah ke R2 dari panel (tidak perlu URL manual).
 
 ### 3.3 Manajemen Subtitle
@@ -54,6 +56,7 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - Daftar user (dari `profiles` + Supabase Auth): email, tanggal daftar, status premium.
 - Beri/cabut premium manual (mis. kompensasi, promo) — tercatat di `admin_logs`.
 - Blokir user bermasalah (ban di Supabase Auth).
+- Perangkat akun (`user_devices`): lihat jumlah perangkat aktif seorang user dan cabut perangkat dari panel bila ada laporan akun dipakai orang lain — user juga bisa mencabut perangkatnya sendiri dari halaman keamanan akun.
 
 ### 3.5 Langganan & Pembayaran
 - Daftar `subscriptions`: plan, status, masa berlaku, provider (Midtrans/Xendit) + referensi transaksi.
@@ -66,6 +69,7 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - **Pantau klaim**: daftar voucher per status (`active` / `redeemed` / `expired` / `revoked`), siapa menukar dan kapan; admin bisa **mencabut** (revoke) voucher yang bocor/disalahgunakan.
 - **Voucher pembelian user**: user juga bisa MEMBELI voucher dari halaman premium untuk dihadiahkan ke user lain — pembayaran lewat Midtrans/Xendit, kode terbit otomatis setelah pembayaran terkonfirmasi. Admin memantau penjualan & penukarannya di modul ini (tidak bisa mengubah kode milik user, hanya mencabut bila ada sengketa/penipuan).
 - Penukaran bersifat sekali pakai dan atomik di API: premium penerima diperpanjang sejumlah `duration_days` (menumpuk dari sisa premium bila masih aktif) dan tercatat sebagai `subscriptions` berprovider `voucher`.
+- **Hadiah langsung ke teman**: pembelian voucher yang penerimanya dipilih dari daftar teman dipantau di modul ini juga — voucher terbit ber-`assigned_to` penerima dan terkirim otomatis lewat notifikasi + kotak masuk, tanpa kode berpindah tangan.
 
 ### 3.7 Laporan User
 - User bisa melaporkan: link video mati, subtitle salah/tidak sinkron, chapter/halaman rusak (tabel `reports`).
@@ -77,6 +81,8 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - **Kesehatan layanan luar**: tautan cepat ke status Supabase, VPS, Cloudflare, dan API transkripsi; sisa kuota/kuota terpakai dicatat manual di halaman ini.
 - **Penyimpanan**: perkiraan pemakaian R2 (poster + halaman komik + SRT) terhadap batas gratis 10 GB.
 - Catatan: ambang sederhana (mis. subtitle `failed` > 10 dalam sehari) bisa dikembangkan menjadi notifikasi otomatis ke Telegram/email admin.
+- **Laporan crash aplikasi**: ringkasan/tautan ke Crashlytics/GlitchTip (jumlah crash per versi rilis) — lonjakan crash setelah sebuah rilis adalah tanda harus segera diperbaiki/rollback.
+- **Cadangan**: status dump `pg_dump` malam terakhir + tanggal **uji pemulihan** terakhir (uji berkala tiap 3 bulan: dump dipulihkan ke database kosong, hasilnya dicatat di sini).
 
 ### 3.9 Pengaturan
 - Harga & durasi paket premium.
@@ -97,6 +103,7 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - Susun pengumuman manual: judul, isi, dan tautan tujuan opsional (mis. halaman judul atau promo voucher).
 - Pilih audiens: **semua user**, **premium saja**, atau **gratis saja** — lalu kirim sekarang (pengiriman dijalankan worker sebagai push FCM + entri kotak masuk `notifications`).
 - Riwayat broadcast: isi, audiens, jumlah terkirim (`broadcasts.sent_count`), dan waktu — tercatat juga di `admin_logs`.
+- Pengiriman berjalan **bertahap** (kelompok FCM multicast maks 500 token dengan jeda antar-kelompok agar VPS & batas laju FCM tidak kewalahan); progres `sent_count` bisa dipantau dari riwayat sampai pengiriman selesai.
 - Disiplin anti-spam: broadcast adalah alat pengumuman penting (event, promo, gangguan layanan), bukan harian — targetkan maks ±1–2 kali seminggu agar user tidak mematikan notifikasi aplikasi.
 
 ## 4. Tabel Pendukung
@@ -109,6 +116,8 @@ Panel admin memakai tabel yang sama dengan aplikasi utama, ditambah:
 | `reports` | Laporan user soal konten rusak — ditindaklanjuti admin |
 | `admin_logs` | Jejak audit aksi admin |
 | `vouchers` | Kode voucher premium (promo admin / dibeli user sebagai hadiah) — detail di DATABASE.md |
+| `title_requests` + `title_request_votes` | Permintaan judul dari user + suara dukungan — ditindaklanjuti dari modul Katalog |
+| `user_devices` | Registri perangkat per akun — batas perangkat premium & pencabutan sesi |
 
 Detail kolom, relasi, dan SQL-nya ada di [DATABASE.md](DATABASE.md).
 

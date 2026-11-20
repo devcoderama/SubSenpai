@@ -13,6 +13,7 @@ Rancangan struktur proyek: susunan folder, skema database, model akses, dan alur
 - **Gerbang akses ditegakkan di server.** Batas tamu/premium dicek di API Go, bukan sekadar menyembunyikan tombol di UI.
 - **Cache untuk bacaan terbanyak.** Katalog (beranda, telusur) di-cache di memori backend Go (TTL 1–5 menit, dibuang saat admin mengubah katalog), dan domain API berjalan di belakang **Cloudflare** (cache tepi + proteksi dasar) — VPS kecil tidak perlu menjawab query yang sama berulang kali.
 - **API hemat request.** Layar beranda dilayani satu endpoint gabungan (sorotan + per tipe + blok Lanjutkan), dan semua daftar besar memakai pagination cursor — bukan `OFFSET`.
+- **Katalog tersinkron lokal di aplikasi.** Aplikasi menyimpan salinan katalog di penyimpanan lokal perangkat dan menyinkronkan hanya perubahannya memakai penanda `updated_at` (endpoint perubahan sejak waktu terakhir sinkron) — beranda tampil seketika tanpa menunggu jaringan, hemat kuota user, dan beban API turun.
 - **Biaya tetap & terukur.** VPS (biaya tetap per bulan) + Supabase (free) + Cloudflare R2 (free 10 GB); biaya variabel hanya API transkripsi (per menit audio) dan payment gateway (potongan per transaksi).
 
 ## 2. Struktur Folder
@@ -26,8 +27,8 @@ SubSenpai/
 ├── apps/
 │   └── android/            # Aplikasi Android (Kotlin) — SATU-SATUNYA klien, berjalan di perangkat user
 │       └── app/src/main/java/com/subsenpai/
-│           ├── ui/                     # Layar: beranda, telusur, detail, player, reader, chat, teman, grup, premium, watchlist, admin
-│           ├── data/                   # Klien API Go (Retrofit/OkHttp) + dekripsi xdata/xtime, sesi Supabase Auth, model data
+│           ├── ui/                     # Layar: beranda, telusur, detail, player, reader, chat, dm, teman, grup, koleksi, pencapaian, rekap, keamanan akun, premium, watchlist, admin
+│           ├── data/                   # Klien API Go (Retrofit/OkHttp) + dekripsi xdata/xtime, sesi Supabase Auth, model data, basis data lokal katalog (sinkronisasi delta)
 │           └── player/                 # Player HLS (Media3/ExoPlayer) + overlay subtitle
 ├── backend/                # Backend Go — dijalankan di VPS
 │   ├── cmd/
@@ -86,6 +87,10 @@ Diagram ERD, detail relasi, indeks, RLS, dan draf SQL lengkap ada di **[DATABASE
 | video_url | text | URL stream HLS dari sumber |
 | duration_sec | int | Durasi (opsional) |
 | aired_at | date | Tanggal tayang |
+| intro_start_sec / intro_end_sec | int | Penanda rentang intro (untuk tombol Lewati Opening) |
+| outro_start_sec / outro_end_sec | int | Penanda rentang outro/kredit penutup |
+
+Player mendukung **putar otomatis episode berikutnya** (saklar di pengaturan player) dan tombol **Lewati Opening/Outro** dari penanda di atas; penanda diisi admin dari panel katalog.
 
 ### `chapters` + `chapter_pages` — konten baca (manga/manhua/manhwa)
 | Kolom | Tipe | Keterangan |
@@ -105,7 +110,7 @@ Reader mendukung dua mode: **halaman** (per gambar, cocok untuk manga) dan **gul
 | --- | --- | --- |
 | id | uuid (PK) | |
 | episode_id | uuid (FK → episodes) | |
-| lang | text | Kode bahasa, mis. `id` |
+| lang | text | Kode bahasa: `id` (utama) atau `en` — subtitle Inggris dibuat bila sumber punya caption Inggris (dipakai apa adanya, atau jadi sumber terjemahan); player menyediakan pemilih bahasa subtitle |
 | source | text | `caption` (dari CC sumber) / `whisper` (transkripsi API) |
 | format | text | `srt` / `ass` |
 | file_url | text | URL file subtitle (di R2) |
@@ -115,8 +120,8 @@ Reader mendukung dua mode: **halaman** (per gambar, cocok untuk manga) dan **gul
 - Akun dikelola **Supabase Auth** (`auth.users`) — tidak buat tabel kredensial sendiri.
 - **Login wajib Google (OAuth)** — hanya provider Google yang diaktifkan; pendaftaran email/password DIMATIKAN. Tujuannya menghindari bot: akun palsu harus lebih dulu memiliki akun Google yang lolos anti-abuse Google. Bukan anti-bot mutlak — lapisan cadangan bila masih kecolongan: Cloudflare Turnstile (captcha tak terlihat, gratis) di endpoint sensitif + rate limit API.
 - Alur login di aplikasi: user masuk lewat **Google Sign-In** di Android → token ID Google ditukar menjadi sesi Supabase Auth (`signInWithIdToken`) → JWT sesi dikirim sebagai header `Authorization` ke API Go pada setiap request, dan backend memverifikasinya.
-- `profiles` — 1:1 dengan user: nama tampil, avatar, `is_premium` (cache status), `premium_until`, `role` (`user`/`admin` — penanda akses panel admin), `friend_code` (kode teman yang juga berfungsi sebagai kode referral), `xp`/`level` (aktivitas, Bagian 9), `hide_adult` (saklar filter konten 18+, bawaan: sembunyi).
-- `subscriptions` — user_id, plan, status (`active`/`expired`/`cancelled`), current_period_end, provider (`midtrans`/`xendit`/`manual`/`voucher`), provider_ref.
+- `profiles` — 1:1 dengan user: nama tampil, avatar, `is_premium` (cache status), `premium_until`, `role` (`user`/`admin` — penanda akses panel admin), `friend_code` (kode teman yang juga berfungsi sebagai kode referral), `xp`/`level` (aktivitas, Bagian 9), `hide_adult` (saklar filter konten 18+, bawaan: sembunyi), `show_online`/`show_activity` (saklar privasi kehadiran sosial, Bagian 9), `trial_used_at` (penanda uji coba premium sudah dipakai, Bagian 4), `last_active_date`/`streak_days` (rentetan hari aktif, Bagian 9).
+- `subscriptions` — user_id, plan, status (`active`/`expired`/`cancelled`), current_period_end, provider (`midtrans`/`xendit`/`gopay`/`manual`/`voucher`/`trial`), provider_ref.
 - `vouchers` — kode premium sekali pakai: dibuat admin (promo, bisa ditujukan ke user tertentu) atau dibeli user untuk dihadiahkan ke user lain; penukaran menambah hari premium penukar (detail di DATABASE.md).
 - `watchlist` — user_id + title_id + `notify` (lonceng per judul: user mengaktifkan notifikasi hanya untuk judul favorit yang ia pilih, berlaku untuk semua tipe — anime, donghua, film, manga, manhua, manhwa).
 - `watch_history` — user_id + episode_id + posisi terakhir (detik) + updated_at.
@@ -128,6 +133,10 @@ Reader mendukung dua mode: **halaman** (per gambar, cocok untuk manga) dan **gul
 - `daily_stats` — agregat harian untuk dashboard admin, dihitung worker dari tabel riwayat.
 - `notifications` — kotak masuk notifikasi tiap user (rilis baru / broadcast / sistem) + status terbaca; setiap push FCM juga disimpan di sini agar bisa dibaca ulang di aplikasi.
 - `broadcasts` — pengumuman manual dari admin (judul, isi, audiens, jumlah terkirim) — sumber notifikasi berkind `broadcast`.
+- `title_requests` + `title_request_votes` — permintaan judul yang belum ada di katalog + suara dukungan user; admin mengerjakannya berdasar jumlah suara (Bagian 10).
+- `collections` + `collection_items` + `collection_follows` — koleksi kurasi buatan user (daftar judul bertema, publik/privat) yang bisa diikuti user lain (Bagian 10).
+- `user_achievements` — pencapaian yang sudah dibuka user, di atas sistem XP/level (definisi pencapaian hidup di kode, Bagian 9).
+- `user_devices` — registri perangkat per akun untuk batas perangkat premium & halaman keamanan akun (Bagian 4).
 
 ## 4. Model Akses (Freemium)
 
@@ -146,6 +155,9 @@ Manfaat & jalur premium tambahan:
 
 - **Download offline (khusus premium)** — episode (segmen HLS + file SRT) dan chapter bisa diunduh ke perangkat untuk ditonton/dibaca tanpa internet; berkas unduhan dienkripsi dengan kunci perangkat agar tidak disebar sebagai file mentah. Hanya berlaku untuk sumber yang segmennya memang bisa diunduh.
 - **Referral** — `friend_code` juga berfungsi sebagai kode referral: pendaftar baru yang memasukkan kode referral teman saat pertama masuk memicu sistem menerbitkan voucher `referral` untuk **kedua pihak** (pengundang & pendaftar sama-sama dapat hari premium) lewat mekanisme voucher yang sudah ada.
+- **Uji coba premium (trial)** — user baru boleh mencoba premium **gratis 3 hari, sekali per akun**: ditandai `profiles.trial_used_at` agar tidak diakali daftar ulang dengan akun yang sama, tercatat sebagai `subscriptions` berprovider `trial`, dan tidak memerlukan metode pembayaran apa pun.
+- **Hadiah premium langsung ke teman** — pembelian voucher bisa langsung memilih penerima dari daftar teman: voucher terbit dengan `assigned_to` = teman itu dan terkirim otomatis sebagai notifikasi + entri kotak masuk (tanpa menyalin/menempel kode); penukarannya tetap mekanisme voucher yang sama.
+- **Batas perangkat premium** — satu akun premium aktif di maks **2 perangkat** (`user_devices`); login dari perangkat ketiga meminta user mencabut salah satu perangkat lamanya lewat **halaman keamanan akun** (daftar perangkat akun + cabut sesi perangkat lain). Batas ditegakkan API saat perangkat baru mendaftar, bukan sekadar di UI.
 - **Filter konten dewasa** — judul bertanda `is_adult` disembunyikan dari katalog & pencarian untuk user yang `hide_adult`-nya aktif (bawaan aktif); admin menandai tanda ini dari panel katalog.
 
 ## 5. Panel Admin
@@ -155,7 +167,7 @@ Pengelolaan & pemantauan berjalan sebagai **layar admin di dalam aplikasi yang s
 ## 6. Alur Data
 
 1. **Katalog masuk** — metadata judul & episode/chapter ditulis ke Supabase; poster & halaman komik diunggah ke R2 setelah dikonversi ke **WebP + thumbnail** (ukuran turun 30–60%, muat daftar jauh lebih ringan).
-2. **User membuka halaman nonton/baca** — API Go mengecek gerbang akses (Bagian 4) dan membaca metadata dari PostgreSQL → player memutar `video_url` langsung dari sumber / reader memuat gambar halaman dari R2.
+2. **User membuka halaman nonton/baca** — API Go mengecek gerbang akses (Bagian 4) dan membaca metadata dari PostgreSQL → player memutar `video_url` langsung dari sumber / reader memuat gambar halaman dari R2. Agar perpindahan terasa seketika (**prefetch**): reader memuat lebih dulu 3 halaman berikutnya, dan player memuat awal episode berikutnya saat progres episode berjalan mencapai ±80%.
 3. **Subtitle diminta** (video saja) — player mengecek tabel `subtitles`:
    - Sudah `done` → muat file dari R2, selesai.
    - Belum ada → buat baris `queued`; worker memprosesnya.
@@ -163,7 +175,8 @@ Pengelolaan & pemantauan berjalan sebagai **layar admin di dalam aplikasi yang s
 5. **Progres** — player/reader melaporkan posisi terakhir ke API → `watch_history` / `read_history` (user login). Data ini mengisi blok **"Lanjutkan"** yang menjadi blok pertama di beranda aplikasi.
 6. **Premium** — user membayar via Midtrans/Xendit (konfirmasi webhook) atau GoPay Merchant pihak ketiga (konfirmasi polling — Bagian 7) → `subscriptions` + `profiles.is_premium` diperbarui → iklan berhenti tampil. Premium juga bisa datang dari **voucher**: admin menerbitkan kode promo (atau user membeli voucher hadiah) → penerima login dan menukar kode → `premium_until` diperpanjang sejumlah hari voucher dan tercatat sebagai `subscriptions` berprovider `voucher`.
 7. **Notifikasi rilis baru** — saat episode/chapter baru ditambahkan ke sebuah judul, worker mengirim push **FCM** ke user yang memfavoritkan judul itu DAN mengaktifkan loncengnya (`watchlist.notify = true`; token perangkat dari `device_tokens`), sekaligus menyimpan salinannya ke kotak masuk `notifications` di aplikasi.
-8. **Broadcast admin** — admin menyusun pengumuman dari panel (mis. event promo voucher, maintenance, judul baru unggulan), memilih audiens (semua user / premium saja / gratis saja), lalu worker mengirimkannya sebagai push + baris `notifications` untuk tiap penerima; riwayat & jumlah terkirim tercatat di `broadcasts` dan aksi adminnya di `admin_logs`.
+8. **Broadcast admin** — admin menyusun pengumuman dari panel (mis. event promo voucher, maintenance, judul baru unggulan), memilih audiens (semua user / premium saja / gratis saja), lalu worker mengirimkannya **bertahap** — push FCM multicast per kelompok maks 500 token dengan jeda antar-kelompok (menghindari lonjakan beban VPS & batas laju FCM) + baris `notifications` untuk tiap penerima; `sent_count` terisi progresif selama pengiriman berjalan. Riwayat tercatat di `broadcasts` dan aksi adminnya di `admin_logs`.
+9. **Sinkronisasi katalog ke aplikasi** — aplikasi menyimpan katalog lokal (prinsip di Bagian 1); saat dibuka, aplikasi meminta perubahan sejak sinkronisasi terakhir (berdasar `updated_at` pada judul/episode/chapter) dan hanya mengunduh bedanya.
 
 ## 7. Alur Pembayaran
 
@@ -206,7 +219,7 @@ Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
   - **Emoji pendamping nama** (`profiles.name_emoji`)
   - **Paket stiker premium** — pesan bisa berupa stiker gambar (dari R2, tabel `stickers`); user gratis hanya mendapat stiker dasar + emoji standar
   - Kustomisasi diperiksa di server. Bila langganan berakhir, tampilan kembali ke bawaan — pengaturan tetap tersimpan dan aktif lagi saat user berlangganan kembali.
-- **Kirim gambar & stiker pribadi**: user bisa mengirim gambar di chat dan menyimpan stiker buatannya sendiri (`user_stickers`). Gambar TIDAK disimpan sebagai berkas mentah di server maupun database — aplikasi mengirim gambar ke backend Go, backend mengunggahnya ke **ImgBB** (`POST https://api.imgbb.com/1/upload`; kunci API ImgBB hanya ada di server), lalu yang disimpan di database hanya **URL** hasilnya (`chat_messages.image_url`). Batas ImgBB maks 32 MB per gambar dan tanpa expiration (gambar tidak kedaluwarsa). `delete_url` dari ImgBB disimpan internal di server untuk keperluan moderasi — tidak pernah dikirim ke aplikasi. Stiker katalog resmi tetap di R2.
+- **Kirim gambar & stiker pribadi**: user bisa mengirim gambar di chat dan menyimpan stiker buatannya sendiri (`user_stickers`). Gambar TIDAK disimpan sebagai berkas mentah di server maupun database — aplikasi mengirim gambar ke backend Go; backend **memperkecilnya lebih dulu** (maks 1600px, konversi WebP, metadata EXIF dibuang — unggahan kamera 5–10 MB menjadi ringan), lalu mengunggahnya ke **ImgBB** (`POST https://api.imgbb.com/1/upload`; kunci API ImgBB hanya ada di server), lalu yang disimpan di database hanya **URL** hasilnya (`chat_messages.image_url`) beserta **URL thumbnail** dari ImgBB (`image_thumb_url`) — daftar chat menampilkan thumbnail, gambar penuh baru dimuat saat pesan diketuk. Batas ImgBB maks 32 MB per gambar dan tanpa expiration (gambar tidak kedaluwarsa). `delete_url` dari ImgBB disimpan internal di server untuk keperluan moderasi — tidak pernah dikirim ke aplikasi. Stiker katalog resmi tetap di R2.
 - **Balas pesan (reply)**: user bisa membalas pesan tertentu — di chat global maupun kanal grup — dan balasan menampilkan kutipan pesan aslinya (nama penulis + potongan isi, tersimpan sebagai `reply_to_id`). Bila pesan asli dihapus moderator, kutipannya tampil sebagai "pesan telah dihapus" tetapi balasannya tetap ada. Komentar episode/chapter juga mendukung balasan (satu tingkat, Bagian 10) — komunitas bisa saling menanggapi seperti media sosial.
 - **Tanpa tautan luar & tanpa promosi**: pesan chat dan komentar yang mengandung tautan luar (pola `http://`, `https://`, `www.`, atau domain umum) **ditolak di server sebelum tersimpan**; promosi juga disaring filter kata terlarang. User tidak bisa menempel tautan apa pun dari luar ke dalam aplikasi. Satu-satunya "tautan" yang beredar adalah yang dibuat aplikasi sendiri (kartu berbagi di bawah dan URL gambar hasil unggahan resmi).
 - **Berbagi resmi dari aplikasi**: tombol Bagikan pada judul/episode/chapter menghasilkan dua bentuk saja — (a) **kartu berbagi di dalam aplikasi**: pesan khusus (`kind = share`) berisi kartu konten yang bisa dikirim ke chat global, kanal grup, atau teman; (b) **berbagi ke luar aplikasi** lewat menu berbagi Android, berisi teks + tautan resmi aplikasi yang dibuat oleh aplikasi. Di luar dua bentuk itu, berbagi tautan tidak ada.
@@ -218,6 +231,8 @@ Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
 - Setiap user punya **kode teman** unik (`profiles.friend_code`) — tambah teman dengan memasukkan kode itu, atau mencari nama pengguna.
 - Alur: kirim permintaan (`friendships` berstatus `pending`) → penerima **menerima** (menjadi `accepted`) atau **menolak** (permintaan dihapus). Daftar teman tampil di profil masing-masing.
 - **Blokir** (`user_blocks`): user yang diblokir tidak bisa mengirim permintaan teman maupun undangan grup, dan pertemanan yang sudah ada terputus.
+- **Chat pribadi (DM)** — sesama teman bisa mengobrol 1:1 lewat kanal khusus (`chat_channels` berkind `dm`, tepat satu kanal per pasangan teman). DM memakai sistem pesan yang sama persis dengan Chat Global: reply, stiker, gambar ImgBB (dengan kompresi & thumbnail), kartu berbagi, dan larangan tautan luar ikut berlaku. DM hanya bisa dimulai dengan teman — bukan orang asing — dan berhenti bisa dipakai bila salah satu pihak memblokir.
+- **Kehadiran sosial** — daftar teman menampilkan status online (Supabase Realtime Presence) dan aktivitas terakhir temannya ("sedang menonton X" / "baru membaca Y", dari riwayat terbaru). Keduanya bisa dimatikan per user lewat saklar privasi `show_online` / `show_activity` di profil.
 - Khusus user login — tamu tidak memiliki fitur sosial sama sekali.
 
 ### Grup
@@ -225,17 +240,23 @@ Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
 - Peran anggota (`group_members`): `owner` (pembuat grup; satu-satunya yang bisa membubarkan grup), `admin` (diangkat owner; ikut memoderasi), `member`.
 - Setiap grup otomatis memiliki **satu kanal chat sendiri** (`chat_channels` berkind `group`) — memakai sistem chat yang sama dengan Chat Global (pesan teks, stiker, kustomisasi premium), tetapi hanya anggota grup yang bisa membaca & menulis di dalamnya.
 - Bergabung: grup publik bisa langsung diikuti; grup privat lewat undangan dari daftar teman atau permintaan bergabung yang disetujui admin grup.
+- **Nonton bareng (watch party)** — anggota grup (atau sekumpulan teman) bisa membuka ruang putar tersinkron dari sebuah episode: satu host mengendalikan play/pause/seek dan posisi semua peserta mengikutinya (sinkronisasi lewat kanal Realtime sementara — sesi ini tidak disimpan sebagai data permanen), dengan chat di samping player. Ruang berakhir saat host menutupnya atau semua peserta keluar.
 - Moderasi dua lapis: admin grup mengeluarkan anggota & menghapus pesan di kanal grupnya; grup yang dilaporkan user (`reports` bertarget `group`) ditindak admin platform (peringatan sampai pembubaran) — lihat STRUKTUR_ADMIN.md.
 
 ### Level & Lencana Aktivitas
 - User mengumpulkan **XP** (`profiles.xp`) dari aktivitas: menonton episode, membaca chapter, mengirim pesan chat, dan memberi komentar — dihitung worker dari tabel riwayat (bukan dari klien, agar tidak bisa diakali).
 - XP menaikkan **level** (`profiles.level`, cache yang dihitung ulang worker); level & lencana tampil di profil dan di samping nama pada chat — berdampingan dengan badge Premium/Admin.
+- **Pencapaian** — di atas XP/level ada lencana tonggak (`user_achievements`): mis. episode ke-100 ditonton, rentetan 7/30 hari, komentar pertama, koleksi pertama yang diikuti 10 orang. Definisi pencapaian (nama, ikon, syarat) hidup di kode agar mudah ditambah tanpa migrasi; worker yang menganugerahkannya dari data aktivitas dan mengirim notifikasi `system` saat sebuah pencapaian terbuka.
+- **Rentetan harian (streak)** — hari aktif (menonton/membaca/chat/komentar) dicatat di `profiles.last_active_date`; worker memperbarui `streak_days` (bertambah bila kemarin aktif, kembali ke 1 bila terputus) dan menampilkannya di profil — alasan kecil untuk membuka aplikasi setiap hari.
 
 ## 10. Komentar, Rating & Rekomendasi
 
 - **Komentar per episode & chapter** (`comments`) — kolom komentar di halaman nonton/baca untuk user login; mendukung **balasan satu tingkat** (balasan atas balasan menempel ke komentar induk yang sama, tidak bersarang dalam); bisa dilaporkan (`reports` bertarget `comment`) dan di-soft-delete oleh pemilik/admin, sama seperti pesan chat. Aturan tanpa tautan luar & tanpa promosi yang sama dengan chat berlaku di sini.
 - **Rating & ulasan** (`title_ratings`) — user memberi skor 1–10 dan ulasan singkat per judul (satu per user, bisa diubah); agregat skor mengisi `titles.rating` dan ditampilkan di katalog.
 - **Rekomendasi "karena kamu menonton ini"** — dihitung sederhana oleh worker dari genre yang sama + pola "user yang menonton X juga menonton Y" (agregat `watch_history`), disajikan sebagai satu blok di beranda lewat endpoint gabungan (Bagian 1) dengan cache — tanpa sistem ML terpisah.
+- **Permintaan judul & voting** (`title_requests`) — user bisa meminta judul yang belum ada di katalog dan memberi suara pada permintaan user lain; admin melihat daftar terurut berdasar suara di panel katalog dan menandainya `approved` / `added` (tertaut ke judulnya) / `rejected`. Peminta & pendukung menerima notifikasi saat judul yang mereka dukung benar-benar masuk katalog.
+- **Koleksi kurasi user** (`collections`) — user menyusun daftar judul bertema ("Donghua xianxia wajib tonton", "Anime sedih terbaik") sebagai koleksi publik/privat; user lain bisa mengikuti koleksi dan menemukan judul dari kurasi komunitas, bukan hanya algoritma. Koleksi yang melanggar aturan ditangani lewat laporan & moderasi yang sama seperti konten user lain.
+- **Rekap Senpai (statistik pribadi)** — halaman statistik per user yang dihitung dari riwayatnya sendiri: total jam menonton, chapter dibaca, genre teratas, judul yang paling lama diikuti, rentetan & level saat ini. Rekap bisa dibagikan ke luar aplikasi sebagai kartu berbagi resmi (gambar rekap dibuat oleh aplikasi) — promosi dari mulut ke mulut tanpa melanggar aturan tautan di dalam aplikasi.
 
 ## 11. Keamanan API — Enkripsi Response (`xdata` / `xtime`)
 
@@ -281,8 +302,8 @@ Satu VPS menjalankan seluruh aplikasi (spesifikasi awal cukup 1–2 vCPU / 1–2
 - Domain diarahkan lewat **Cloudflare** (proxy aktif): cache tepi untuk response katalog publik, IP asli VPS tersembunyi, dan proteksi DDoS dasar — gratis.
 - Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi/terjemahan, kunci API ImgBB, kredensial R2. Tidak masuk repo (repo hanya berisi `.env.example`). Kunci sesi `xdata` TIDAK termasuk env/disk — dibuat per sesi dan hidup di memori saja (Bagian 11).
 - Alur rilis: `go build` → unggah binary → `systemctl restart subsenpai-api subsenpai-worker`. Pembaruan aplikasi Android lewat rilis APK/Play Store seperti biasa (di luar VPS).
-- Cadangan: `pg_dump` database berjalan terjadwal dari VPS (timer systemd, mis. tiap malam) dan hasilnya diunggah ke R2 — Supabase free tidak mempunyai pemulihan titik-waktu, jadi dump ini penyelamat utamanya. File env dan konfigurasi `deploy/` dicadangkan bersama dump.
-- Pemantauan: endpoint `GET /healthz` (jawaban polos `{ok: true}`, tanpa enkripsi) dipantau pemantau uptime eksternal gratis (mis. UptimeRobot) agar admin tahu dalam hitungan menit bila VPS atau layanan mati.
+- Cadangan: `pg_dump` database berjalan terjadwal dari VPS (timer systemd, mis. tiap malam) dan hasilnya diunggah ke R2 — Supabase free tidak mempunyai pemulihan titik-waktu, jadi dump ini penyelamat utamanya. File env dan konfigurasi `deploy/` dicadangkan bersama dump. Setiap 3 bulan dilakukan **uji pemulihan**: dump terakhir dicoba dipulihkan ke database kosong dan hasilnya dicatat di modul Monitoring — cadangan yang belum pernah dipulihkan adalah harapan, bukan cadangan.
+- Pemantauan: endpoint `GET /healthz` (jawaban polos `{ok: true}`, tanpa enkripsi) dipantau pemantau uptime eksternal gratis (mis. UptimeRobot) agar admin tahu dalam hitungan menit bila VPS atau layanan mati. Aplikasi Android juga mengirim **laporan crash** (Firebase Crashlytics gratis, atau GlitchTip yang di-host sendiri) bertanda versi rilis — error di perangkat user tidak terlihat dari server, jadi laporan crash adalah satu-satunya cara mengetahuinya; ringkasannya ditautkan dari modul Monitoring panel admin.
 
 ## 13. Batasan yang Disadari
 

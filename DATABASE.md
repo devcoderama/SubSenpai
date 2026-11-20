@@ -43,6 +43,16 @@ erDiagram
     profiles ||--o{ device_tokens : "perangkat"
     profiles ||--o{ notifications : "menerima"
     profiles ||--o{ broadcasts : "admin mengirim"
+    profiles ||--o{ title_requests : "meminta judul"
+    title_requests ||--o{ title_request_votes : "didukung"
+    profiles ||--o{ title_request_votes : "memberi suara"
+    profiles ||--o{ collections : "menyusun koleksi"
+    collections ||--o{ collection_items : "berisi"
+    titles ||--o{ collection_items : "masuk koleksi"
+    profiles ||--o{ collection_follows : "mengikuti koleksi"
+    collections ||--o{ collection_follows : "diikuti"
+    profiles ||--o{ user_achievements : "membuka pencapaian"
+    profiles ||--o{ user_devices : "perangkat akun"
     chat_messages ||--o{ chat_messages : "membalas"
     comments ||--o{ comments : "balasan"
 
@@ -61,6 +71,7 @@ erDiagram
         numeric rating
         boolean is_adult "konten 18+"
         timestamptz created_at
+        timestamptz updated_at "sinkronisasi delta"
     }
     episodes {
         uuid id PK
@@ -70,6 +81,11 @@ erDiagram
         text video_url "HLS dari sumber"
         int duration_sec
         date aired_at
+        int intro_start_sec "penanda intro"
+        int intro_end_sec
+        int outro_start_sec "penanda outro"
+        int outro_end_sec
+        timestamptz updated_at "sinkronisasi delta"
     }
     chapters {
         uuid id PK
@@ -77,6 +93,7 @@ erDiagram
         numeric chapter_no "boleh desimal"
         text title
         int page_count
+        timestamptz updated_at "sinkronisasi delta"
     }
     chapter_pages {
         uuid id PK
@@ -87,7 +104,7 @@ erDiagram
     subtitles {
         uuid id PK
         uuid episode_id FK
-        text lang "id"
+        text lang "id|en"
         text source "caption|whisper"
         text format "srt|ass"
         text file_url "R2"
@@ -107,6 +124,11 @@ erDiagram
         int xp "poin aktivitas"
         int level "level aktivitas"
         boolean hide_adult "sembunyikan 18+"
+        boolean show_online "tampilkan status online"
+        boolean show_activity "tampilkan aktivitas tonton/baca"
+        timestamptz trial_used_at "trial premium pernah dipakai"
+        date last_active_date "hari aktivitas terakhir"
+        int streak_days "rentetan hari aktif"
     }
     subscriptions {
         uuid id PK
@@ -114,7 +136,7 @@ erDiagram
         text plan
         text status "active|expired|cancelled"
         timestamptz current_period_end
-        text provider "midtrans|xendit"
+        text provider "midtrans|xendit|gopay|manual|voucher|trial"
         text provider_ref
     }
     watchlist {
@@ -192,8 +214,10 @@ erDiagram
         text name
         text description
         int sort_order
-        text kind "global|group"
+        text kind "global|group|dm"
         uuid group_id FK "terisi bila kind=group"
+        uuid dm_user_a_id FK "peserta DM 1, bila kind=dm"
+        uuid dm_user_b_id FK "peserta DM 2, bila kind=dm"
     }
     chat_messages {
         uuid id PK
@@ -203,6 +227,7 @@ erDiagram
         text body "isi teks, maks 500"
         uuid sticker_id FK "stiker katalog, bila kind=sticker"
         text image_url "URL ImgBB, bila image / stiker pribadi"
+        text image_thumb_url "thumbnail ImgBB untuk daftar chat"
         uuid reply_to_id FK "pesan yang dibalas"
         uuid ref_title_id FK "judul kartu berbagi, bila kind=share"
         uuid ref_episode_id FK "episode kartu berbagi, bila ada"
@@ -246,6 +271,7 @@ erDiagram
         uuid id PK
         uuid user_id FK
         text image_url "URL ImgBB"
+        text thumb_url "thumbnail ImgBB"
         text delete_url "internal server saja"
         timestamptz created_at
     }
@@ -300,6 +326,53 @@ erDiagram
         int sent_count
         timestamptz created_at
     }
+    title_requests {
+        uuid id PK
+        uuid requester_id FK
+        text title_text "judul yang diminta"
+        text type "tipe konten yang diminta"
+        text note
+        text status "pending|approved|added|rejected"
+        uuid matched_title_id FK "judul katalog hasil pemenuhan"
+        timestamptz created_at
+    }
+    title_request_votes {
+        uuid request_id PK,FK
+        uuid user_id PK,FK
+        timestamptz created_at
+    }
+    collections {
+        uuid id PK
+        uuid owner_id FK
+        text name
+        text description
+        boolean is_public
+        timestamptz created_at
+    }
+    collection_items {
+        uuid collection_id PK,FK
+        uuid title_id PK,FK
+        int position "urutan tampil"
+    }
+    collection_follows {
+        uuid collection_id PK,FK
+        uuid user_id PK,FK
+        timestamptz created_at
+    }
+    user_achievements {
+        uuid user_id PK,FK
+        text achievement_key PK "kunci pencapaian (definisi di kode)"
+        timestamptz unlocked_at
+    }
+    user_devices {
+        uuid id PK
+        uuid user_id FK
+        text device_id "id perangkat dari aplikasi"
+        text device_name
+        timestamptz last_seen_at
+        timestamptz revoked_at "terisi = sesi dicabut"
+        timestamptz created_at
+    }
 ```
 
 Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar sebagai tabel aplikasi). `profiles.id` adalah FK 1:1 ke `auth.users.id`. Login **wajib Google OAuth**; pendaftaran email/password dimatikan.
@@ -325,7 +398,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 | `admin_logs` | Jejak audit aksi admin di panel | Admin |
 | `vouchers` | Kode voucher premium — dibuat admin (promo) atau dibeli user untuk dihadiahkan | Monetisasi |
 | `payment_sessions` | Sesi pembayaran jalur polling (GoPay pihak ketiga): nominal unik, status, batas waktu | Monetisasi |
-| `chat_channels` | Kanal Chat Global (Umum, Anime, Donghua, Manga, Rekomendasi) | Komunitas |
+| `chat_channels` | Kanal chat: global (Umum, Anime, Donghua, Manga, Rekomendasi), grup, dan DM antar teman | Komunitas |
 | `chat_messages` | Pesan Chat Global (teks / stiker), soft-delete untuk moderasi | Komunitas |
 | `stickers` | Katalog stiker chat (sebagian khusus premium) | Komunitas |
 | `friendships` | Pertemanan antar-user (permintaan + status) | Sosial |
@@ -337,6 +410,13 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 | `title_ratings` | Rating (1–10) & ulasan user per judul; agregatnya mengisi `titles.rating` | Komunitas |
 | `device_tokens` | Token FCM per perangkat untuk notifikasi rilis baru | Sistem |
 | `daily_stats` | Agregat harian (tontonan, bacaan, user baru, pesan) untuk dashboard admin | Sistem |
+| `title_requests` | Permintaan judul yang belum ada di katalog + status tindak lanjut admin | Komunitas |
+| `title_request_votes` | Suara dukungan user per permintaan judul (satu suara per user) | Komunitas |
+| `collections` | Koleksi kurasi buatan user (daftar judul bertema, publik/privat) | Komunitas |
+| `collection_items` | Isi koleksi: judul + urutan tampil | Komunitas |
+| `collection_follows` | User yang mengikuti sebuah koleksi | Komunitas |
+| `user_achievements` | Pencapaian yang sudah dibuka user (kunci pencapaian + waktu) | User |
+| `user_devices` | Registri perangkat per akun — batas perangkat premium & keamanan sesi | Sistem |
 
 ## 3. Relasi (Foreign Key)
 
@@ -364,13 +444,18 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `title_ratings (user_id, title_id)` — kunci utama gabungan (satu penilaian per user per judul, bisa diubah)
 - `device_tokens (user_id, fcm_token)` — kunci utama gabungan; `daily_stats` tanpa FK (agregat sistem)
 - `notifications.user_id → profiles.id`; `notifications.broadcast_id → broadcasts.id` (kosong untuk notifikasi rilis/sistem); `broadcasts.admin_id → profiles.id`; `ref_title_id` di keduanya menunjuk `titles.id` bila notifikasi terkait judul tertentu
+- `title_requests.requester_id → profiles.id`; `title_requests.matched_title_id → titles.id` (terisi saat permintaan dipenuhi menjadi judul katalog); `title_request_votes (request_id, user_id)` — kunci utama gabungan (satu suara per user per permintaan)
+- `collections.owner_id → profiles.id`; `collection_items (collection_id, title_id)` — kunci utama gabungan, `position` menentukan urutan tampil; `collection_follows (collection_id, user_id)` — kunci utama gabungan
+- `user_achievements (user_id, achievement_key)` — kunci utama gabungan; definisi pencapaian (nama, ikon, syarat) hidup di kode aplikasi, bukan tabel, agar mudah ditambah tanpa migrasi
+- `user_devices.user_id → profiles.id`; `device_id` unik per user — perangkat yang `revoked_at`-nya terisi tidak dihitung dalam batas perangkat premium dan sesi perangkat itu ditolak API
+- Kanal DM memakai `chat_channels.kind = 'dm'` dengan `dm_user_a_id` & `dm_user_b_id` (kedua FK ke `profiles.id`, disimpan terurut a < b agar satu pasangan teman hanya punya satu kanal); hanya kedua peserta itu yang boleh membaca/menulis kanalnya
 
 ## 4. Nilai yang Dibatasi (cek/enum)
 
 - `titles.type` ∈ `anime, donghua, film, manga, manhua, manhwa`
 - `titles.status` ∈ `ongoing, completed`
-- `subtitles.source` ∈ `caption, whisper`; `subtitles.status` ∈ `queued, processing, done, failed`
-- `subscriptions.status` ∈ `active, expired, cancelled`; `subscriptions.provider` ∈ `midtrans, xendit, gopay, manual, voucher` (`gopay` = GoPay Merchant API pihak ketiga, konfirmasi via polling; `manual` = diberi admin dari panel; `voucher` = hasil penukaran kode voucher)
+- `subtitles.lang` ∈ `id, en` (Indonesia utama; Inggris hanya bila sumber bercaption Inggris); `subtitles.source` ∈ `caption, whisper`; `subtitles.status` ∈ `queued, processing, done, failed`
+- `subscriptions.status` ∈ `active, expired, cancelled`; `subscriptions.provider` ∈ `midtrans, xendit, gopay, manual, voucher, trial` (`gopay` = GoPay Merchant API pihak ketiga, konfirmasi via polling; `manual` = diberi admin dari panel; `voucher` = hasil penukaran kode voucher; `trial` = uji coba premium gratis 3 hari, sekali per akun, ditandai `profiles.trial_used_at`)
 - `payment_sessions.purpose` ∈ `subscription, voucher`; `payment_sessions.status` ∈ `pending, paid, expired`
 - `vouchers.source` ∈ `admin, purchase, referral`; `vouchers.status` ∈ `active, redeemed, expired, revoked`
 - `profiles.role` ∈ `user, admin`
@@ -378,7 +463,10 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `title_ratings.score` ∈ 1–10
 - `notifications.kind` ∈ `release, broadcast, system`; `broadcasts.audience` ∈ `all, premium, free`
 - `chat_messages.kind` ∈ `text, sticker, image, share` (teks → `body`; stiker katalog → `sticker_id`; gambar & stiker pribadi → `image_url` berisi URL ImgBB; kartu berbagi → `ref_title_id`)
-- `chat_channels.kind` ∈ `global, group` (`group_id` wajib terisi bila `group`, kosong bila `global`)
+- `chat_channels.kind` ∈ `global, group, dm` (`group_id` wajib terisi bila `group`; `dm_user_a_id`/`dm_user_b_id` wajib terisi bila `dm`; keduanya kosong bila `global`)
+- `title_requests.type` mengikuti nilai `titles.type`; `title_requests.status` ∈ `pending, approved, added, rejected`
+- `episodes` penanda intro/outro: bila kedua ujung terisi, ujung selesai harus lebih besar dari ujung mulai (`intro_end_sec > intro_start_sec`, `outro_end_sec > outro_start_sec`)
+- `user_devices`: perangkat aktif = `revoked_at` kosong; user premium dibatasi maks **2 perangkat aktif** (ditegakkan API saat perangkat baru mendaftar, bukan di skema)
 - `friendships.status` ∈ `pending, accepted`; `group_members.role` ∈ `owner, admin, member`
 
 ## 5. Indeks Penting
@@ -398,6 +486,9 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `group_members (user_id)` — daftar grup milik seorang user; `groups (name)` — pencarian grup
 - `titles` — indeks GIN di atas kolom `search_tsv` (`tsvector` dari `title` + `title_alt`, diperbarui trigger) untuk pencarian full-text; semua daftar besar (katalog, chat, komentar) memakai **pagination cursor** (`created_at`/`id`), bukan `OFFSET`
 - `comments (episode_id, created_at desc)` & `comments (chapter_id, created_at desc)`
+- `titles (updated_at)`, `episodes (updated_at)`, `chapters (updated_at)` — penanda waktu untuk **sinkronisasi delta** katalog ke penyimpanan lokal aplikasi (ambil hanya yang berubah sejak sinkron terakhir)
+- `chat_channels (dm_user_a_id, dm_user_b_id)` — unik parsial khusus `kind = 'dm'` (satu kanal DM per pasangan teman)
+- `title_requests (status, created_at desc)` — antrean permintaan judul untuk panel admin (urutan suara dihitung dari `title_request_votes`); `collections (owner_id)`; `collection_items (collection_id, position)`; `user_devices (user_id)`
 
 ## 6. Row Level Security (RLS) — Supabase
 
@@ -412,6 +503,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - **`user_stickers` & gambar chat**: dikelola pemiliknya lewat API (unggah selalu lewat backend — kunci API ImgBB tidak pernah ke klien). Kolom `delete_url` (ImgBB) bersifat internal server: tidak pernah dipilih untuk dikirim ke aplikasi, hanya dipakai admin saat menghapus gambar yang melanggar.
 - **`comments` & `title_ratings`**: dibaca user login; ditulis/diubah hanya milik sendiri lewat API; penghapusan komentar (soft-delete) juga oleh admin/mod. **`device_tokens`**: hanya pemiliknya & service role (pengirim notifikasi). **`daily_stats`**: ditulis worker agregasi, dibaca admin.
 - **`notifications`**: hanya pemiliknya yang membaca & menandai terbaca; penulisan hanya oleh worker/service role (rilis baru & broadcast). **`broadcasts`**: hanya admin (membuat lewat panel; pengiriman dijalankan worker dan tercatat di `admin_logs`).
+- **Fitur sosial lanjutan**: pesan pada kanal DM hanya boleh dibaca/ditulis kedua pesertanya (dicek di API/Realtime, sama seperti kanal grup). `title_requests` & `title_request_votes` dibaca user login (permintaan bersifat publik agar bisa didukung user lain) dan ditulis atas nama sendiri lewat API. `collections` publik dibaca semua user login; koleksi privat hanya oleh pemilik & pengikutnya — `collection_items`/`collection_follows` mengikuti visibilitas koleksinya. `user_achievements` hanya pemiliknya & service role (worker menganugerahkan pencapaian). `user_devices` hanya pemiliknya (melihat & mencabut perangkatnya sendiri) & service role; batas perangkat premium ditegakkan di API.
 
 ## 7. Draf SQL (titik awal migrasi)
 
@@ -433,11 +525,13 @@ create table titles (
   search_tsv tsvector generated always as (
     to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(title_alt, ''))
   ) stored,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 create index titles_search_idx on titles using gin (search_tsv);
 create index titles_type_idx on titles (type, created_at desc);
 create index titles_genres_idx on titles using gin (genres);
+create index titles_updated_idx on titles (updated_at);
 
 create table episodes (
   id uuid primary key default gen_random_uuid(),
@@ -447,8 +541,16 @@ create table episodes (
   video_url text not null,
   duration_sec int,
   aired_at date,
-  unique (title_id, episode_no)
+  intro_start_sec int,
+  intro_end_sec int,
+  outro_start_sec int,
+  outro_end_sec int,
+  updated_at timestamptz not null default now(),
+  unique (title_id, episode_no),
+  check (intro_start_sec is null or intro_end_sec is null or intro_end_sec > intro_start_sec),
+  check (outro_start_sec is null or outro_end_sec is null or outro_end_sec > outro_start_sec)
 );
+create index episodes_updated_idx on episodes (updated_at);
 
 create table chapters (
   id uuid primary key default gen_random_uuid(),
@@ -456,8 +558,10 @@ create table chapters (
   chapter_no numeric not null,
   title text,
   page_count int not null default 0,
+  updated_at timestamptz not null default now(),
   unique (title_id, chapter_no)
 );
+create index chapters_updated_idx on chapters (updated_at);
 
 create table chapter_pages (
   id uuid primary key default gen_random_uuid(),
@@ -470,7 +574,7 @@ create table chapter_pages (
 create table subtitles (
   id uuid primary key default gen_random_uuid(),
   episode_id uuid not null references episodes(id) on delete cascade,
-  lang text not null default 'id',
+  lang text not null default 'id' check (lang in ('id','en')),
   source text not null check (source in ('caption','whisper')),
   format text not null default 'srt' check (format in ('srt','ass')),
   file_url text,
@@ -491,7 +595,12 @@ create table profiles (
   friend_code text unique,
   xp int not null default 0,
   level int not null default 1,
-  hide_adult boolean not null default true
+  hide_adult boolean not null default true,
+  show_online boolean not null default true,
+  show_activity boolean not null default true,
+  trial_used_at timestamptz,
+  last_active_date date,
+  streak_days int not null default 0
 );
 
 create table subscriptions (
@@ -500,7 +609,7 @@ create table subscriptions (
   plan text not null,
   status text not null default 'active' check (status in ('active','expired','cancelled')),
   current_period_end timestamptz,
-  provider text check (provider in ('midtrans','xendit','gopay','manual','voucher')),
+  provider text check (provider in ('midtrans','xendit','gopay','manual','voucher','trial')),
   provider_ref text
 );
 
@@ -600,11 +709,18 @@ create table chat_channels (
   name text not null,
   description text,
   sort_order int not null default 0,
-  kind text not null default 'global' check (kind in ('global','group')),
+  kind text not null default 'global' check (kind in ('global','group','dm')),
   group_id uuid,
+  dm_user_a_id uuid references profiles(id) on delete cascade,
+  dm_user_b_id uuid references profiles(id) on delete cascade,
   unique (group_id),
-  check ((kind = 'group') = (group_id is not null))
+  check (
+    (kind = 'group' and group_id is not null and dm_user_a_id is null and dm_user_b_id is null)
+    or (kind = 'dm' and group_id is null and dm_user_a_id is not null and dm_user_b_id is not null and dm_user_a_id < dm_user_b_id)
+    or (kind = 'global' and group_id is null and dm_user_a_id is null and dm_user_b_id is null)
+  )
 );
+create unique index chat_channels_dm_pair_idx on chat_channels (dm_user_a_id, dm_user_b_id) where kind = 'dm';
 
 create table stickers (
   id uuid primary key default gen_random_uuid(),
@@ -622,6 +738,7 @@ create table chat_messages (
   body text check (char_length(body) <= 500),
   sticker_id uuid references stickers(id) on delete set null,
   image_url text,
+  image_thumb_url text,
   image_delete_url text,
   reply_to_id uuid references chat_messages(id) on delete set null,
   ref_title_id uuid references titles(id) on delete set null,
@@ -683,6 +800,7 @@ create table user_stickers (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
   image_url text not null,
+  thumb_url text,
   delete_url text,
   created_at timestamptz not null default now()
 );
@@ -750,4 +868,67 @@ create table notifications (
   created_at timestamptz not null default now()
 );
 create index notifications_user_idx on notifications (user_id, created_at desc);
+
+create table title_requests (
+  id uuid primary key default gen_random_uuid(),
+  requester_id uuid not null references profiles(id) on delete cascade,
+  title_text text not null,
+  type text not null check (type in ('anime','donghua','film','manga','manhua','manhwa')),
+  note text,
+  status text not null default 'pending' check (status in ('pending','approved','added','rejected')),
+  matched_title_id uuid references titles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index title_requests_status_idx on title_requests (status, created_at desc);
+
+create table title_request_votes (
+  request_id uuid not null references title_requests(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (request_id, user_id)
+);
+
+create table collections (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references profiles(id) on delete cascade,
+  name text not null,
+  description text,
+  is_public boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create index collections_owner_idx on collections (owner_id);
+
+create table collection_items (
+  collection_id uuid not null references collections(id) on delete cascade,
+  title_id uuid not null references titles(id) on delete cascade,
+  position int not null default 0,
+  primary key (collection_id, title_id)
+);
+create index collection_items_order_idx on collection_items (collection_id, position);
+
+create table collection_follows (
+  collection_id uuid not null references collections(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (collection_id, user_id)
+);
+
+create table user_achievements (
+  user_id uuid not null references profiles(id) on delete cascade,
+  achievement_key text not null,
+  unlocked_at timestamptz not null default now(),
+  primary key (user_id, achievement_key)
+);
+
+create table user_devices (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  device_id text not null,
+  device_name text,
+  last_seen_at timestamptz not null default now(),
+  revoked_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (user_id, device_id)
+);
+create index user_devices_user_idx on user_devices (user_id);
 ```
