@@ -100,6 +100,7 @@ Catatan: `worker/subtitle` versi awal berjalan sebagai job yang dipicu dari Next
 
 ### Data user & monetisasi (Supabase Auth)
 - Akun dikelola **Supabase Auth** (`auth.users`) — tidak buat tabel kredensial sendiri.
+- **Login wajib Google (OAuth)** — hanya provider Google yang diaktifkan; pendaftaran email/password DIMATIKAN. Tujuannya menghindari bot: akun palsu harus lebih dulu memiliki akun Google yang lolos anti-abuse Google. Bukan anti-bot mutlak — lapisan cadangan bila masih kecolongan: Cloudflare Turnstile (captcha tak terlihat, gratis) di endpoint sensitif + rate limit API.
 - `profiles` — 1:1 dengan user: nama tampil, avatar, `is_premium` (cache status), `premium_until`.
 - `subscriptions` — user_id, plan, status (`active`/`expired`/`cancelled`), current_period_end, provider (`midtrans`/`xendit`), provider_ref.
 - `watchlist` — user_id + title_id.

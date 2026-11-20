@@ -13,7 +13,7 @@ SubSenpai adalah aplikasi streaming & baca: anime dan donghua dari sumber asalny
 - 📖 **Mode baca** — chapter komik per halaman gambar, nyaman di HP
 - 🗣️ **Subtitle otomatis → Indonesia** — untuk konten video, dibuat oleh pipeline Whisper + terjemahan mesin
 - ⚡ **Jalur cepat caption** — kalau sumbernya punya closed caption bahasa asal, caption langsung diterjemahkan (timing presisi, tanpa transkripsi)
-- 👤 **Akun pengguna** — daftar/masuk, watchlist, dan riwayat tontonan/bacaan (Supabase Auth)
+- 👤 **Akun pengguna** — masuk **wajib dengan Google** (anti-bot; tanpa form email/password), watchlist, dan riwayat tontonan/bacaan (Supabase Auth)
 - 🎟️ **Freemium** — tamu: 1 episode/chapter; login gratis: lanjut dengan iklan; premium: tanpa iklan, semua terbuka
 - 🌙 **Mode gelap** — tema bawaan untuk nonton malam
 
