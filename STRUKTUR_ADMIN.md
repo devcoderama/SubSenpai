@@ -58,6 +58,7 @@ apps/web/
 ### 3.5 Langganan & Pembayaran
 - Daftar `subscriptions`: plan, status, masa berlaku, provider (Midtrans/Xendit) + referensi transaksi.
 - Lacak webhook pembayaran yang gagal diproses untuk direkonsiliasi manual.
+- Sesi pembayaran GoPay (jalur polling): daftar sesi `pending`/`expired` yang belum cocok dengan transaksi masuk — rekonsiliasi manual dengan mencocokkan nominal unik ke mutasi merchant, lalu tandai lunas bila terbukti dibayar.
 
 ### 3.6 Voucher Premium
 - **Buat voucher promo**: admin menerbitkan kode — satu kode khusus (mis. `SENPAI2026`) atau batch kode acak — dengan durasi premium (hari), batas waktu penukaran, dan kuota sesuai jumlah kode.
@@ -81,6 +82,7 @@ apps/web/
 - Harga & durasi paket premium.
 - Batas akses tamu (bawaan: 1 episode/chapter).
 - Saklar iklan (tampil/sembunyi untuk user gratis) & mode maintenance.
+- Metode pembayaran yang aktif (Midtrans / Xendit / GoPay pihak ketiga) — jalur GoPay bisa dimatikan cepat dari sini bila API-nya bermasalah.
 
 ## 4. Tabel Pendukung
 

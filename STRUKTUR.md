@@ -138,9 +138,39 @@ Pengelolaan & pemantauan berjalan di route `/admin` dalam aplikasi yang sama, kh
    - Belum ada → buat baris `queued`; worker memprosesnya.
 4. **Worker memproses antrean** — unduh audio → (ada caption bahasa asal? terjemahkan langsung : transkripsi via API Whisper) → terjemahkan → bangun .srt → unggah ke R2 → ubah status jadi `done`.
 5. **Progres** — player/reader melaporkan posisi terakhir ke API → `watch_history` / `read_history` (user login).
-6. **Premium** — user membayar via Midtrans/Xendit → webhook memperbarui `subscriptions` + `profiles.is_premium` → iklan berhenti tampil. Premium juga bisa datang dari **voucher**: admin menerbitkan kode promo (atau user membeli voucher hadiah) → penerima login dan menukar kode → `premium_until` diperpanjang sejumlah hari voucher dan tercatat sebagai `subscriptions` berprovider `voucher`.
+6. **Premium** — user membayar via Midtrans/Xendit (konfirmasi webhook) atau GoPay Merchant pihak ketiga (konfirmasi polling — Bagian 7) → `subscriptions` + `profiles.is_premium` diperbarui → iklan berhenti tampil. Premium juga bisa datang dari **voucher**: admin menerbitkan kode promo (atau user membeli voucher hadiah) → penerima login dan menukar kode → `premium_until` diperpanjang sejumlah hari voucher dan tercatat sebagai `subscriptions` berprovider `voucher`.
 
-## 7. Batasan yang Disadari
+## 7. Alur Pembayaran
+
+### 7.1 Gateway resmi (jalur utama)
+Midtrans / Xendit: user diarahkan ke halaman pembayaran (QRIS, e-wallet, transfer bank) → gateway memanggil **webhook** server saat pembayaran berhasil → `subscriptions` diaktifkan / voucher pembelian diterbitkan. Ini jalur yang disarankan untuk jangka panjang (resmi, ada refund & rekonsiliasi).
+
+### 7.2 GoPay Merchant via API pihak ketiga (alternatif bootstrap)
+Berdasarkan repo [ZeroByte000/Api-Gopar-Merch](https://github.com/ZeroByte000/Api-Gopar-Merch): API **tidak resmi** yang membungkus akun GoPay Merchant (GoBiz), berjalan sebagai Vercel Serverless Functions. Endpoint yang dipakai:
+
+| Endpoint | Fungsi |
+| --- | --- |
+| `POST /api/login` | Login email + password merchant → `access_token` |
+| `POST /api/create-payment` | Mengubah QRIS statis merchant menjadi QRIS **dinamis** berisi jumlah tertentu → string QRIS + URL gambar QR |
+| `POST /api/cek-transaksi` | Daftar transaksi masuk terbaru (header `Authorization: Bearer <token>`), bisa difilter per jumlah |
+
+Alurnya (berlaku untuk langganan premium maupun pembelian voucher):
+
+1. User memilih paket → server membuat baris `payment_sessions` ber-provider `gopay` dengan **nominal unik** (harga + kode unik acak 1–999, mis. Rp30.000 → Rp30.417) dan masa berlaku ±15 menit.
+2. Server memanggil `/api/create-payment` dengan nominal itu → QR dinamis ditampilkan ke user.
+3. User membayar dengan aplikasi apa pun (GoPay, DANA, OVO, m-banking — QRIS bersifat lintas aplikasi).
+4. **Tidak ada webhook** — server melakukan *polling* `/api/cek-transaksi` berkala memakai token login merchant (token disimpan & diperbarui di server) dan mencocokkan transaksi berstatus `success` yang jumlahnya **persis** nominal unik, dalam jendela waktu sesi.
+5. Cocok → sesi menjadi `paid`, `subscriptions.provider_ref` / `vouchers.payment_ref` diisi id referensi GoPay, lalu premium diaktifkan / voucher diterbitkan (sama seperti jalur webhook). Lewat batas waktu tanpa kecocokan → sesi `expired` dan nominal uniknya bebas dipakai sesi lain.
+
+Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
+
+- **Tidak resmi** — bergantung pada akses akun merchant yang sewaktu-waktu bisa berubah/dibatasi pihak GoTo; pola akses yang tidak wajar berisiko membuat akun merchant dibatasi.
+- Kredensial merchant (email + password) hidup sebagai *environment variable* server — keamanan server sama dengan keamanan uang masuk; tidak boleh tampil di frontend, log, atau repo.
+- Pencocokan berbasis jumlah → nominal unik **wajib**; dua sesi aktif tidak boleh berbagi nominal yang sama.
+- Tidak ada mekanisme refund/perselisihan resmi; selisih diselesaikan manual lewat modul Langganan di panel admin.
+- Karena itu posisinya **alternatif murah untuk memulai**, bukan pengganti gateway resmi.
+
+## 8. Batasan yang Disadari
 
 - Fungsi serverless Vercel punya batas durasi & bandwidth — tidak dipakai untuk streaming video maupun menjalankan model Whisper.
 - Project Supabase gratis bisa di-pause bila lama tidak aktif — aktivitas berkala menjaganya tetap bangun.

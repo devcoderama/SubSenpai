@@ -24,6 +24,7 @@ erDiagram
     profiles ||--o{ admin_logs : "admin bertindak"
     profiles ||--o{ vouchers : "membuat / membeli"
     profiles ||--o{ vouchers : "menukar"
+    profiles ||--o{ payment_sessions : "membayar"
 
     titles {
         uuid id PK
@@ -144,6 +145,18 @@ erDiagram
         text payment_ref "ref pembayaran pembeli"
         timestamptz created_at
     }
+    payment_sessions {
+        uuid id PK
+        uuid user_id FK
+        text purpose "subscription|voucher"
+        text provider "gopay"
+        int amount "total unik (harga + kode)"
+        int unique_code "1-999"
+        text status "pending|paid|expired"
+        text matched_ref "id referensi GoPay"
+        timestamptz expires_at
+        timestamptz created_at
+    }
 ```
 
 Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar sebagai tabel aplikasi). `profiles.id` adalah FK 1:1 ke `auth.users.id`. Login **wajib Google OAuth**; pendaftaran email/password dimatikan.
@@ -166,6 +179,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 | `reports` | Laporan user soal konten rusak (link mati, subtitle salah) | Admin |
 | `admin_logs` | Jejak audit aksi admin di panel | Admin |
 | `vouchers` | Kode voucher premium — dibuat admin (promo) atau dibeli user untuk dihadiahkan | Monetisasi |
+| `payment_sessions` | Sesi pembayaran jalur polling (GoPay pihak ketiga): nominal unik, status, batas waktu | Monetisasi |
 
 ## 3. Relasi (Foreign Key)
 
@@ -182,13 +196,15 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `reports.user_id → profiles.id` (boleh kosong untuk laporan tamu; `ON DELETE SET NULL`) — target laporan bersifat polimorfik lewat (`target_kind`, `target_id`), tanpa FK keras
 - `admin_logs.admin_id → profiles.id`
 - `vouchers.created_by → profiles.id` (admin pembuat / user pembeli); `vouchers.assigned_to → profiles.id` (boleh kosong = siapa saja boleh menukar); `vouchers.redeemed_by → profiles.id` (kosong sampai ditukar)
+- `payment_sessions.user_id → profiles.id`; target bayarnya (langganan/voucher) dicocokkan lewat `purpose` + konteks sesi, referensi hasil pencocokan disimpan di `matched_ref`
 
 ## 4. Nilai yang Dibatasi (cek/enum)
 
 - `titles.type` ∈ `anime, donghua, film, manga, manhua, manhwa`
 - `titles.status` ∈ `ongoing, completed`
 - `subtitles.source` ∈ `caption, whisper`; `subtitles.status` ∈ `queued, processing, done, failed`
-- `subscriptions.status` ∈ `active, expired, cancelled`; `subscriptions.provider` ∈ `midtrans, xendit, manual, voucher` (`manual` = diberi admin dari panel; `voucher` = hasil penukaran kode voucher)
+- `subscriptions.status` ∈ `active, expired, cancelled`; `subscriptions.provider` ∈ `midtrans, xendit, gopay, manual, voucher` (`gopay` = GoPay Merchant API pihak ketiga, konfirmasi via polling; `manual` = diberi admin dari panel; `voucher` = hasil penukaran kode voucher)
+- `payment_sessions.purpose` ∈ `subscription, voucher`; `payment_sessions.status` ∈ `pending, paid, expired`
 - `vouchers.source` ∈ `admin, purchase`; `vouchers.status` ∈ `active, redeemed, expired, revoked`
 - `profiles.role` ∈ `user, admin`
 - `reports.target_kind` ∈ `episode, chapter, subtitle`; `reports.status` ∈ `open, resolved, dismissed`
@@ -213,6 +229,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - **`guest_access`**: hanya service role (ditulis/dicek oleh API).
 - **`reports`**: user login bisa MEMBUAT laporan atas namanya; membaca & mengubah status hanya admin. **`admin_logs`**: ditulis service role (dari API admin), dibaca hanya admin.
 - **`vouchers`**: user membaca voucher yang ia buat/beli atau yang ditujukan kepadanya; penukaran (redeem) dan penerbitan voucher pembelian hanya lewat API (service role) agar atomik dan tidak bisa diakali; admin membaca semua.
+- **`payment_sessions`**: ditulis & diperbarui hanya oleh API server (termasuk proses polling); user hanya membaca sesi miliknya untuk melihat status pembayaran.
 
 ## 7. Draf SQL (titik awal migrasi)
 
@@ -289,7 +306,7 @@ create table subscriptions (
   plan text not null,
   status text not null default 'active' check (status in ('active','expired','cancelled')),
   current_period_end timestamptz,
-  provider text check (provider in ('midtrans','xendit','manual','voucher')),
+  provider text check (provider in ('midtrans','xendit','gopay','manual','voucher')),
   provider_ref text
 );
 
@@ -365,4 +382,20 @@ create table vouchers (
   created_at timestamptz not null default now()
 );
 create index vouchers_status_idx on vouchers (status, created_at desc);
+
+create table payment_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  purpose text not null check (purpose in ('subscription','voucher')),
+  provider text not null default 'gopay',
+  amount int not null check (amount > 0),
+  unique_code int not null check (unique_code between 1 and 999),
+  status text not null default 'pending' check (status in ('pending','paid','expired')),
+  matched_ref text,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+-- nominal unik tidak boleh dipakai dua sesi aktif sekaligus
+create unique index payment_sessions_amount_pending_idx
+  on payment_sessions (provider, amount) where status = 'pending';
 ```
