@@ -1,6 +1,6 @@
 # SubSenpai 🎌
 
-**Anime, donghua, film, dan komik dalam satu aplikasi — konten video dengan subtitle Indonesia otomatis.**
+**Anime, donghua, film, dan komik dalam satu aplikasi — konten video dengan subtitle otomatis multi-bahasa.**
 
 SubSenpai adalah aplikasi streaming & baca: anime dan donghua dari sumber asalnya (raw, tanpa subtitle) dengan subtitle yang dibuat otomatis lewat pipeline Whisper + terjemahan mesin, film, serta manga/manhua/manhwa untuk dibaca. Tamu bisa mencicipi 1 episode/chapter; sisanya dibuka lewat login — gratis dengan iklan, atau premium tanpa iklan.
 
@@ -11,8 +11,9 @@ SubSenpai adalah aplikasi streaming & baca: anime dan donghua dari sumber asalny
 - 📺 **Katalog multi-konten** — anime, donghua, film, manga, manhua, manhwa; telusur & cari berdasarkan judul, tipe, genre, musim, dan tahun
 - ▶️ **Streaming langsung** — video diputar langsung dari sumbernya (HLS) ke player
 - 📖 **Mode baca** — chapter komik per halaman gambar, nyaman di HP
-- 🗣️ **Subtitle otomatis → Indonesia** — untuk konten video, dibuat oleh pipeline Whisper + terjemahan mesin (subtitle Inggris juga dibuat bila sumbernya bercaption Inggris)
+- 🗣️ **Subtitle otomatis multi-bahasa** — untuk konten video, dibuat oleh pipeline Whisper + **Google Translate** ke bahasa pilihan user (utama: Indonesia; bahasa lain dibuat saat pertama diminta, lalu disimpan sebagai cache permanen)
 - ⚡ **Jalur cepat caption** — kalau sumbernya punya closed caption bahasa asal, caption langsung diterjemahkan (timing presisi, tanpa transkripsi)
+- 🌐 **Aplikasi multi-bahasa + tombol Terjemahkan** — antarmuka aplikasi tersedia dalam banyak bahasa (diatur di Pengaturan; bawaan mengikuti bahasa perangkat), dan sinopsis, komentar, serta pesan chat bisa diterjemahkan sekali ketuk memakai Google Translate lewat backend — hasilnya di-cache agar tidak menerjemahkan teks yang sama dua kali
 - 👤 **Akun pengguna** — masuk **wajib dengan Google** (anti-bot; tanpa form email/password), watchlist, dan riwayat tontonan/bacaan (auth ditangani backend Go sendiri — tanpa Supabase)
 - 🎟️ **Freemium** — tamu: 1 episode/chapter; login gratis: lanjut dengan iklan; premium: tanpa iklan, semua terbuka
 - 🎁 **Voucher premium** — admin membagikan kode promo; user juga bisa membeli voucher untuk dihadiahkan ke user lain. Kode sekali pakai, ditukar menjadi hari premium. Pembelian voucher bisa langsung memilih teman sebagai penerima — terkirim otomatis lewat notifikasi, tanpa menyalin kode
@@ -42,7 +43,7 @@ Video raw ──► ekstrak audio ──► Whisper (transkripsi + timestamp)
 ```
 
 1. **Transkripsi** — audio ditranskripsi oleh Whisper (large-v3; WhisperX untuk timing per kata) menjadi teks bertimestamp.
-2. **Terjemahan** — teks diterjemahkan per baris ke bahasa Indonesia (Google Translate API / DeepL / Sugoi Translator untuk jalur offline).
+2. **Terjemahan** — teks diterjemahkan per baris ke bahasa tujuan user (bawaan: Indonesia) memakai **Google Translate** lewat backend/worker; setiap bahasa disimpan sebagai file subtitle tersendiri, jadi satu episode cukup diterjemahkan sekali per bahasa.
 3. **Penyajian** — teks terjemahan + timestamp digabung menjadi file `.srt`/`.ass`, disimpan di object storage, lalu dimuat player sebagai track subtitle.
 
 Catatan jujur: kualitas subtitle mesin adalah "cukup untuk mengikuti cerita", bukan setara fansub manusia — nama karakter, istilah khas, dan lagu pembuka/penutup adalah titik lemahnya. Subtitle otomatis hanya untuk konten video; menerjemahkan komik (OCR + menimpa teks pada gambar) adalah persoalan terpisah yang jauh lebih berat.
@@ -69,6 +70,7 @@ Pemisahan berdasarkan **jenis data**, bukan per genre:
 | File storage | Cloudflare R2 | Poster, halaman komik & file subtitle (.srt/.ass) |
 | Video | Stream langsung dari sumber (HLS) | Tidak lewat server sendiri — hemat bandwidth |
 | Worker subtitle | Job latar Go (antrean + terjemah + SRT) + API transkripsi cloud | Transkripsi dititipkan ke API Whisper (Groq/OpenAI); worker Python mandiri hanya bila perlu full offline |
+| Penerjemahan | Google Cloud Translation API (dipanggil backend/worker saja) | Subtitle multi-bahasa + fitur Terjemahkan untuk sinopsis/komentar/chat; hasil terjemahan di-cache di tabel `translations` |
 | Pembayaran | Midtrans / Xendit + GoPay Merchant API pihak ketiga | Langganan premium & voucher (QRIS, e-wallet, transfer). Jalur GoPay: QRIS dinamis + konfirmasi polling mutasi (tanpa webhook) — [Api-Gopar-Merch](https://github.com/ZeroByte000/Api-Gopar-Merch) |
 | Panel admin | Route `/admin` (role admin) | Kelola katalog, subtitle, user, langganan + monitoring — [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) |
 

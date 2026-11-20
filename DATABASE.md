@@ -104,7 +104,7 @@ erDiagram
     subtitles {
         uuid id PK
         uuid episode_id FK
-        text lang "id|en"
+        text lang "kode BCP-47"
         text source "caption|whisper"
         text format "srt|ass"
         text file_url "R2"
@@ -132,6 +132,7 @@ erDiagram
         timestamptz trial_used_at "trial premium pernah dipakai"
         date last_active_date "hari aktivitas terakhir"
         int streak_days "rentetan hari aktif"
+        text app_language "bahasa aplikasi & target terjemahan (BCP-47)"
     }
     subscriptions {
         uuid id PK
@@ -378,6 +379,17 @@ erDiagram
         timestamptz revoked_at "terisi = sesi dicabut"
         timestamptz created_at
     }
+    translations {
+        uuid id PK
+        text entity_type "title_synopsis|comment|chat_message|collection|group|notification"
+        uuid entity_id "id entitas sumber (polimorfik)"
+        text field "bagian yang diterjemahkan"
+        text source_lang "bahasa asal (BCP-47, boleh kosong = deteksi)"
+        text target_lang "bahasa tujuan (BCP-47)"
+        text translated_text
+        text provider "google"
+        timestamptz created_at
+    }
 ```
 
 Catatan: tidak ada layanan auth eksternal — `profiles` adalah tabel user itu sendiri. Login **wajib Google**: backend memverifikasi token ID Google, mencocokkan user lewat `google_sub` yang unik, lalu menerbitkan JWT sesinya sendiri. Kata sandi tidak pernah disimpan di mana pun (tidak ada pendaftaran email/password).
@@ -422,6 +434,7 @@ Catatan: tidak ada layanan auth eksternal — `profiles` adalah tabel user itu s
 | `collection_follows` | User yang mengikuti sebuah koleksi | Komunitas |
 | `user_achievements` | Pencapaian yang sudah dibuka user (kunci pencapaian + waktu) | User |
 | `user_devices` | Registri perangkat per akun — batas perangkat premium & keamanan sesi | Sistem |
+| `translations` | Cache terjemahan Google Translate (sinopsis/komentar/pesan/deskripsi) per bahasa target | Sistem |
 
 ## 3. Relasi (Foreign Key)
 
@@ -454,12 +467,14 @@ Catatan: tidak ada layanan auth eksternal — `profiles` adalah tabel user itu s
 - `user_achievements (user_id, achievement_key)` — kunci utama gabungan; definisi pencapaian (nama, ikon, syarat) hidup di kode aplikasi, bukan tabel, agar mudah ditambah tanpa migrasi
 - `user_devices.user_id → profiles.id`; `device_id` unik per user — perangkat yang `revoked_at`-nya terisi tidak dihitung dalam batas perangkat premium dan sesi perangkat itu ditolak API
 - Kanal DM memakai `chat_channels.kind = 'dm'` dengan `dm_user_a_id` & `dm_user_b_id` (kedua FK ke `profiles.id`, disimpan terurut a < b agar satu pasangan teman hanya punya satu kanal); hanya kedua peserta itu yang boleh membaca/menulis kanalnya
+- `translations` bersifat polimorfik (`entity_type` + `entity_id` + `field`, tanpa FK keras — sama seperti target `reports`); unik per (entity_type, entity_id, field, target_lang): satu teks hanya diterjemahkan sekali per bahasa, sisanya dibaca dari cache
 
 ## 4. Nilai yang Dibatasi (cek/enum)
 
 - `titles.type` ∈ `anime, donghua, film, manga, manhua, manhwa`
 - `titles.status` ∈ `ongoing, completed`
-- `subtitles.lang` ∈ `id, en` (Indonesia utama; Inggris hanya bila sumber bercaption Inggris); `subtitles.source` ∈ `caption, whisper`; `subtitles.status` ∈ `queued, processing, done, failed`
+- `subtitles.lang` adalah kode bahasa **BCP-47** (daftar bahasa aktif dikelola di pengaturan admin; bawaan `id` selalu dibuat lebih dulu, bahasa lain on-demand); `subtitles.source` ∈ `caption, whisper`; `subtitles.status` ∈ `queued, processing, done, failed`
+- `profiles.app_language` kode BCP-47, bawaan `id` — bahasa antarmuka user sekaligus bahasa bawaan subtitle & tombol Terjemahkan; `translations.provider` = `google` (satu-satunya penyedia terjemahan)
 - `subscriptions.status` ∈ `active, expired, cancelled`; `subscriptions.provider` ∈ `midtrans, xendit, gopay, manual, voucher, trial` (`gopay` = GoPay Merchant API pihak ketiga, konfirmasi via polling; `manual` = diberi admin dari panel; `voucher` = hasil penukaran kode voucher; `trial` = uji coba premium gratis 3 hari, sekali per akun, ditandai `profiles.trial_used_at`)
 - `payment_sessions.purpose` ∈ `subscription, voucher`; `payment_sessions.status` ∈ `pending, paid, expired`
 - `vouchers.source` ∈ `admin, purchase, referral`; `vouchers.status` ∈ `active, redeemed, expired, revoked`
@@ -493,7 +508,7 @@ Catatan: tidak ada layanan auth eksternal — `profiles` adalah tabel user itu s
 - `comments (episode_id, created_at desc)` & `comments (chapter_id, created_at desc)`
 - `titles (updated_at)`, `episodes (updated_at)`, `chapters (updated_at)` — penanda waktu untuk **sinkronisasi delta** katalog ke penyimpanan lokal aplikasi (ambil hanya yang berubah sejak sinkron terakhir)
 - `chat_channels (dm_user_a_id, dm_user_b_id)` — unik parsial khusus `kind = 'dm'` (satu kanal DM per pasangan teman)
-- `title_requests (status, created_at desc)` — antrean permintaan judul untuk panel admin (urutan suara dihitung dari `title_request_votes`); `collections (owner_id)`; `collection_items (collection_id, position)`; `user_devices (user_id)`
+- `title_requests (status, created_at desc)` — antrean permintaan judul untuk panel admin (urutan suara dihitung dari `title_request_votes`); `collections (owner_id)`; `collection_items (collection_id, position)`; `user_devices (user_id)`; `translations (entity_type, entity_id, field, target_lang)` — unik, jalur baca cache terjemahan
 
 ## 6. Kontrol Akses Data (tanpa Supabase)
 
@@ -509,7 +524,7 @@ Database berjalan **lokal di VPS** dan hanya mendengarkan **localhost** — satu
 - **Sosial**: `friendships` & `user_blocks` hanya terlihat oleh kedua pihak yang terlibat; perubahan (kirim/terima/tolak/blokir) lewat API. `groups` publik bisa dibaca semua user login; grup privat hanya oleh anggotanya — kecuali pemegang **tautan undangan resmi** grup (`invite_code` aktif), yang memang diizinkan bergabung lewat tautan itu.
 - **`user_stickers` & gambar chat**: dikelola pemiliknya lewat API (unggah selalu lewat backend — kunci API ImgBB tidak pernah ke klien). Kolom `delete_url` (ImgBB) bersifat internal server: tidak pernah dipilih untuk dikirim ke aplikasi, hanya dipakai admin saat menghapus gambar yang melanggar.
 - **`comments` & `title_ratings`**: dibaca user login; ditulis/diubah hanya milik sendiri lewat API; penghapusan komentar (soft-delete) juga oleh admin/mod. **`device_tokens`**: hanya pemiliknya & backend (pengirim notifikasi). **`daily_stats`**: ditulis worker agregasi, dibaca admin.
-- **Koleksi & permintaan judul**: `collections` publik dibaca semua user login; koleksi privat hanya oleh pemilik & pengikutnya (`collection_items`/`collection_follows` mengikuti visibilitas koleksinya). `title_requests` & `title_request_votes` dibaca user login (permintaan bersifat publik agar bisa didukung), ditulis atas nama sendiri lewat API.
+- **Koleksi & permintaan judul**: `collections` publik dibaca semua user login; koleksi privat hanya oleh pemilik & pengikutnya (`collection_items`/`collection_follows` mengikuti visibilitas koleksinya). `title_requests` & `title_request_votes` dibaca user login (permintaan bersifat publik agar bisa didukung), ditulis atas nama sendiri lewat API. **`translations`** adalah cache terjemahan: dibaca lewat API mengikuti akses entitas sumbernya (mis. terjemahan pesan chat hanya untuk user yang boleh membaca kanalnya), ditulis hanya oleh backend.
 
 ## 7. Draf SQL (titik awal migrasi)
 
@@ -580,7 +595,7 @@ create table chapter_pages (
 create table subtitles (
   id uuid primary key default gen_random_uuid(),
   episode_id uuid not null references episodes(id) on delete cascade,
-  lang text not null default 'id' check (lang in ('id','en')),
+  lang text not null default 'id', -- kode BCP-47; daftar aktif dikelola pengaturan admin
   source text not null check (source in ('caption','whisper')),
   format text not null default 'srt' check (format in ('srt','ass')),
   file_url text,
@@ -609,7 +624,8 @@ create table profiles (
   trial_used_at timestamptz,
   last_active_date date,
   streak_days int not null default 0,
-  is_banned boolean not null default false
+  is_banned boolean not null default false,
+  app_language text not null default 'id'
 );
 
 create table subscriptions (
@@ -942,4 +958,17 @@ create table user_devices (
   unique (user_id, device_id)
 );
 create index user_devices_user_idx on user_devices (user_id);
+
+create table translations (
+  id uuid primary key default gen_random_uuid(),
+  entity_type text not null check (entity_type in ('title_synopsis','comment','chat_message','collection','group','notification')),
+  entity_id uuid not null,
+  field text not null default 'text',
+  source_lang text,
+  target_lang text not null,
+  translated_text text not null,
+  provider text not null default 'google',
+  created_at timestamptz not null default now(),
+  unique (entity_type, entity_id, field, target_lang)
+);
 ```
