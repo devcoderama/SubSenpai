@@ -9,6 +9,9 @@
 <meta property="og:description" content="Streaming anime, donghua & film dengan subtitle otomatis + baca manga, manhua & manhwa.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://wallpaperbat.com/img/68747767-wallpaper-4k-anime-girl-mitsuha-miyamizu.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config = {
@@ -44,6 +47,14 @@ tailwind.config = {
   .bnav .dot{opacity:0;transform:scale(.4);transition:all .3s}
   .card{transition:transform .45s cubic-bezier(.22,.8,.32,1),border-color .45s,box-shadow .45s}
   .card:hover{transform:translateY(-6px);border-color:#a78bfa;box-shadow:0 18px 40px -18px rgba(167,139,250,.45)}
+  body{font-family:'Zen Kaku Gothic New',system-ui,sans-serif}
+  h1,h2,h3{font-family:'Shippori Mincho B1',serif;letter-spacing:.01em}
+  /* ---------- Background berganti per bagian ---------- */
+  .bgstack{position:fixed;inset:0;z-index:-2;overflow:hidden;background:#0B0F1A}
+  .bglayer{position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;transition:opacity 1.4s ease;will-change:opacity,transform}
+  .bglayer.on{opacity:1;animation:kenburns 16s ease-in-out infinite alternate}
+  @keyframes kenburns{from{transform:scale(1)}to{transform:scale(1.09)}}
+  .bgoverlay{position:fixed;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(180deg,rgba(11,15,26,.62),rgba(11,15,26,.80) 45%,rgba(11,15,26,.92))}
   @media (prefers-reduced-motion: reduce){
     html{scroll-behavior:auto}
     .reveal{opacity:1;transform:none;transition:none}
@@ -52,6 +63,15 @@ tailwind.config = {
 </style>
 </head>
 <body class="text-slate-100 antialiased pb-20 md:pb-0">
+<div class="bgstack" aria-hidden="true">
+  <div class="bglayer on" style="background-image:url('https://wallpaperbat.com/img/68747767-wallpaper-4k-anime-girl-mitsuha-miyamizu.jpg')"></div>
+  <div class="bglayer" style="background-image:url('https://images5.alphacoders.com/111/thumb-1920-1112122.png')"></div>
+  <div class="bglayer" style="background-image:url('https://wallpapercave.com/wp/wp15051214.webp')"></div>
+  <div class="bglayer" style="background-image:url('https://c4.wallpaperflare.com/wallpaper/998/243/740/anime-girls-original-characters-brunette-long-hair-looking-at-viewer-hd-wallpaper-thumb.jpg')"></div>
+  <div class="bglayer" style="background-image:url('https://wallpapercave.com/mwp/wp8114453.jpg')"></div>
+  <div class="bglayer" style="background-image:url('https://wallpapercave.com/wp/wp2209014.jpg')"></div>
+</div>
+<div class="bgoverlay" aria-hidden="true"></div>
 
 <!-- ================= NAVBAR ATAS (desktop) ================= -->
 <header id="topbar" class="fixed top-0 left-0 right-0 z-50">
@@ -71,9 +91,7 @@ tailwind.config = {
 </header>
 
 <!-- ================= HERO ================= -->
-<section id="beranda" class="relative overflow-hidden min-h-[100svh] flex items-center">
-  <div class="hero-bg" data-parallax="0.35"></div>
-  <div class="absolute inset-0 bg-gradient-to-b from-ink/70 via-ink/40 to-ink"></div>
+<section id="beranda" data-bg="0" class="relative overflow-hidden min-h-[100svh] flex items-center">
   <div class="orb w-80 h-80 bg-pink/60 -left-24 top-32" data-parallax="0.15"></div>
   <div class="orb w-96 h-96 bg-violet/50 -right-28 bottom-24" data-parallax="0.22"></div>
   <div class="relative max-w-6xl mx-auto px-5 py-36 text-center w-full">
@@ -94,7 +112,7 @@ tailwind.config = {
 </section>
 
 <!-- ================= FITUR ================= -->
-<section id="fitur" class="relative py-24">
+<section id="fitur" data-bg="1" class="relative py-24">
   <div class="max-w-6xl mx-auto px-5">
     <h2 class="reveal text-3xl md:text-4xl font-extrabold">✨ Fitur untuk Pengguna</h2>
     <p class="reveal text-mut mt-3 max-w-2xl">Semua fitur dirancang untuk penonton &amp; pembaca — dari subtitle otomatis sampai komunitas.</p>
@@ -116,7 +134,7 @@ tailwind.config = {
 </section>
 
 <!-- ================= CARA KERJA ================= -->
-<section id="cara-kerja" class="py-24 bg-panel/40 border-y border-line">
+<section id="cara-kerja" data-bg="2" class="py-24 bg-panel/40 border-y border-line">
   <div class="max-w-6xl mx-auto px-5">
     <h2 class="reveal text-3xl md:text-4xl font-extrabold">🗣️ Cara Kerja Subtitle Otomatis</h2>
     <div class="grid md:grid-cols-4 gap-4 mt-10">
@@ -130,7 +148,7 @@ tailwind.config = {
 </section>
 
 <!-- ================= PROGRES ================= -->
-<section id="progres" class="py-24">
+<section id="progres" data-bg="3" class="py-24">
   <div class="max-w-6xl mx-auto px-5">
     <h2 class="reveal text-3xl md:text-4xl font-extrabold">🗺️ Progres</h2>
     <div class="grid md:grid-cols-2 gap-4 mt-10">
@@ -157,7 +175,7 @@ tailwind.config = {
 </section>
 
 <!-- ================= DOKUMENTASI ================= -->
-<section id="dokumentasi" class="py-24 bg-panel/40 border-y border-line">
+<section id="dokumentasi" data-bg="4" class="py-24 bg-panel/40 border-y border-line">
   <div class="max-w-6xl mx-auto px-5">
     <h2 class="reveal text-3xl md:text-4xl font-extrabold">📚 Dokumentasi</h2>
     <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-10">
@@ -175,7 +193,7 @@ tailwind.config = {
 </section>
 
 <!-- ================= DONASI ================= -->
-<section id="donasi" class="py-24">
+<section id="donasi" data-bg="5" class="py-24">
   <div class="max-w-6xl mx-auto px-5 text-center">
     <h2 class="reveal text-3xl md:text-4xl font-extrabold">☕ Dukung SubSenpai</h2>
     <p class="reveal text-mut mt-3">Donasi membantu biaya server &amp; pengembangan. Scan QRIS berikut:</p>
@@ -220,6 +238,17 @@ tailwind.config = {
     });
   }, {rootMargin:'-40% 0px -55% 0px'});
   document.querySelectorAll('section[id]').forEach(function(s){ spy.observe(s); });
+  /* Ganti background mengikuti bagian */
+  var bglayers = document.querySelectorAll('.bglayer');
+  var bgio = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if(e.isIntersecting){
+        var i = parseInt(e.target.getAttribute('data-bg'), 10);
+        bglayers.forEach(function(l, j){ l.classList.toggle('on', j === i); });
+      }
+    });
+  }, {rootMargin:'-45% 0px -45% 0px'});
+  document.querySelectorAll('section[data-bg]').forEach(function(s){ bgio.observe(s); });
   /* Parallax + topbar (satu loop rAF) */
   var layers = document.querySelectorAll('[data-parallax]');
   var ticking = false;
