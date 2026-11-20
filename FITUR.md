@@ -1,6 +1,6 @@
 # FITUR.md — Fitur Tambahan SubSenpai
 
-Dokumen rancangan **resmi** untuk fitur-fitur gelombang ketiga (F13–F22), disetujui 20 Nov 2026 dan dipindahkan dari REKOMENDASI.md putaran 3. Dokumen ini adalah pendamping [STRUKTUR.md](STRUKTUR.md) (arsitektur & fitur inti), [DATABASE.md](DATABASE.md) (skema dasar), [KEAMANAN.md](KEAMANAN.md), dan [OPTIMASI.md](OPTIMASI.md). Perubahan skema dirinci per fitur dan menjadi bagian dari skema saat fase pembangunan; bila ada pertentangan, dokumen yang lebih spesifik untuk topiknya yang berlaku.
+Dokumen rancangan **resmi** untuk fitur-fitur gelombang ketiga (F13–F22) dan keempat (F23–F30), disetujui 20 Nov 2026 dan dipindahkan dari REKOMENDASI.md putaran 3 dan 4. Dokumen ini adalah pendamping [STRUKTUR.md](STRUKTUR.md) (arsitektur & fitur inti), [DATABASE.md](DATABASE.md) (skema dasar), [KEAMANAN.md](KEAMANAN.md), dan [OPTIMASI.md](OPTIMASI.md). Perubahan skema dirinci per fitur dan menjadi bagian dari skema saat fase pembangunan; bila ada pertentangan, dokumen yang lebih spesifik untuk topiknya yang berlaku.
 
 ---
 
@@ -92,3 +92,89 @@ Melengkapi unduhan offline premium yang sudah dirancang:
 
 **Perubahan data**
 - Tabel baru `chat_moderators`: `user_id` (FK profiles), `granted_by` (FK profiles), `created_at`, dan cakupan kanal global (satu baris per moderator; kanal global tidak memerlukan id kanal).
+
+---
+
+# Gelombang Keempat (F23–F30)
+
+## F23 — Tanya Senpai: Asisten Rekomendasi AI
+
+Asisten tanya-jawab rekomendasi di dalam aplikasi: user bertanya dengan bahasa sehari-hari ("anime pendek yang mirip Frieren tapi lebih lucu", "donghua balas dendam yang sudah tamat") dan menerima jawaban berupa **kartu judul dari katalog** yang bisa langsung diketuk untuk dibuka.
+
+**Mesin AI — sama persis dengan Chat AI di aplikasi D TRADE**
+- Layanan AI web gratis **Pollinations** (`text.pollinations.ai`, gaya API OpenAI), **tanpa kunci API dan tanpa akun**, dipanggil **dari aplikasi di perangkat user** — bukan dari server. Server menanggung nol biaya AI, dan panggilan berangkat dari IP masing-masing user (pola yang sama yang membuat Chat AI D TRADE berjalan).
+- Teks saja, seperti batas jalur gratisnya di D TRADE (model gratis tanpa kunci tidak membaca gambar; fitur ini memang tidak membutuhkan gambar).
+
+**Pengaturan khusus SubSenpai (yang membedakannya dari Chat AI D TRADE)**
+Perilaku asisten diatur oleh **prompt sistem khusus SubSenpai** — berkas keahlian "SKILL Tanya Senpai" yang tertanam di aplikasi dan terbit bersama versi aplikasi (pola yang sama dengan berkas keahlian AI di D TRADE), tidak bisa diubah user. Isi pengaturannya:
+1. **Persona "Senpai"** — ramah dan ringkas, selalu menjawab dalam bahasa aplikasi user (`app_language`).
+2. **Konteks katalog** — aplikasi melampirkan ringkasan katalog pada percakapan (id judul, judul + judul alternatif, tipe, genre, sinopsis singkat, rating, jumlah episode/chapter, status tayang) ditambah petunjuk selera dari data lokal user (genre yang paling sering ditonton/dibaca, judul favorit). Yang dikirim hanya konteks katalog & selera agregat — **bukan** data pribadi; personalisasi bisa dimatikan user di pengaturan.
+3. **Batas pengetahuan yang tegas** — asisten hanya boleh merekomendasikan judul yang ada di konteks; **dilarang mengarang** judul, episode, atau fakta di luar konteks. Bila tidak ada yang cocok, ia mengatakannya terus terang, menawarkan yang paling mendekati, dan mengarahkan user ke fitur **Permintaan Judul** (F4).
+4. **Kontrak keluaran** — jawaban = kalimat pembuka singkat + maks. 5 pilihan yang masing-masing merujuk **id judul** dengan satu baris alasan yang menyambung ke selera yang disebut user; aplikasi merender rujukan id itu menjadi kartu judul. Tidak ada tautan luar dalam jawaban.
+5. **Bukan chatbot umum** — pertanyaan di luar rekomendasi dan katalog dialihkan dengan sopan kembali ke rekomendasi.
+6. **Menghormati filter** — judul dewasa tidak pernah direkomendasikan bila `hide_adult` aktif atau profil Anak (F26) yang sedang aktif.
+
+**Batas layanan & perilaku cadangan**
+- Tingkat gratis Pollinations membatasi laju panggilan per IP (pengalaman dari D TRADE): aplikasi memberi jeda antar-pertanyaan dan pesan ramah saat layanan ramai ("Senpai sedang ramai — coba lagi sebentar lagi"), serta menyimpan jawaban untuk pertanyaan + konteks yang sama di cache lokal perangkat untuk sementara.
+- Riwayat percakapan Tanya Senpai tersimpan **lokal di perangkat saja** (seperti riwayat Chat AI D TRADE), tidak dikirim ke server kita.
+- Admin bisa mematikan Tanya Senpai dari pengaturan platform (pola saklar yang sama dengan fitur Terjemahkan).
+
+**Perubahan data** — tidak ada; fitur ini tidak menambah tabel maupun kolom.
+
+## F24 — Polling & Kuis di Chat
+
+- `chat_messages` mendapat jenis pesan baru **`poll`**: kolom isi polling (jsonb) berisi pertanyaan, daftar pilihan, dan waktu berakhir. Satu akun satu suara; hasil terlihat langsung dan berubah secara waktu-nyata lewat WebSocket yang sama.
+- Pembuat polling: semua user di kanal grupnya sendiri; di kanal global hanya admin & moderator komunitas. Polling bisa disematkan.
+- **Kuis trivia**: polling bertanda kuis (jawaban benar tersembunyi sampai polling berakhir, lalu diumumkan) — dijalankan terjadwal oleh admin/moderator di kanal global; skor kuis memberi **XP** ke sistem level & pencapaian yang sudah ada, dengan papan skor mingguan per kanal.
+
+**Perubahan data**
+- `chat_messages.kind` bertambah nilai `poll` + kolom jsonb untuk definisi polling (termasuk penanda kuis & kunci jawaban terenkripsi waktu — kunci hanya dibuka server setelah berakhir).
+- Tabel baru `chat_poll_votes`: `message_id`, `user_id`, `option_index`, `created_at`; unik per (message_id, user_id).
+
+## F25 — Misi Musiman Berhadiah
+
+- Admin membuat **misi terbatas waktu** (mingguan/musiman): target terukur dari aktivitas yang sudah tercatat — menonton N episode (boleh disaring genre), membaca N chapter, memberi rating N judul, dan sejenisnya.
+- Progres user dihitung worker dari aktivitasnya; halaman Misi menampilkan progres berjalan. Misi selesai → hadiah **XP, lencana khusus musim, atau voucher premium** (memakai sistem voucher yang sudah ada) yang harus diklaim user.
+- Misi menjadi bahan broadcast yang bernilai (pengumuman misi baru), bukan sekadar promosi.
+
+**Perubahan data**
+- Tabel baru `missions`: `title`, `description`, `target` (jsonb: jenis aktivitas + jumlah + saringan), `reward_kind` (∈ `xp|badge|voucher`), `reward_value`, `starts_at`, `ends_at`, `is_active`.
+- Tabel baru `user_missions`: `user_id`, `mission_id`, `progress`, `completed_at`, `claimed_at`; unik per (user_id, mission_id).
+- `vouchers.source` bertambah nilai `mission`.
+
+## F26 — Multi-Profil dalam Satu Akun
+
+- Satu akun bisa memiliki maks. **3 profil penonton**; tiap profil punya watchlist, riwayat, progres, dan bahasa aplikasinya sendiri. Premium & langganan tetap melekat pada akun (semua profil ikut menikmati).
+- **Profil Anak**: `hide_adult` dipaksa aktif dan tidak bisa dimatikan dari dalam profil Anak; pemilik akun bisa membatasi genre yang tampil; **keluar dari profil Anak memerlukan PIN 4 digit pemilik akun** (hash PIN disimpan & diverifikasi di server, pola PBKDF2 yang sama dengan PIN lain di rancangan ini).
+- Berpindah profil dari menu akun; profil aktif menentukan semua data tontonan yang dibaca/ditulis aplikasi.
+
+**Perubahan data**
+- Tabel baru `viewing_profiles`: `id`, `account_id` (FK ke `profiles`), `name`, `is_kids`, `pin_hash` (boleh kosong; wajib untuk profil Anak), `app_language`, `created_at`.
+- Kolom `viewing_profile_id` ditambahkan ke `watchlist`, `watch_history`, dan `read_history`; baris lama dianggap milik profil utama yang dibuat otomatis untuk tiap akun.
+
+## F27 — Picture-in-Picture & Mode Audio Saja
+
+- **PiP**: player memakai picture-in-picture bawaan Android/Media3 — video menjadi jendela melayang saat user pindah aplikasi atau menjelajah halaman lain; kontrol dasar (putar/jeda, tutup, kembali) tersedia di jendela PiP.
+- **Mode audio saja**: saklar di player mematikan trek video (hanya suara yang diputar dan diunduh jaringannya) — hemat data & baterai untuk user yang mendengarkan sambil bekerja atau dengan layar mati.
+- Keduanya murni sisi player; gerbang premium & sesi pemutaran tidak berubah. Tanpa perubahan data.
+
+## F28 — Penanda Momen & Catatan Pribadi
+
+- Saat menonton, user bisa menandai timestamp dengan catatan singkat ("momen ini!"); saat membaca, menandai halaman chapter.
+- Penanda tersimpan **privat** per user (dan per profil penonton bila F26 aktif), tampil sebagai daftar di halaman detail judul, dan bisa dilompati langsung — player/reader membuka tepat di posisi penanda.
+
+**Perubahan data**
+- Tabel baru `bookmarks`: `user_id`, `episode_id` (boleh kosong), `chapter_id` (boleh kosong), `position_sec` (untuk video), `page_number` (untuk chapter), `note`, `created_at`.
+
+## F29 — Widget Layar Utama & Pintasan Aplikasi
+
+- Widget Android **"Lanjutkan"**: judul terakhir + batang progres; satu ketuk membuka aplikasi langsung memutar dari posisi terakhir.
+- Widget **"Rilis Hari Ini"**: daftar rilis hari ini dari kalender tayang (F14), menandai yang ada di watchlist user.
+- Pintasan tekan-lama ikon aplikasi: **Cari**, **Lanjutkan**, **Kalender**, **Chat Global**.
+- Semua membaca data lokal hasil sinkronisasi — tanpa perubahan server maupun data.
+
+## F30 — Ekspor Daftar (Pasangan Impor F16)
+
+- Dari Pengaturan → **Ekspor daftar**: user mengunduh watchlist + progresnya sebagai berkas **XML kompatibel MyAnimeList** atau **CSV**, dibuat server dari data milik user itu sendiri.
+- Berfungsi sebagai cadangan pribadi dan bukti data user tidak terkunci di SubSenpai; pemetaan judulnya memakai pekerjaan pencocokan yang sama dengan F16.
+- Ekspor dibatasi laju (mis. maks. beberapa kali sehari) dan tercatat sebagai aktivitas akun. Tanpa perubahan data.

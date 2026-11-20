@@ -1,6 +1,6 @@
 # OPTIMASI.md — Optimasi Resmi SubSenpai (Gelombang Ketiga)
 
-Dokumen **resmi** untuk optimasi O9–O15 dari REKOMENDASI.md putaran 3 (disetujui 20 Nov 2026), melengkapi optimasi yang sudah lebih dulu masuk [STRUKTUR.md](STRUKTUR.md) pada putaran 1–2 (cache katalog, Cloudflare, endpoint beranda gabungan, pagination kursor, FTS, sinkronisasi delta, prefetch, dsb.). Pendamping [DATABASE.md](DATABASE.md), [FITUR.md](FITUR.md), dan [KEAMANAN.md](KEAMANAN.md). Perubahan skema dirinci per item.
+Dokumen **resmi** untuk optimasi O9–O15 dari REKOMENDASI.md putaran 3 dan O16, O18–O21 dari putaran 4 (disetujui 20 Nov 2026; O17 Gerbang Versi Minimum ada di KEAMANAN.md), melengkapi optimasi yang sudah lebih dulu masuk [STRUKTUR.md](STRUKTUR.md) pada putaran 1–2 (cache katalog, Cloudflare, endpoint beranda gabungan, pagination kursor, FTS, sinkronisasi delta, prefetch, dsb.). Pendamping [DATABASE.md](DATABASE.md), [FITUR.md](FITUR.md), dan [KEAMANAN.md](KEAMANAN.md). Perubahan skema dirinci per item.
 
 ---
 
@@ -50,3 +50,45 @@ Database lokal berbagi disk VPS (patokan 50 GB) dengan sistem — harus ada kebi
 
 - Saat admin menambahkan/mengganti poster, worker membuat **tiga varian WebP** di R2: kecil (±240px untuk daftar), sedang (±480px untuk kartu), besar (±960px untuk halaman detail). `titles.poster_url` menunjuk varian sedang; varian lain mengikuti konvensi nama berkas yang sama.
 - Aplikasi meminta ukuran sesuai tempat tampil — halaman daftar berisi puluhan poster tidak lagi mengunduh gambar ukuran detail. Melengkapi aturan WebP yang sudah ada dan menjadi pasangan Mode Hemat Data (F19).
+
+---
+
+# Gelombang Keempat (O16, O18–O21)
+
+## O16 — Halaman Komik Terkompresi Multi-Varian
+
+- Aset terberat yang kita simpan adalah halaman komik di R2. Saat chapter ditambahkan, worker membuat **varian baca terkompresi** (WebP/AVIF, lebar standar baca ±1080px) di samping berkas asli.
+- Reader memuat varian ringan per halaman secara bawaan; resolusi penuh hanya diambil saat user memperbesar halaman itu.
+- Pasangan O15 (poster multi-ukuran) untuk aset yang volumenya jauh lebih besar.
+
+**Perubahan data**
+- `chapter_pages.light_url` (boleh kosong) — URL varian ringan; kosong berarti varian belum dibuat dan reader memakai `image_url` seperti biasa.
+
+## O18 — Metrik & Log Terstruktur untuk Monitoring
+
+- API & worker menulis **log JSON terstruktur** (id permintaan, kelompok endpoint, latensi, status, id user teranonimkan bila perlu) agar masalah bisa ditelusuri tanpa membaca log teks bebas.
+- Endpoint metrik internal (hanya bisa diakses dari localhost/monitoring) memaparkan: latensi API per kelompok endpoint, kedalaman antrean subtitle, tingkat kegagalan sumber video (O9), dan tingkat keberhasilan polling pembayaran GoPay.
+- Ringkasan metrik disimpan per jam ke tabel `metrics_hourly` (`kind`, `bucket` jam, `value`) dan ditampilkan sebagai grafik sederhana di modul Monitoring admin — masalah terlihat sebelum user melapor. Melengkapi `/healthz` yang sudah ada (yang hanya menjawab hidup/mati).
+
+## O19 — Dedupe Unggahan Gambar via Hash
+
+- Gambar/stiker yang sama sering diunggah berulang oleh banyak user. Sebelum mengunggah ke ImgBB, backend menghitung **hash isi gambar** (setelah kompresi baku kita); bila hash itu sudah dikenal, backend memakai URL ImgBB yang sudah tersimpan — tidak ada unggahan baru.
+- Efeknya: kuota ImgBB hemat, stiker populer termuat seketika, dan penghapusan moderasi cukup dilakukan sekali per gambar unik.
+
+**Perubahan data**
+- Tabel baru `image_uploads`: `hash` (unik), `imgbb_url`, `thumb_url`, `delete_url` (server saja), `created_by`, `created_at` — registri gambar unik hasil unggahan user.
+
+## O20 — Mode Pemeliharaan Terencana
+
+- Admin mengatur jendela pemeliharaan dari pengaturan platform (waktu mulai–selesai + pesan pengumuman).
+- Menjelang jendela, aplikasi menampilkan pengumuman; selama jendela berlangsung aplikasi masuk **mode baca-saja dari cache lokal** (katalog & progres tetap bisa dilihat; aksi tulis ditahan dengan penjelasan), dan API menolak permintaan tulis dengan kode khusus `MAINTENANCE` yang dipahami aplikasi — sementara login dan baca tetap berjalan untuk kebutuhan admin.
+- Downtime terencana (migrasi database, ganti paket VPS) berhenti terasa seperti aplikasi rusak.
+
+## O21 — Pengingat Melanjutkan yang Cerdas
+
+- Worker memeriksa harian: judul di watchlist user yang terakhir ditonton ≥7 hari lalu, belum tamat, **dan** punya episode/chapter baru sejak user berhenti — hanya kombinasi itu yang layak diingatkan.
+- Maks. **satu pengingat per user per minggu**, dikirim sebagai notifikasi rilis biasa, menghormati jam tenang (F20).
+- Pengingat untuk suatu judul berhenti permanen setelah user melanjutkannya, atau setelah dua kali diabaikan.
+
+**Perubahan data**
+- `watchlist.last_nudge_at` (boleh kosong) dan `watchlist.nudge_ignored_count` (bawaan 0) — penanda agar aturan di atas bisa ditegakkan.

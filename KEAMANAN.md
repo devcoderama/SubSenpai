@@ -1,6 +1,6 @@
 # KEAMANAN.md — Rancangan Keamanan SubSenpai
 
-Dokumen keamanan **resmi** SubSenpai: merangkum lapisan keamanan yang sudah dirancang di dokumen lain (dengan rujukannya) dan merinci keamanan gelombang ketiga — terutama **O8 Play Integrity** dari REKOMENDASI.md putaran 3 yang disetujui 20 Nov 2026. Pendamping [STRUKTUR.md](STRUKTUR.md), [DATABASE.md](DATABASE.md), [FITUR.md](FITUR.md), dan [OPTIMASI.md](OPTIMASI.md).
+Dokumen keamanan **resmi** SubSenpai: merangkum lapisan keamanan yang sudah dirancang di dokumen lain (dengan rujukannya) dan merinci keamanan gelombang ketiga dan keempat — terutama **O8 Play Integrity** (putaran 3) dan **O17 Gerbang Versi Minimum** (putaran 4), disetujui 20 Nov 2026. Pendamping [STRUKTUR.md](STRUKTUR.md), [DATABASE.md](DATABASE.md), [FITUR.md](FITUR.md), dan [OPTIMASI.md](OPTIMASI.md).
 
 ---
 
@@ -53,3 +53,13 @@ Memastikan permintaan aksi bernilai datang dari **aplikasi resmi yang tidak dimo
 
 - Play Integrity **menaikkan biaya serangan, bukan tembok mutlak**: perangkat yang di-root atau ditambal secara khusus bisa saja lolos sebagian pemeriksaan. Karena itu pemeriksaan ini adalah lapisan tambahan — gerbang nilai (premium, voucher, pembayaran) tetap selalu diverifikasi di server dan tidak pernah bergantung pada integritas klien saja.
 - Enkripsi `xdata` membatasi scraping massal dan replay, tetapi penyerang yang tekun tetap bisa meniru handshake dari aplikasi hasil rekayasa balik; pertahanan utama terhadap penyalahgunaan tetap rate limit, gerbang login/premium di server, dan Play Integrity di atas.
+
+## 6. O17 — Gerbang Versi Minimum Aplikasi
+
+Distribusi lewat APK/Play Store berarti akan selalu ada user yang tertinggal di versi lama. Gerbang versi memastikan versi bermasalah tidak hidup selamanya:
+
+- Admin mengatur **versi minimum yang didukung** dari pengaturan platform, beserta tautan unduh resmi dan catatan rilis singkat.
+- Aplikasi memeriksa versi minimum saat mulai dan berkala; respons API menyertakan sinyal khusus (`APP_UPDATE_REQUIRED`) begitu versi aplikasi berada di bawah minimum.
+- Di bawah minimum, aplikasi menampilkan **layar perbarui yang tidak bisa dilewati** dengan tombol unduh resmi, dan API menolak permintaan selain yang dibutuhkan untuk memperbarui.
+- Nilai keamanannya: versi dengan celah atau perilaku lama yang sudah diperbaiki dipaksa keluar dari peredaran, dan perubahan API yang tidak kompatibel menjadi aman untuk dilakukan.
+- **Pelonggaran darurat**: bila rilis baru ternyata bermasalah, admin bisa menurunkan versi minimum untuk sementara; perubahan ini tercatat di `admin_logs`.
