@@ -97,7 +97,7 @@ tailwind.config = {
   .bglayer{position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;transition:opacity 1.4s ease;will-change:opacity,transform}
   .bglayer.on{opacity:1;animation:kenburns 16s ease-in-out infinite alternate}
   @keyframes kenburns{from{transform:scale(1)}to{transform:scale(1.09)}}
-  .bgoverlay{position:fixed;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(180deg,rgba(11,15,26,.62),rgba(11,15,26,.80) 45%,rgba(11,15,26,.92))}
+  .bgoverlay{position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(rgba(255,255,255,.055) 1px,transparent 1.6px) 0 0/22px 22px,linear-gradient(180deg,rgba(11,15,26,.62),rgba(11,15,26,.80) 45%,rgba(11,15,26,.92))}
   .sidelink{color:#c6d0e8}
   .sidelink i{color:#a78bfa;transition:color .3s}
   .sidelink.act{background:rgba(167,139,250,.15);color:#fff}
@@ -118,6 +118,31 @@ tailwind.config = {
   #chatMsgs{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
   @media (max-width:639px){
     #chatPanel{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+  }
+  .card{position:relative;overflow:hidden}
+  .card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:var(--acc,#a78bfa);opacity:.9}
+  .grid .card:nth-child(6n+1){--acc:#ff6b9d}
+  .grid .card:nth-child(6n+2){--acc:#a78bfa}
+  .grid .card:nth-child(6n+3){--acc:#38bdf8}
+  .grid .card:nth-child(6n+4){--acc:#fbbf24}
+  .grid .card:nth-child(6n+5){--acc:#34d399}
+  .grid .card:nth-child(6n+6){--acc:#fb7185}
+  section h2::after{content:"";display:block;width:64px;height:4px;border-radius:99px;margin-top:.55rem;background:linear-gradient(90deg,#ff6b9d,#a78bfa,#38bdf8)}
+  .petals{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+  .petals span{position:absolute;top:-4%;width:14px;height:11px;border-radius:80% 0 80% 0;background:linear-gradient(135deg,#ffd3e4,#ff8fb8);opacity:.75;animation:petalfall linear infinite}
+  @keyframes petalfall{0%{transform:translate3d(0,-5vh,0) rotate(0deg)}25%{transform:translate3d(3vw,25vh,0) rotate(120deg)}50%{transform:translate3d(-2vw,52vh,0) rotate(210deg)}75%{transform:translate3d(2.5vw,78vh,0) rotate(300deg)}100%{transform:translate3d(-1vw,105vh,0) rotate(380deg)}}
+  .petals span:nth-child(1){left:6%;animation-duration:11s;animation-delay:0s}
+  .petals span:nth-child(2){left:18%;animation-duration:14s;animation-delay:-4s;transform:scale(.7)}
+  .petals span:nth-child(3){left:31%;animation-duration:10s;animation-delay:-7s}
+  .petals span:nth-child(4){left:44%;animation-duration:15s;animation-delay:-2s;transform:scale(1.25)}
+  .petals span:nth-child(5){left:57%;animation-duration:12s;animation-delay:-9s;transform:scale(.8)}
+  .petals span:nth-child(6){left:68%;animation-duration:13s;animation-delay:-5s}
+  .petals span:nth-child(7){left:79%;animation-duration:10.5s;animation-delay:-3s;transform:scale(.65)}
+  .petals span:nth-child(8){left:88%;animation-duration:14.5s;animation-delay:-8s}
+  .petals span:nth-child(9){left:24%;animation-duration:16s;animation-delay:-11s;transform:scale(1.1)}
+  .petals span:nth-child(10){left:74%;animation-duration:11.5s;animation-delay:-6s;transform:scale(.9)}
+  @media (prefers-reduced-motion: reduce){
+    .petals{display:none}
   }
   @media (prefers-reduced-motion: reduce){
     html{scroll-behavior:auto}
@@ -173,6 +198,7 @@ tailwind.config = {
 
 <!-- ================= HERO ================= -->
 <section id="beranda" data-bg="0" class="relative overflow-hidden min-h-[100svh] flex items-center">
+  <div class="petals" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
   <div class="orb w-80 h-80 bg-pink/60 -left-24 top-32" data-parallax="0.15"></div>
   <div class="orb w-96 h-96 bg-violet/50 -right-28 bottom-24" data-parallax="0.22"></div>
   <div class="relative max-w-6xl mx-auto px-5 py-36 text-center w-full">
@@ -315,10 +341,33 @@ tailwind.config = {
       if(e.isIntersecting){
         var i = parseInt(e.target.getAttribute('data-bg'), 10);
         bglayers.forEach(function(l, j){ l.classList.toggle('on', j === i); });
+        ensureGif(i);
       }
     });
   }, {rootMargin:'-45% 0px -45% 0px'});
   document.querySelectorAll('section[data-bg]').forEach(function(s){ bgio.observe(s); });
+  /* GIF animasi per bagian — dimuat malas saat bagiannya tampil; gambar diam tetap di bawahnya sebagai cadangan */
+  var GIFS = [
+    'https://storage0.gifvibe.com/x35oj26gPiOXh71l4I.gif',
+    'https://storage0.gifvibe.com/PtlGycDiPageCrXsYt.gif',
+    'https://i.postimg.cc/0j5mSzkk/dg1pawh-d5f8809f-c2f7-454f-946e-74bc805189bb.gif',
+    'https://storage0.gifvibe.com/UyUnEufsctXtqwRRFr.gif',
+    'https://i.pinimg.com/originals/26/ba/34/26ba346f7b4681ae948de98f15509f47.gif',
+    'https://storage0.gifvibe.com/HEEBFfO2Nkv0YiUNOY.gif'
+  ];
+  var gifState = {};
+  var noGif = reduce || (navigator.connection && navigator.connection.saveData);
+  function ensureGif(i){
+    if (noGif || !GIFS[i] || gifState[i]) return;
+    gifState[i] = 'loading';
+    var pre = new Image();
+    pre.onload = function(){
+      gifState[i] = 'ok';
+      bglayers[i].style.backgroundImage = 'url("' + GIFS[i] + '"), ' + bglayers[i].style.backgroundImage;
+    };
+    pre.onerror = function(){ gifState[i] = 'fail'; };
+    pre.src = GIFS[i];
+  }
   /* Parallax + topbar (satu loop rAF) */
   var layers = document.querySelectorAll('[data-parallax]');
   var ticking = false;
