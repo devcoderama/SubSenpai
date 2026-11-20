@@ -1,6 +1,6 @@
-# OPTIMASI.md — Optimasi Resmi SubSenpai (Gelombang Ketiga)
+# OPTIMASI.md — Optimasi Resmi SubSenpai
 
-Dokumen **resmi** untuk optimasi O9–O15 dari REKOMENDASI.md putaran 3 dan O16, O18–O21 dari putaran 4 (disetujui 20 Nov 2026; O17 Gerbang Versi Minimum ada di KEAMANAN.md), melengkapi optimasi yang sudah lebih dulu masuk [STRUKTUR.md](STRUKTUR.md) pada putaran 1–2 (cache katalog, Cloudflare, endpoint beranda gabungan, pagination kursor, FTS, sinkronisasi delta, prefetch, dsb.). Pendamping [DATABASE.md](DATABASE.md), [FITUR.md](FITUR.md), dan [KEAMANAN.md](KEAMANAN.md). Perubahan skema dirinci per item.
+Dokumen **resmi** untuk optimasi O9–O15 dari REKOMENDASI.md putaran 3, O16 dan O18–O21 dari putaran 4, dan O22–O27 dari putaran 5 (disetujui 20 Nov 2026; O17 Gerbang Versi Minimum ada di KEAMANAN.md), melengkapi optimasi yang sudah lebih dulu masuk [STRUKTUR.md](STRUKTUR.md) pada putaran 1–2 (cache katalog, Cloudflare, endpoint beranda gabungan, pagination kursor, FTS, sinkronisasi delta, prefetch, dsb.). Pendamping [DATABASE.md](DATABASE.md), [FITUR.md](FITUR.md), dan [KEAMANAN.md](KEAMANAN.md). Perubahan skema dirinci per item.
 
 ---
 
@@ -92,3 +92,41 @@ Database lokal berbagi disk VPS (patokan 50 GB) dengan sistem — harus ada kebi
 
 **Perubahan data**
 - `watchlist.last_nudge_at` (boleh kosong) dan `watchlist.nudge_ignored_count` (bawaan 0) — penanda agar aturan di atas bisa ditegakkan.
+
+---
+
+# Gelombang Kelima (O22–O27)
+
+## O22 — Partisi Tabel Besar per Bulan
+
+- Tabel yang tumbuh tanpa batas di database lokal VPS — `chat_messages`, `watch_history`, `read_history`, `notifications` — dijadikan **tabel terpartisi per bulan** (partisi rentang bawaan PostgreSQL pada kolom waktu buat).
+- Manfaatnya langsung: kueri data terbaru hanya menyentuh partisi bulan berjalan; pembersihan retensi (O11) berubah dari DELETE besar menjadi **melepas partisi lama** (seketika, tanpa bloat); ukuran cadangan per partisi lebih terkendali.
+- Partisi bulan berikutnya dibuat otomatis oleh worker (tugas terjadwal), dan pekerjaan ini dilakukan **selagi data masih kecil** — mempartisi tabel raksasa yang sudah terlanjur besar jauh lebih menyakitkan.
+
+## O23 — Disiplin Migrasi Berversi + Uji Kontrak API
+
+- Semua perubahan skema hanya boleh lewat **migrasi berversi** (alat standar seperti goose) yang bisa maju dan mundur; tidak ada perubahan skema manual di database produksi.
+- **Uji kontrak API** berjalan di CI: bentuk respons endpoint yang sudah dipakai aplikasi versi yang masih didukung tidak boleh berubah tanpa kenaikan versi API — mencegah kelas bug "aplikasi lama rusak karena skema/respons berubah diam-diam". Pasangan teknis dari gerbang versi (O17).
+
+## O24 — Pra-Saring Audio (VAD) Sebelum Transkripsi
+
+Biaya variabel terbesar SubSenpai adalah menit transkripsi Whisper; jangan membayar menit yang tidak berisi dialog:
+- Sebelum audio dikirim ke API transkripsi, worker menjalankan **deteksi aktivitas suara (VAD)**: segmen hening panjang dipangkas, dan rentang intro/outro yang sudah ditandai (F10) tidak ditranskripsikan sebagai dialog.
+- Yang dikirim hanya segmen berisi ucapan, **beserta peta offset waktunya** — sehingga timestamp hasil transkripsi dipetakan kembali ke garis waktu asli episode dan file SRT akhir tetap tepat.
+- Penghematannya terukur per episode (menit terkirim vs menit asli dicatat di metrik O18) dan tidak mengubah kualitas subtitle dialog.
+
+## O25 — Digest Notifikasi Rilis per Judul
+
+- Bila satu judul merilis banyak episode/chapter sekaligus (rilis borongan), worker **menggabungkannya menjadi satu notifikasi push per judul** dalam jendela penggabungan singkat ("5 episode baru dari X") — bukan 5–10 push terpisah.
+- Kotak masuk `notifications` tetap mencatat tiap rilis satu per satu; yang digabung hanya push-nya. Aturan ini melengkapi jam tenang (F20) dan pengingat cerdas (O21) sebagai lapis disiplin notifikasi ketiga.
+
+## O26 — Load Shedding Anggun Saat VPS Sibuk
+
+- Saat beban VPS melewati ambang (dari metrik O18), API **melepas beban tidak kritis lebih dulu**: rekomendasi & tren dilayani dari cache walau agak basi, tugas polling/statistik worker ditunda, dan endpoint tidak kritis bisa menjawab "coba lagi nanti" yang dipahami aplikasi.
+- Jalur kritis selalu didahulukan: login, pemutaran/bacaan, pembayaran, dan chat. Di jam ramai layanan terasa sedikit lebih lambat — bukan mati.
+
+## O27 — Peluncuran APK Bertahap via Gerbang Versi
+
+- Karena distribusi lewat website resmi & GitHub (lihat NOTE.md), rilis APK baru diluncurkan **bertahap**: pemeriksaan pembaruan di aplikasi menerima versi baru hanya untuk sebagian user dulu (persentase diatur admin dari pengaturan platform; penentuan kelompok bersifat deterministik dari id perangkat).
+- Selama tahap awal, tingkat crash (O6) dan metrik (O18) dipantau; sehat → persentase dinaikkan sampai 100%; bermasalah → penawaran dihentikan sebelum semua user terkena, dan gerbang versi minimum (O17) tidak ikut dinaikkan sampai rilis dinyatakan stabil.
+- Tanpa infrastruktur baru — murni memakai mekanisme pemeriksaan pembaruan & pengaturan platform yang sudah dirancang.

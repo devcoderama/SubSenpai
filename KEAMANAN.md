@@ -1,6 +1,6 @@
 # KEAMANAN.md — Rancangan Keamanan SubSenpai
 
-Dokumen keamanan **resmi** SubSenpai: merangkum lapisan keamanan yang sudah dirancang di dokumen lain (dengan rujukannya) dan merinci keamanan gelombang ketiga dan keempat — terutama **O8 Play Integrity** (putaran 3) dan **O17 Gerbang Versi Minimum** (putaran 4), disetujui 20 Nov 2026. Pendamping [STRUKTUR.md](STRUKTUR.md), [DATABASE.md](DATABASE.md), [FITUR.md](FITUR.md), dan [OPTIMASI.md](OPTIMASI.md).
+Dokumen keamanan **resmi** SubSenpai: merangkum lapisan keamanan yang sudah dirancang di dokumen lain (dengan rujukannya) dan merinci keamanan gelombang ketiga sampai kelima — terutama **O8 Play Integrity** (putaran 3) dan **O17 Gerbang Versi Minimum** (putaran 4), disetujui 20 Nov 2026. Pendamping [STRUKTUR.md](STRUKTUR.md), [DATABASE.md](DATABASE.md), [FITUR.md](FITUR.md), dan [OPTIMASI.md](OPTIMASI.md).
 
 ---
 
@@ -63,3 +63,12 @@ Distribusi lewat APK (website resmi & GitHub Releases) berarti akan selalu ada u
 - Di bawah minimum, aplikasi menampilkan **layar perbarui yang tidak bisa dilewati** dengan tombol unduh resmi, dan API menolak permintaan selain yang dibutuhkan untuk memperbarui.
 - Nilai keamanannya: versi dengan celah atau perilaku lama yang sudah diperbaiki dipaksa keluar dari peredaran, dan perubahan API yang tidak kompatibel menjadi aman untuk dilakukan.
 - **Pelonggaran darurat**: bila rilis baru ternyata bermasalah, admin bisa menurunkan versi minimum untuk sementara; perubahan ini tercatat di `admin_logs`.
+
+## 7. Token Integrasi Eksternal User (Scrobbling F35)
+
+Scrobbling (FITUR.md F35) membuat server menyimpan token akses milik user untuk layanan luar (AniList/MyAnimeList). Aturannya:
+
+- Token diperoleh lewat **alur OAuth resmi** layanan tersebut dengan cakupan (scope) seminimal mungkin — hanya untuk mencatat progres, tidak lebih.
+- Token disimpan **terenkripsi saat diam** (kunci enkripsi hanya di env server, terpisah dari database) dan **tidak pernah dikembalikan ke aplikasi** setelah tersimpan; aplikasi hanya melihat status "terhubung/tidak".
+- User bisa **memutus integrasi kapan pun** dari pengaturan; pemutusan menghapus token tersimpan dari server dan user dianjurkan mencabut akses juga dari sisi layanan luar.
+- Token hanya dipakai worker untuk pekerjaan sinkronisasi user pemiliknya; setiap pemakaian tercatat (waktu & hasil) tanpa mencatat token itu sendiri.

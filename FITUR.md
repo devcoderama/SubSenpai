@@ -1,6 +1,6 @@
 # FITUR.md — Fitur Tambahan SubSenpai
 
-Dokumen rancangan **resmi** untuk fitur-fitur gelombang ketiga (F13–F22) dan keempat (F23–F30), disetujui 20 Nov 2026 dan dipindahkan dari REKOMENDASI.md putaran 3 dan 4. Dokumen ini adalah pendamping [STRUKTUR.md](STRUKTUR.md) (arsitektur & fitur inti), [DATABASE.md](DATABASE.md) (skema dasar), [KEAMANAN.md](KEAMANAN.md), dan [OPTIMASI.md](OPTIMASI.md). Perubahan skema dirinci per fitur dan menjadi bagian dari skema saat fase pembangunan; bila ada pertentangan, dokumen yang lebih spesifik untuk topiknya yang berlaku.
+Dokumen rancangan **resmi** untuk fitur-fitur gelombang ketiga (F13–F22), keempat (F23–F30), dan kelima (F31–F39), disetujui 20 Nov 2026 dan dipindahkan dari REKOMENDASI.md putaran 3, 4, dan 5. Dokumen ini adalah pendamping [STRUKTUR.md](STRUKTUR.md) (arsitektur & fitur inti), [DATABASE.md](DATABASE.md) (skema dasar), [KEAMANAN.md](KEAMANAN.md), dan [OPTIMASI.md](OPTIMASI.md). Perubahan skema dirinci per fitur dan menjadi bagian dari skema saat fase pembangunan; bila ada pertentangan, dokumen yang lebih spesifik untuk topiknya yang berlaku.
 
 ---
 
@@ -178,3 +178,94 @@ Perilaku asisten diatur oleh **prompt sistem khusus SubSenpai** — berkas keahl
 - Dari Pengaturan → **Ekspor daftar**: user mengunduh watchlist + progresnya sebagai berkas **XML kompatibel MyAnimeList** atau **CSV**, dibuat server dari data milik user itu sendiri.
 - Berfungsi sebagai cadangan pribadi dan bukti data user tidak terkunci di SubSenpai; pemetaan judulnya memakai pekerjaan pencocokan yang sama dengan F16.
 - Ekspor dibatasi laju (mis. maks. beberapa kali sehari) dan tercatat sebagai aktivitas akun. Tanpa perubahan data.
+
+---
+
+# Gelombang Kelima (F31–F39)
+
+## F31 — Terjemahan Balon Komik via OCR
+
+Pasangan subtitle otomatis untuk komik: manga/manhua/manhwa yang hanya tersedia dalam bahasa asal bisa dibaca dalam bahasa user.
+
+**Cara kerja**
+- Berlaku untuk chapter dari sumber yang **diambil server** (bukan sumber perangkat F39). Saat chapter ditambahkan, worker menjalankan **OCR** pada tiap halaman untuk menemukan wilayah balon teks dan membaca teks bahasa asalnya, lalu menyimpan wilayah teks itu (koordinat relatif + teks + urutan baca + tingkat keyakinan).
+- Saat user membaca dalam bahasa lain, **aplikasi menerjemahkan teks tiap wilayah di perangkat** (endpoint `gtx` dari perangkat user — pola yang sama dengan subtitle) dan menggambar hasilnya sebagai lapisan terjemahan di atas balon asli. Hasil terjemahan per halaman di-cache lokal (kunci: halaman + bahasa).
+- User beralih **Asli/ Terjemahan** sekali ketuk; wilayah dengan keyakinan OCR sangat rendah tidak diberi lapisan (ditandai bisa dilaporkan lewat lapor cepat F18).
+- Kualitas dinyatakan jujur di UI sebagai terjemahan mesin ("cukup dimengerti", bukan scanlation).
+- Admin memantau status OCR per chapter dan bisa memicu ulang dari pengelolaan katalog/subtitle.
+
+**Perubahan data**
+- `chapter_pages.ocr_status` ∈ `none|queued|processing|done|failed` (bawaan `none`).
+- Tabel baru `chapter_text_regions`: `id`, `page_id` (FK ke `chapter_pages`), `bbox` (jsonb: x, y, w, h relatif 0–1), `source_text`, `reading_order`, `confidence`.
+
+## F32 — Ulasan Tertulis User
+
+- Di samping rating bintang, user bisa menulis **ulasan** per judul: teks ulasan + penanda **spoiler** (wajib dicentang bila mengandung bocoran; ulasan spoiler disembunyikan sampai diketuk).
+- Satu ulasan per user per judul, bisa disunting; ulasan tampil di halaman detail diurutkan dari suara **"membantu"** terbanyak (satu suara per user per ulasan).
+- Aturan sama dengan komentar: filter kata, larangan tautan luar, bisa dilaporkan, dan dimoderasi admin/moderator sesuai kewenangannya.
+
+**Perubahan data**
+- Tabel baru `title_reviews`: `id`, `title_id`, `user_id`, `body`, `is_spoiler`, `helpful_count` (bawaan 0), `status` ∈ `visible|hidden`, `created_at`, `updated_at`; unik per (title_id, user_id).
+- Tabel baru `title_review_votes`: `review_id`, `user_id`; unik per (review_id, user_id).
+
+## F33 — Daftar Bersama Teman
+
+- **Daftar bersama privat** di atas sistem koleksi: pembuat mengundang teman; semua anggota bisa menambah/menghapus judul dan melihat penanda siapa sudah menonton/membaca apa di daftar itu — untuk merencanakan tontonan bersama.
+- Dari daftar bersama, satu ketuk membuka sesi **nonton bareng (F3)** dengan undangan ke anggota daftar.
+- Daftar bersama tidak tampil publik dan tidak bisa diikuti user di luar undangan.
+
+**Perubahan data**
+- `collections.kind` bertambah nilai `shared` (koleksi bersama selalu privat).
+- Tabel baru `collection_members`: `collection_id`, `user_id`, `role` ∈ `owner|editor`, `invited_by`, `created_at`; unik per (collection_id, user_id).
+
+## F34 — Paket Kenyamanan Player
+
+Satu paket kematangan player, semuanya pengaturan per perangkat (tanpa perubahan data server):
+- **Pengatur waktu tidur** — pemutaran berhenti setelah X menit atau di akhir episode berjalan.
+- **Gestur** — geser vertikal sisi kiri = kecerahan, sisi kanan = volume; ketuk dua kali sisi kanan/kiri = maju/mundur 10 detik.
+- **Kecepatan putar diingat per judul** — kecepatan terakhir untuk judul itu (disimpan lokal) dipakai lagi saat judul dibuka kembali.
+
+## F35 — Scrobbling Otomatis ke AniList / MyAnimeList
+
+- User yang menghubungkan akun AniList/MAL miliknya (alur OAuth layanan itu; token user disimpan server dalam keadaan terenkripsi — lihat KEAMANAN.md Bagian 7) mengaktifkan **scrobbling**: setiap episode selesai ditonton / chapter selesai dibaca, worker mencatat progresnya ke layanan tersebut.
+- Opt-in penuh dan bisa diputus kapan pun dari pengaturan (pemutusan menghapus token tersimpan).
+- Kegagalan sinkron dicatat & dicoba ulang oleh worker; tidak pernah mengganggu pemutaran/bacaan.
+
+**Perubahan data**
+- Tabel baru `user_integrations`: `id`, `user_id`, `provider` ∈ `anilist|mal`, `access_token_enc` (terenkripsi, tidak pernah dikembalikan ke aplikasi), `enabled`, `last_sync_at`, `created_at`; unik per (user_id, provider).
+
+## F36 — Kanal Pengumuman Rilis Otomatis ke Telegram / Discord
+
+- Admin menghubungkan kanal Telegram dan/atau webhook Discord **resmi proyek** dari panel admin (modul Notifikasi): token bot/webhook adalah rahasia server (env/penyimpanan terenkripsi), tidak pernah tampil di aplikasi.
+- Setiap episode/chapter baru terbit, worker mengirim pengumuman (poster + judul + tautan resmi aplikasi) ke kanal terhubung — **digabung per judul per jam** agar tidak banjir, dengan pilihan cakupan: hanya judul populer atau semua rilis.
+- Pengumuman eksternal adalah tambahan dari notifikasi dalam aplikasi; mematikan kanal tidak memengaruhi notifikasi user.
+
+## F37 — Identifikasi Judul dari Tangkapan Layar
+
+- User memilih tangkapan layar adegan anime dari galeri; **aplikasi mengirimkannya dari perangkat user** ke layanan pencocok frame eksternal (jenis layanan seperti trace.moe) dan menampilkan hasil kecocokan: judul, nomor episode, dan timestamp adegan.
+- Bila judul & episode itu ada di katalog kita, satu ketuk membuka episode tepat di posisi adegan; bila tidak ada, hasil identifikasi tetap ditampilkan dan user diarahkan ke Permintaan Judul.
+- Gambar dikirim langsung dari perangkat ke layanan eksternal (dijelaskan ke user saat pertama memakai) dan **tidak disimpan** oleh server kita. Tanpa perubahan data.
+
+## F38 — Tantangan Antar Teman
+
+- User menantang teman: jenis tantangan `tamatkan judul ini duluan` atau `baca/tonton terbanyak dalam periode ini`; lawan harus menerima agar tantangan aktif.
+- Progres kedua pihak dihitung worker dari riwayat selama periode tantangan dan tampil di kartu tantangan; aktivitas sebelum tantangan aktif tidak dihitung.
+- Selesai: pemenang menerima **XP + lencana khusus tantangan**; seri dinyatakan seri tanpa hadiah XP tambahan. Tantangan yang tidak diterima kedaluwarsa otomatis.
+
+**Perubahan data**
+- Tabel baru `challenges`: `id`, `creator_id`, `opponent_id`, `kind` ∈ `finish_title|most_progress`, `title_id` (boleh kosong, untuk jenis progres), `target` (jsonb: cakupan aktivitas), `starts_at`, `ends_at`, `status` ∈ `pending|active|completed|declined|expired`, `winner_id` (boleh kosong), `created_at`.
+
+## F39 — Baca di Perangkat untuk Sumber Ber-Cloudflare (WebView Clearance)
+
+Untuk sumber yang dilindungi anti-bot Cloudflare (contoh nyata: **manhuarmtl.com**) yang tidak bisa diambil scraper server — pola yang sama dengan yang dipakai **Mihon**:
+
+- Judul tetap terdaftar di katalog server, tetapi **daftar chapter & halamannya diselesaikan aplikasi di perangkat** saat user membuka judulnya; worker tidak pernah mengambil dari domain sumber ini.
+- Pertama kali membuka sumber ber-Cloudflare, aplikasi membuka situs sumber di **WebView** aplikasi; user melewati verifikasi Cloudflare sekali (biasanya otomatis, sesekali satu ketukan). Aplikasi menyimpan cookie `cf_clearance` + User-Agent WebView itu **per domain sumber, hanya di penyimpanan terenkripsi perangkat** (tidak pernah dikirim ke server kita), lalu memakainya untuk mengambil daftar chapter & halaman berikutnya.
+- Cookie kedaluwarsa atau user berganti jaringan → aplikasi meminta verifikasi ulang lewat WebView dengan pesan yang jelas ("sumber ini butuh verifikasi ulang").
+- Halaman mengalir **langsung dari sumber ke perangkat** (seperti HLS video): pemrosesan server tidak berlaku untuk sumber ini — tidak ada varian kompresi (O16) dan tidak ada OCR server (F31). Khusus sumber yang teksnya disajikan sebagai teks/HTML (seperti manhuarmtl yang balonnya bisa diterjemahkan peramban), aplikasi mengambil teks itu di perangkat dan menerjemahkannya dengan pola F31 sisi perangkat.
+- Aturan freemium tetap dikirim server per judul (chapter mana yang gratis/premium) dan ditegakkan aplikasi; disadari bersama bahwa sumbernya sendiri terbuka di peramban — gerbang ini adalah aturan layanan kita, bukan DRM.
+- Progres membaca tetap tercatat: aplikasi melaporkan penanda chapter (nomor + label) ke server agar Lanjutkan & riwayat berfungsi walau chapter-nya tidak ada di database.
+
+**Perubahan data**
+- Kolom baru di `titles`: `fetch_mode` ∈ `server|device` (bawaan `server`), `source_domain` (boleh kosong), `source_url_template` (boleh kosong) — ketiganya hanya terisi untuk judul perangkat.
+- `read_history` mendapat kolom penanda eksternal (label chapter + nomor) yang dipakai bila chapter berasal dari sumber perangkat (tanpa baris `chapters`).
