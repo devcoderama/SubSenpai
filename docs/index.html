@@ -375,14 +375,14 @@ tailwind.config = {
     "STATUS: masih TAHAP RANCANGAN - aplikasinya belum dibuat dan belum bisa diunduh. Yang sudah selesai adalah dokumen rancangannya (visi, arsitektur, skema database dasar, fitur F13-F39, keamanan, optimasi O9-O27) di repo GitHub devcoderama/SubSenpai. Langkah berikutnya: sinkronisasi final skema database, lalu pembangunan bertahap (katalog & player, worker subtitle, akun, freemium & sosial, mode baca, fitur lanjutan), deployment server, dan rilis APK bertahap lewat website resmi & GitHub Releases (bukan Play Store untuk saat ini). Belum ada tanggal rilis resmi.",
     "TEKNOLOGI: aplikasi Android Kotlin; backend Go di VPS; database PostgreSQL lokal di VPS; subtitle disiapkan worker (caption/Whisper menjadi subtitle bahasa asal) lalu diterjemahkan di perangkat pengguna; komik dari sumber ber-Cloudflare dibaca lewat WebView di perangkat pengguna (pola seperti Mihon); login Google; model freemium (tamu maksimal 1 episode/chapter, user login dengan iklan, premium tanpa iklan; pembayaran QRIS/e-wallet dan voucher).",
     "FITUR PENGGUNA: subtitle otomatis multi-bahasa (9 bahasa antarmuka), terjemahan balon komik via OCR, Tanya Senpai (asisten rekomendasi AI di dalam aplikasi), chat global/grup/DM, nonton bareng, koleksi & permintaan judul, misi/level/Rekap Senpai, unduhan offline premium, Cast & Picture-in-Picture, notifikasi rilis, multi-profil & profil Anak, pencatatan progres otomatis ke AniList/MyAnimeList.",
-    "ATURAN: jangan mengarang tanggal rilis atau fakta di luar fakta di atas; bila ditanya hal di luar SubSenpai, alihkan dengan sopan; jangan membahas hal internal pengelolaan; bila tidak tahu, katakan terus terang dan arahkan ke PROGRES.md atau repo GitHub. FORMAT JAWABAN: gunakan paragraf singkat dan daftar poin bertanda '-'; JANGAN memakai tabel markdown; teks tebal hanya seperlunya."
+    "ATURAN: jangan mengarang tanggal rilis atau fakta di luar fakta di atas; bila ditanya hal di luar SubSenpai, alihkan dengan sopan; jangan membahas hal internal pengelolaan; bila tidak tahu, katakan terus terang dan arahkan ke PROGRES.md atau repo GitHub. FORMAT JAWABAN: gunakan paragraf singkat dan daftar poin bertanda '-'; JANGAN memakai tabel markdown; teks tebal hanya seperlunya. IDENTITAS MODEL: bila pengguna bertanya model AI apa yang kamu pakai/gunakan, jawab bahwa kamu adalah Senpai AI v1.0.0; jangan menyebut layanan atau model AI lain sebagai identitasmu."
   ].join("\n");
   var KEY = 'subsenpai-docs-chat-v1';
   var hist = [];
   try { hist = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e){ hist = []; }
   var panel = document.getElementById('chatPanel'), msgs = document.getElementById('chatMsgs'),
       form = document.getElementById('chatForm'), input = document.getElementById('chatInput'),
-      fab = document.getElementById('chatFab'), busy = false;
+      fab = document.getElementById('chatFab'), busy = false, editingIdx = null;
   function mdRender(md){
     function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
     function inline(s){
@@ -429,13 +429,44 @@ tailwind.config = {
     }
     return out.join('');
   }
-  function render(role, text){
+  function copyText(txt, btn){
+    function done(){ if (!btn) return; var i = btn.querySelector('i'); if (!i) return; var old = i.className; i.className = 'fa-solid fa-check'; btn.style.color = '#4ade80'; setTimeout(function(){ i.className = old; btn.style.color = ''; }, 1200); }
+    function fallback(){ var ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch(e){} ta.remove(); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(fallback); else fallback();
+  }
+  function iconBtn(icon, label, fn){
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'w-7 h-7 grid place-items-center rounded-full text-mut hover:text-white hover:bg-white/10 transition';
+    b.style.fontSize = '11px';
+    b.title = label; b.setAttribute('aria-label', label);
+    b.innerHTML = '<i class="fa-solid ' + icon + '"></i>';
+    b.addEventListener('click', function(){ fn(b); });
+    return b;
+  }
+  function render(role, text, idx){
+    var wrap = document.createElement('div');
+    wrap.className = 'flex flex-col ' + (role === 'user' ? 'items-end' : 'items-start');
     var d = document.createElement('div');
-    d.className = 'max-w-[85%] px-3.5 py-2.5 rounded-2xl leading-relaxed ' + (role === 'user' ? 'msg-user ml-auto whitespace-pre-wrap' : 'msg-ai');
+    d.className = 'max-w-[85%] px-3.5 py-2.5 rounded-2xl leading-relaxed ' + (role === 'user' ? 'msg-user whitespace-pre-wrap' : 'msg-ai');
     if (role === 'assistant') d.innerHTML = mdRender(text); else d.textContent = text;
-    msgs.appendChild(d);
+    wrap.appendChild(d);
+    var acts = document.createElement('div');
+    acts.className = 'flex gap-1 mt-1 px-1';
+    acts.appendChild(iconBtn('fa-copy', 'Salin', function(b){ copyText(text, b); }));
+    if (role === 'user' && typeof idx === 'number'){
+      acts.appendChild(iconBtn('fa-pen', 'Ubah prompt', function(){ input.value = text; editingIdx = idx; input.focus(); }));
+      acts.appendChild(iconBtn('fa-arrow-rotate-right', 'Kirim ulang', function(){ input.value = text; editingIdx = idx; form.requestSubmit(); }));
+    }
+    wrap.appendChild(acts);
+    msgs.appendChild(wrap);
     msgs.scrollTop = msgs.scrollHeight;
     return d;
+  }
+  function refreshMsgs(){
+    msgs.innerHTML = '';
+    if (!hist.length){ render('assistant', 'Halo! Aku Senpai, asisten AI di dokumentasi SubSenpai. Tanya apa saja seputar pengembangan aplikasinya - progres, fitur, teknologi, atau rencana rilisnya.'); return; }
+    hist.forEach(function(m, i){ render(m.role, m.content, i); });
   }
   var WAIT_MSGS = ['Senpai sedang berpikir…','Mencari jawaban terbaik…','Menyiapkan penjelasan untukmu…','Sedikit lagi, ya…'];
   function showWait(){
@@ -449,11 +480,7 @@ tailwind.config = {
     return { el: d, stop: function(){ clearInterval(iv); } };
   }
   function save(){ try { localStorage.setItem(KEY, JSON.stringify(hist.slice(-30))); } catch(e){} }
-  function greet(){
-    if (!hist.length && !msgs.children.length)
-      render('assistant', 'Halo! Aku Senpai, asisten AI di dokumentasi SubSenpai. Tanya apa saja seputar pengembangan aplikasinya - progres, fitur, teknologi, atau rencana rilisnya.');
-    hist.forEach(function(m){ render(m.role, m.content); });
-  }
+  function greet(){ refreshMsgs(); }
   function openChat(){ panel.style.display = 'flex'; fab.style.display = 'none'; document.body.style.overflow = 'hidden'; greet(); setTimeout(function(){ input.focus(); }, 60); }
   function closeChat(){ panel.style.display = 'none'; fab.style.display = 'grid'; document.body.style.overflow = ''; }
   fab.addEventListener('click', openChat);
@@ -466,17 +493,20 @@ tailwind.config = {
     var text = input.value.trim();
     if (!text || busy) return;
     input.value = '';
-    hist.push({role:'user', content:text}); render('user', text); save();
+    if (editingIdx !== null && editingIdx <= hist.length){ hist = hist.slice(0, editingIdx); refreshMsgs(); }
+    editingIdx = null;
+    hist.push({role:'user', content:text}); render('user', text, hist.length - 1); save();
     busy = true;
     var wait = showWait();
     fetch('https://text.pollinations.ai/', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ model:'openai', messages: [{role:'system', content:SYS}].concat(hist) })
-    }).then(function(r){ return r.text(); }).then(function(txt){
-      var out = txt;
-      try { var j = JSON.parse(txt); if (j.choices && j.choices[0]) out = j.choices[0].message.content; } catch(e){}
+    }).then(function(r){ return r.text().then(function(txt){ return { ok: r.ok, txt: txt }; }); }).then(function(res){
+      var out = res.txt;
+      try { var j = JSON.parse(res.txt); if (j.choices && j.choices[0]) out = j.choices[0].message.content; } catch(e){}
+      if (!res.ok || /free limit reached|rate limit|too many requests/i.test(out)) throw new Error('busy');
       wait.stop(); wait.el.remove();
-      hist.push({role:'assistant', content:out}); render('assistant', out); save();
+      hist.push({role:'assistant', content:out}); render('assistant', out, hist.length - 1); save();
     }).catch(function(){
       wait.stop(); wait.el.remove();
       render('assistant', 'Maaf, layanan AI gratisnya sedang sibuk. Coba lagi sebentar lagi, ya.');
