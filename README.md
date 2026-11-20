@@ -86,6 +86,14 @@ Detail folder, skema database, model akses, dan alur data: lihat **[STRUKTUR.md]
 - [ ] Fase 5 — Mode baca manga/manhua/manhwa (termasuk mode gulir vertikal untuk manhwa/manhua)
 - [ ] Fase 6 — Pencarian lanjutan, rekomendasi, permintaan judul, koleksi komunitas, pencapaian & Rekap Senpai, dan pemolesan UI
 
+## ☕ Dukung SubSenpai (Donasi)
+
+SubSenpai dikembangkan secara mandiri dan masih tahap awal — biaya terbesar adalah sewa VPS untuk server & databasenya. Kalau kamu merasa proyek ini bermanfaat, kamu bisa ikut mendukung lewat QRIS berikut (bisa dari semua aplikasi pembayaran & e-wallet):
+
+<img src="donasi/qris-donasi.jpg" alt="QRIS Donasi SubSenpai" width="320">
+
+Terima kasih banyak atas dukungannya! 🙏
+
 ## ⚠️ Catatan
 
 Proyek hobi/eksperimen untuk belajar. Konten berasal dari sumber pihak ketiga; sebagian besar sumber resmi memakai kunci wilayah dan DRM, sehingga ketersediaan sumber adalah tantangan tersendiri. Subtitle dihasilkan mesin dan dapat mengandung kesalahan.
