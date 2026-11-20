@@ -33,7 +33,7 @@ SubSenpai/
 │       │   ├── admin/                  # Panel admin (detail: STRUKTUR_ADMIN.md)
 │       │   └── api/                    # API tipis (katalog, akses, subtitle, progres, webhook bayar, admin)
 │       ├── components/                 # Komponen UI (kartu judul, player, reader, dsb.)
-│       └── lib/                        # Client Supabase, cek akses (gate), util, tipe data
+│       └── lib/                        # Client Supabase, cek akses (gate), enkripsi response (crypto), util, tipe data
 ├── worker/
 │   └── subtitle/           # Worker subtitle (bagian dari Next.js / job terpisah)
 │       ├── queue.ts        # Ambil antrean episode tanpa subtitle
@@ -184,7 +184,30 @@ Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
   - Kustomisasi diperiksa di server. Bila langganan berakhir, tampilan kembali ke bawaan — pengaturan tetap tersimpan dan aktif lagi saat user berlangganan kembali.
 - **Moderasi**: batas laju pengiriman, filter kata terlarang, admin/mod dapat menghapus pesan (soft-delete) dan membisukan user (`chat_muted_until`); user dapat melaporkan pesan (masuk `reports` bertarget `chat_message`). Modul adminnya dirinci di STRUKTUR_ADMIN.md.
 
-## 9. Batasan yang Disadari
+## 9. Keamanan API — Enkripsi Response (`xdata` / `xtime`)
+
+Semua response JSON dari backend TIDAK dikirim mentah. Backend membungkusnya dalam **envelope terenkripsi**, dan aplikasi di sisi klien membukanya kembali menjadi response asal sebelum ditampilkan:
+
+```json
+{
+  "xdata": "m9lDub1JKs9VPPt4kHh7bC0_iehgM0IPWOgOBDBJ3gufKaK_KetuKjzGXnrTUNWdbhc84XP1_ifEJYb8AnYswqcZA2gR7VSZVXxNeuDqYy6d9RGo4ofz0cfbRwi0eZLoGuGDuMAvlMUr693R56OH4h-",
+  "xtime": 1726843096
+}
+```
+
+Spesifikasi:
+
+- **Algoritma**: AES-256-GCM (enkripsi + tag integritas). Kunci 32 byte disimpan sebagai env server `API_ENC_KEY` — tidak pernah masuk repo.
+- **Isi `xdata`**: `base64url( IV acak 12 byte ‖ ciphertext ‖ tag GCM )` dari response JSON asli (UTF-8). `xtime` (detik Unix saat response dibuat) dipakai sebagai *additional authenticated data* (AAD) — mengubah `xtime` membuat dekripsi gagal.
+- **Alur di aplikasi**: terima envelope → periksa `xtime` (ditolak bila selisih dengan waktu perangkat > 300 detik — anti-replay) → dekripsi → JSON asal → tampilkan. Bila tag GCM tidak cocok, response dianggap dimanipulasi dan dibuang.
+- **Penerapan terpusat**: enkripsi dilakukan satu helper pembungkus response di `lib/crypto.ts` (+ middleware), jadi tiap endpoint tidak mengimplementasikan sendiri-sendiri.
+- **Berlaku untuk**: semua endpoint JSON di `app/api/` (katalog, gerbang akses, subtitle, chat, premium, admin).
+- **Pengecualian**: webhook pembayaran (server-ke-server, punya tanda tangan gateway sendiri), file media/HLS/SRT dan halaman HTML (bukan JSON).
+- **Rotasi kunci**: mengganti `API_ENC_KEY` di server dan di aplikasi secara bersamaan; envelope tidak membawa versi kunci (format sengaja tetap dua field).
+
+Catatan jujur soal batas lapisan ini: kunci dekripsi harus ikut tertanam di aplikasi klien, jadi pada aplikasi web kunci itu pada prinsipnya bisa ditemukan orang yang sangat berniat. Lapisan ini berfungsi sebagai **anti-scraping** (API tidak bisa dipanen mentah-mentah), **integritas** (response yang diubah di tengah jalan ketahuan), dan **anti-replay** — BUKAN pengganti HTTPS, login, dan gerbang akses di server. Data yang benar-benar rahasia tidak boleh hanya mengandalkan lapisan ini.
+
+## 10. Batasan yang Disadari
 
 - Fungsi serverless Vercel punya batas durasi & bandwidth — tidak dipakai untuk streaming video maupun menjalankan model Whisper.
 - Project Supabase gratis bisa di-pause bila lama tidak aktif — aktivitas berkala menjaganya tetap bangun.
