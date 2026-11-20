@@ -48,6 +48,8 @@ Catatan: `worker/subtitle` versi awal berjalan sebagai job yang dipicu dari Next
 
 ## 3. Skema Database (Supabase / PostgreSQL)
 
+Diagram ERD, detail relasi, indeks, RLS, dan draf SQL lengkap ada di **[DATABASE.md](DATABASE.md)** — bagian ini ringkasannya.
+
 ### `titles` — katalog semua konten
 | Kolom | Tipe | Keterangan |
 | --- | --- | --- |

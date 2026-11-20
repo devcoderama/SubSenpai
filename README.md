@@ -58,7 +58,7 @@ Pemisahan berdasarkan **jenis data**, bukan per genre:
 | Worker subtitle | Next.js (antrean + terjemah + SRT) + API transkripsi cloud | Transkripsi dititipkan ke API Whisper (Groq/OpenAI); worker Python mandiri hanya bila perlu full offline |
 | Pembayaran | Midtrans / Xendit | Langganan premium (QRIS, e-wallet, transfer) |
 
-Detail folder, skema database, model akses, dan alur data: lihat **[STRUKTUR.md](STRUKTUR.md)**.
+Detail folder, skema database, model akses, dan alur data: lihat **[STRUKTUR.md](STRUKTUR.md)**. Diagram ERD dan draf SQL database: lihat **[DATABASE.md](DATABASE.md)**.
 
 ## 🗺️ Roadmap
 
