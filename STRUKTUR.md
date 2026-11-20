@@ -39,7 +39,7 @@ SubSenpai/
 │   │   ├── jobs/                       # Worker subtitle (antrean → transkripsi API → terjemah → SRT → R2), polling pembayaran, dsb.
 │   │   └── config/                     # Baca konfigurasi dari env
 │   ├── go.mod
-│   └── .env.example                    # DATABASE_URL, API_ENC_KEY, kredensial gateway & API transkripsi (contoh tanpa nilai asli)
+│   └── .env.example                    # DATABASE_URL, kredensial gateway & API transkripsi (contoh tanpa nilai asli)
 ├── supabase/
 │   ├── migrations/         # Migrasi skema PostgreSQL
 │   └── seed/               # Data awal (daftar genre, tipe, kanal chat, dsb.)
@@ -201,15 +201,19 @@ Semua response JSON dari backend TIDAK dikirim mentah. Backend membungkusnya dal
 
 Spesifikasi:
 
-- **Algoritma**: AES-256-GCM (enkripsi + tag integritas). Kunci 32 byte disimpan sebagai env server `API_ENC_KEY` — tidak pernah masuk repo.
-- **Isi `xdata`**: `base64url( IV acak 12 byte ‖ ciphertext ‖ tag GCM )` dari response JSON asli (UTF-8). `xtime` (detik Unix saat response dibuat) dipakai sebagai *additional authenticated data* (AAD) — mengubah `xtime` membuat dekripsi gagal.
-- **Alur di aplikasi**: terima envelope → periksa `xtime` (ditolak bila selisih dengan waktu perangkat > 300 detik — anti-replay) → dekripsi → JSON asal → tampilkan. Bila tag GCM tidak cocok, response dianggap dimanipulasi dan dibuang.
-- **Penerapan terpusat**: enkripsi dilakukan satu middleware pembungkus response di backend Go (`internal/middleware`, memakai `crypto/aes` + `crypto/cipher` bawaan Go), jadi tiap handler tidak mengimplementasikan sendiri-sendiri. Sisi aplikasi memakai modul dekripsi di klien Android (AES/GCM bawaan platform). Karena kuncinya tertanam di binary aplikasi (bukan halaman web), lapisan ini di aplikasi native sedikit lebih kuat daripada di web — tetap bukan pengganti autentikasi.
-- **Berlaku untuk**: semua endpoint JSON backend Go di `/api/v1/*` (katalog, gerbang akses, subtitle, chat, premium, admin).
-- **Pengecualian**: webhook pembayaran (server-ke-server, punya tanda tangan gateway sendiri), file media/HLS/SRT dan halaman HTML (bukan JSON).
-- **Rotasi kunci**: mengganti `API_ENC_KEY` di server dan di aplikasi secara bersamaan; envelope tidak membawa versi kunci (format sengaja tetap dua field).
+- **Kunci sesi sekali pakai (ECDH)** — TIDAK ada kunci enkripsi yang tertanam di aplikasi maupun disimpan permanen di server. Setiap sesi membuat kuncinya sendiri:
+  1. Saat aplikasi dibuka, aplikasi membuat pasangan kunci sementara **X25519** dan mengirim kunci publiknya ke endpoint handshake `POST /api/v1/session` (boleh anonim untuk tamu; membawa JWT bila sudah login).
+  2. Backend membuat pasangan kunci sementaranya sendiri, membalas kunci publiknya, dan kedua sisi menurunkan kunci sesi yang sama lewat **ECDH + HKDF-SHA256** (info: `subsenpai-xdata-v1`). Kunci rahasia bersama tidak pernah dikirim lewat jaringan.
+  3. Backend menyimpan kunci sesi di memori (peta `session_id → kunci`; `session_id` acak dikembalikan ke aplikasi dan dikirim balik sebagai header `X-Session-Id`); aplikasi menyimpan kuncinya di memori saja. Sesi berakhir (logout / aplikasi ditutup / kedaluwarsa maks 24 jam) → kunci dibuang dan handshake diulang.
+- **Enkripsi**: AES-256-GCM dengan kunci sesi. `xdata` = `base64url( IV acak 12 byte ‖ ciphertext ‖ tag GCM )` dari response JSON asli (UTF-8). `xtime` (detik Unix saat response dibuat) dipakai sebagai *additional authenticated data* (AAD) — mengubah `xtime` membuat dekripsi gagal.
+- **Alur di aplikasi**: terima envelope → periksa `xtime` (ditolak bila selisih dengan waktu perangkat > 300 detik — anti-replay) → dekripsi dengan kunci sesi → JSON asal → tampilkan. Bila tag GCM tidak cocok, response dianggap dimanipulasi dan dibuang; bila server menjawab sesi tidak dikenal/kedaluwarsa, aplikasi melakukan handshake ulang lalu mengulang request-nya.
+- **Penerapan terpusat**: enkripsi dilakukan satu middleware pembungkus response di backend Go (`internal/middleware`, memakai `crypto/aes` + `crypto/cipher` bawaan Go), jadi tiap handler tidak mengimplementasikan sendiri-sendiri. Sisi aplikasi memakai modul crypto klien Android (X25519 + AES/GCM bawaan platform).
+- **Berlaku untuk**: semua endpoint JSON backend Go di `/api/v1/*` (katalog, gerbang akses, subtitle, chat, premium, admin) — kecuali endpoint handshake itu sendiri.
+- **Pengecualian**: endpoint handshake `/api/v1/session` (bootstrap kunci; dilindungi HTTPS), webhook pembayaran (server-ke-server, punya tanda tangan gateway sendiri), dan file media/HLS/SRT (bukan JSON).
 
-Catatan jujur soal batas lapisan ini: kunci dekripsi harus ikut tertanam di aplikasi klien, jadi pada aplikasi web kunci itu pada prinsipnya bisa ditemukan orang yang sangat berniat. Lapisan ini berfungsi sebagai **anti-scraping** (API tidak bisa dipanen mentah-mentah), **integritas** (response yang diubah di tengah jalan ketahuan), dan **anti-replay** — BUKAN pengganti HTTPS, login, dan gerbang akses di server. Data yang benar-benar rahasia tidak boleh hanya mengandalkan lapisan ini.
+Kenapa bukan kunci dari signature URL atau kunci statis tertanam: path URL bersifat publik, jadi kunci semacam itu bertumpu pada satu secret induk yang tertanam di APK — sekali terbongkar, seluruh endpoint dan seluruh user terbuka selamanya. Dengan kunci sesi ECDH, membongkar APK tidak menghasilkan kunci apa pun, satu kunci yang bocor hanya membuka satu sesi, dan traffic lama yang terekam tidak bisa didekripsi belakangan karena kunci sementaranya sudah dibuang (*forward secrecy*).
+
+Catatan jujur soal batas lapisan ini: penyerang yang sangat berniat tetap bisa meniru handshake aplikasi dan berbicara ke API seperti aplikasi asli. Lapisan ini berfungsi sebagai **anti-scraping massal**, **integritas**, **anti-replay**, dan **kerahasiaan per sesi** — BUKAN pengganti HTTPS, login, dan gerbang akses di server.
 
 ## 10. Deployment (VPS)
 
@@ -224,7 +228,7 @@ Satu VPS menjalankan seluruh aplikasi (spesifikasi awal cukup 1–2 vCPU / 1–2
 | Berkas | Cloudflare R2 — di luar VPS | — |
 
 - Caddy meneruskan seluruh request (API publik, mis. `api.subsenpai...`) ke backend Go; hanya Caddy yang terekspos ke internet, layanan Go hanya mendengarkan di localhost.
-- Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, `API_ENC_KEY`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi/terjemahan, kredensial R2. Tidak masuk repo (repo hanya berisi `.env.example`).
+- Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi/terjemahan, kredensial R2. Tidak masuk repo (repo hanya berisi `.env.example`). Kunci sesi `xdata` TIDAK termasuk env/disk — dibuat per sesi dan hidup di memori saja (Bagian 9).
 - Alur rilis: `go build` → unggah binary → `systemctl restart subsenpai-api subsenpai-worker`. Pembaruan aplikasi Android lewat rilis APK/Play Store seperti biasa (di luar VPS).
 - Cadangan: database diurus Supabase; yang perlu dicadangkan dari VPS hanya file env dan konfigurasi `deploy/`.
 
