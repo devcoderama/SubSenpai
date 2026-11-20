@@ -57,8 +57,9 @@ Pemisahan berdasarkan **jenis data**, bukan per genre:
 | Video | Stream langsung dari sumber (HLS) | Tidak lewat server sendiri — hemat bandwidth & durasi |
 | Worker subtitle | Next.js (antrean + terjemah + SRT) + API transkripsi cloud | Transkripsi dititipkan ke API Whisper (Groq/OpenAI); worker Python mandiri hanya bila perlu full offline |
 | Pembayaran | Midtrans / Xendit | Langganan premium (QRIS, e-wallet, transfer) |
+| Panel admin | Route `/admin` (role admin) | Kelola katalog, subtitle, user, langganan + monitoring — [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) |
 
-Detail folder, skema database, model akses, dan alur data: lihat **[STRUKTUR.md](STRUKTUR.md)**. Diagram ERD dan draf SQL database: lihat **[DATABASE.md](DATABASE.md)**.
+Detail folder, skema database, model akses, dan alur data: lihat **[STRUKTUR.md](STRUKTUR.md)**. Diagram ERD dan draf SQL database: lihat **[DATABASE.md](DATABASE.md)**. Panel pengelolaan & pemantauan: lihat **[STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md)**.
 
 ## 🗺️ Roadmap
 

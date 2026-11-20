@@ -29,7 +29,8 @@ SubSenpai/
 │       │   ├── search/                 # Pencarian
 │       │   ├── watchlist/              # Watchlist user (login)
 │       │   ├── premium/                # Halaman langganan & pembayaran
-│       │   └── api/                    # API tipis (katalog, akses, subtitle, progres, webhook bayar)
+│       │   ├── admin/                  # Panel admin (detail: STRUKTUR_ADMIN.md)
+│       │   └── api/                    # API tipis (katalog, akses, subtitle, progres, webhook bayar, admin)
 │       ├── components/                 # Komponen UI (kartu judul, player, reader, dsb.)
 │       └── lib/                        # Client Supabase, cek akses (gate), util, tipe data
 ├── worker/
@@ -103,7 +104,7 @@ Diagram ERD, detail relasi, indeks, RLS, dan draf SQL lengkap ada di **[DATABASE
 ### Data user & monetisasi (Supabase Auth)
 - Akun dikelola **Supabase Auth** (`auth.users`) — tidak buat tabel kredensial sendiri.
 - **Login wajib Google (OAuth)** — hanya provider Google yang diaktifkan; pendaftaran email/password DIMATIKAN. Tujuannya menghindari bot: akun palsu harus lebih dulu memiliki akun Google yang lolos anti-abuse Google. Bukan anti-bot mutlak — lapisan cadangan bila masih kecolongan: Cloudflare Turnstile (captcha tak terlihat, gratis) di endpoint sensitif + rate limit API.
-- `profiles` — 1:1 dengan user: nama tampil, avatar, `is_premium` (cache status), `premium_until`.
+- `profiles` — 1:1 dengan user: nama tampil, avatar, `is_premium` (cache status), `premium_until`, `role` (`user`/`admin` — penanda akses panel admin).
 - `subscriptions` — user_id, plan, status (`active`/`expired`/`cancelled`), current_period_end, provider (`midtrans`/`xendit`), provider_ref.
 - `watchlist` — user_id + title_id.
 - `watch_history` — user_id + episode_id + posisi terakhir (detik) + updated_at.
@@ -123,7 +124,11 @@ Penegakan: setiap permintaan memutar episode / membuka chapter melewati cek akse
 2. Tamu → cek `guest_access`: belum pernah membuka episode/chapter apa pun → lolos dan catat; sudah → tolak dengan ajakan login.
 3. Status premium bersumber dari `subscriptions` (diperbarui webhook payment gateway), `profiles.is_premium` hanya cache bacaan cepat.
 
-## 5. Alur Data
+## 5. Panel Admin
+
+Pengelolaan & pemantauan berjalan di route `/admin` dalam aplikasi yang sama, khusus user ber-`role = 'admin'` (dicek di server, bukan sekadar menu disembunyikan). Modulnya: dashboard ringkasan, manajemen katalog, manajemen subtitle (antrean + retry), manajemen user, langganan & pembayaran, laporan user, monitoring, dan pengaturan platform. Rancangan lengkapnya: **[STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md)**.
+
+## 6. Alur Data
 
 1. **Katalog masuk** — metadata judul & episode/chapter ditulis ke Supabase; poster & halaman komik diunggah ke R2.
 2. **User membuka halaman nonton/baca** — API mengecek gerbang akses (Bagian 4) → Next.js membaca metadata dari Supabase → player memutar `video_url` langsung dari sumber / reader memuat gambar halaman dari R2.
@@ -134,7 +139,7 @@ Penegakan: setiap permintaan memutar episode / membuka chapter melewati cek akse
 5. **Progres** — player/reader melaporkan posisi terakhir ke API → `watch_history` / `read_history` (user login).
 6. **Premium** — user membayar via Midtrans/Xendit → webhook memperbarui `subscriptions` + `profiles.is_premium` → iklan berhenti tampil.
 
-## 6. Batasan yang Disadari
+## 7. Batasan yang Disadari
 
 - Fungsi serverless Vercel punya batas durasi & bandwidth — tidak dipakai untuk streaming video maupun menjalankan model Whisper.
 - Project Supabase gratis bisa di-pause bila lama tidak aktif — aktivitas berkala menjaganya tetap bangun.

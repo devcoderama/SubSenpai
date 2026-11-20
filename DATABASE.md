@@ -20,6 +20,8 @@ erDiagram
     profiles ||--o{ read_history : "user membaca"
     chapters ||--o{ read_history : "chapter dibaca"
     titles ||--o{ guest_access : "judul diakses tamu"
+    profiles ||--o{ reports : "user melaporkan"
+    profiles ||--o{ admin_logs : "admin bertindak"
 
     titles {
         uuid id PK
@@ -73,6 +75,7 @@ erDiagram
         text avatar_url
         boolean is_premium "cache status"
         timestamptz premium_until
+        text role "user|admin"
     }
     subscriptions {
         uuid id PK
@@ -108,6 +111,23 @@ erDiagram
         uuid chapter_id FK "salah satu terisi"
         timestamptz used_at
     }
+    reports {
+        uuid id PK
+        uuid user_id FK "pelapor, boleh kosong"
+        text target_kind "episode|chapter|subtitle"
+        uuid target_id "id target yang dilaporkan"
+        text reason
+        text status "open|resolved|dismissed"
+        timestamptz created_at
+    }
+    admin_logs {
+        uuid id PK
+        uuid admin_id FK
+        text action "mis. premium_grant, subtitle_retry"
+        text target "tabel:id yang diubah"
+        jsonb detail
+        timestamptz created_at
+    }
 ```
 
 Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar sebagai tabel aplikasi). `profiles.id` adalah FK 1:1 ke `auth.users.id`. Login **wajib Google OAuth**; pendaftaran email/password dimatikan.
@@ -127,6 +147,8 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 | `watch_history` | Posisi tontonan terakhir per episode | User |
 | `read_history` | Halaman terakhir per chapter | User |
 | `guest_access` | Jejak akses tamu untuk menegakkan batas 1 episode/chapter | Akses |
+| `reports` | Laporan user soal konten rusak (link mati, subtitle salah) | Admin |
+| `admin_logs` | Jejak audit aksi admin di panel | Admin |
 
 ## 3. Relasi (Foreign Key)
 
@@ -140,13 +162,17 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `watch_history (user_id, episode_id)` — kunci utama gabungan
 - `read_history (user_id, chapter_id)` — kunci utama gabungan
 - `guest_access` — `title_id` selalu terisi; tepat satu dari `episode_id` / `chapter_id` terisi
+- `reports.user_id → profiles.id` (boleh kosong untuk laporan tamu; `ON DELETE SET NULL`) — target laporan bersifat polimorfik lewat (`target_kind`, `target_id`), tanpa FK keras
+- `admin_logs.admin_id → profiles.id`
 
 ## 4. Nilai yang Dibatasi (cek/enum)
 
 - `titles.type` ∈ `anime, donghua, film, manga, manhua, manhwa`
 - `titles.status` ∈ `ongoing, completed`
 - `subtitles.source` ∈ `caption, whisper`; `subtitles.status` ∈ `queued, processing, done, failed`
-- `subscriptions.status` ∈ `active, expired, cancelled`; `subscriptions.provider` ∈ `midtrans, xendit`
+- `subscriptions.status` ∈ `active, expired, cancelled`; `subscriptions.provider` ∈ `midtrans, xendit, manual` (`manual` = diberi admin dari panel)
+- `profiles.role` ∈ `user, admin`
+- `reports.target_kind` ∈ `episode, chapter, subtitle`; `reports.status` ∈ `open, resolved, dismissed`
 
 ## 5. Indeks Penting
 
@@ -166,6 +192,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - **Katalog** (`titles`, `episodes`, `chapters`, `chapter_pages`, `subtitles`): boleh DIBACA publik (`anon` + `authenticated`); tulis hanya lewat **service role** (impor katalog & worker). Akses menonton tetap digerbang di API aplikasi (cek Bagian 4 STRUKTUR.md), bukan di RLS.
 - **Milik user** (`profiles`, `subscriptions`, `watchlist`, `watch_history`, `read_history`): user hanya bisa membaca/mengubah baris miliknya (`auth.uid() = id / user_id`). `subscriptions` hanya bisa diubah oleh service role (webhook pembayaran); user cukup membaca statusnya.
 - **`guest_access`**: hanya service role (ditulis/dicek oleh API).
+- **`reports`**: user login bisa MEMBUAT laporan atas namanya; membaca & mengubah status hanya admin. **`admin_logs`**: ditulis service role (dari API admin), dibaca hanya admin.
 
 ## 7. Draf SQL (titik awal migrasi)
 
@@ -232,7 +259,8 @@ create table profiles (
   display_name text,
   avatar_url text,
   is_premium boolean not null default false,
-  premium_until timestamptz
+  premium_until timestamptz,
+  role text not null default 'user' check (role in ('user','admin'))
 );
 
 create table subscriptions (
@@ -241,7 +269,7 @@ create table subscriptions (
   plan text not null,
   status text not null default 'active' check (status in ('active','expired','cancelled')),
   current_period_end timestamptz,
-  provider text check (provider in ('midtrans','xendit')),
+  provider text check (provider in ('midtrans','xendit','manual')),
   provider_ref text
 );
 
@@ -280,4 +308,25 @@ create table guest_access (
   check ((episode_id is not null) <> (chapter_id is not null))
 );
 create index guest_access_device_idx on guest_access (device_key);
+
+create table reports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) on delete set null,
+  target_kind text not null check (target_kind in ('episode','chapter','subtitle')),
+  target_id uuid not null,
+  reason text not null,
+  status text not null default 'open' check (status in ('open','resolved','dismissed')),
+  created_at timestamptz not null default now()
+);
+create index reports_status_idx on reports (status, created_at desc);
+
+create table admin_logs (
+  id uuid primary key default gen_random_uuid(),
+  admin_id uuid not null references profiles(id) on delete cascade,
+  action text not null,
+  target text,
+  detail jsonb,
+  created_at timestamptz not null default now()
+);
+create index admin_logs_admin_idx on admin_logs (admin_id, created_at desc);
 ```
