@@ -1,6 +1,6 @@
 # FITUR.md — Fitur Tambahan SubSenpai
 
-Dokumen rancangan **resmi** untuk fitur-fitur gelombang ketiga (F13–F22), keempat (F23–F30), dan kelima (F31–F39), disetujui 20 Nov 2026 dan dipindahkan dari REKOMENDASI.md putaran 3, 4, dan 5. Dokumen ini adalah pendamping [STRUKTUR.md](STRUKTUR.md) (arsitektur & fitur inti), [DATABASE.md](DATABASE.md) (skema dasar), [KEAMANAN.md](KEAMANAN.md), dan [OPTIMASI.md](OPTIMASI.md). Perubahan skema dirinci per fitur dan menjadi bagian dari skema saat fase pembangunan; bila ada pertentangan, dokumen yang lebih spesifik untuk topiknya yang berlaku.
+Dokumen rancangan **resmi** untuk fitur-fitur gelombang ketiga (F13–F22), keempat (F23–F30), dan kelima (F31–F39), disetujui 20 Nov 2026 dan dipindahkan dari REKOMENDASI.md putaran 3, 4, dan 5. Dokumen ini adalah pendamping [STRUKTUR.md](STRUKTUR.md) (arsitektur & fitur inti), [DATABASE.md](database/DATABASE.md) (skema dasar), [KEAMANAN.md](KEAMANAN.md), dan [OPTIMASI.md](OPTIMASI.md). Perubahan skema dirinci per fitur dan menjadi bagian dari skema saat fase pembangunan; bila ada pertentangan, dokumen yang lebih spesifik untuk topiknya yang berlaku.
 
 ---
 

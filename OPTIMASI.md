@@ -1,6 +1,6 @@
 # OPTIMASI.md — Optimasi Resmi SubSenpai
 
-Dokumen **resmi** untuk optimasi O9–O15 dari REKOMENDASI.md putaran 3, O16 dan O18–O21 dari putaran 4, dan O22–O27 dari putaran 5 (disetujui 20 Nov 2026; O17 Gerbang Versi Minimum ada di KEAMANAN.md), melengkapi optimasi yang sudah lebih dulu masuk [STRUKTUR.md](STRUKTUR.md) pada putaran 1–2 (cache katalog, Cloudflare, endpoint beranda gabungan, pagination kursor, FTS, sinkronisasi delta, prefetch, dsb.). Pendamping [DATABASE.md](DATABASE.md), [FITUR.md](FITUR.md), dan [KEAMANAN.md](KEAMANAN.md). Perubahan skema dirinci per item.
+Dokumen **resmi** untuk optimasi O9–O15 dari REKOMENDASI.md putaran 3, O16 dan O18–O21 dari putaran 4, dan O22–O27 dari putaran 5 (disetujui 20 Nov 2026; O17 Gerbang Versi Minimum ada di KEAMANAN.md), melengkapi optimasi yang sudah lebih dulu masuk [STRUKTUR.md](STRUKTUR.md) pada putaran 1–2 (cache katalog, Cloudflare, endpoint beranda gabungan, pagination kursor, FTS, sinkronisasi delta, prefetch, dsb.). Pendamping [DATABASE.md](database/DATABASE.md), [FITUR.md](FITUR.md), dan [KEAMANAN.md](KEAMANAN.md). Perubahan skema dirinci per item.
 
 ---
 

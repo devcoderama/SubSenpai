@@ -24,7 +24,7 @@ SubSenpai/
 ├── README.md               # Gambaran umum proyek
 ├── STRUKTUR.md             # Dokumen ini
 ├── STRUKTUR_ADMIN.md       # Rancangan panel admin
-├── DATABASE.md             # Skema database (ERD + SQL)
+├── database/               # DATABASE.md (skema database: ERD + SQL) + database.sql (draf SQL)
 ├── android/                # Aplikasi Android (Kotlin) — SATU-SATUNYA klien, berjalan di perangkat user (rincian: android/README.md)
 │   └── app/src/main/java/com/subsenpai/
 │       ├── ui/                         # Layar: beranda, telusur, detail, player, reader, chat, dm, teman, grup, koleksi, pencapaian, rekap, keamanan akun, premium, watchlist, admin
@@ -57,7 +57,7 @@ Catatan: backend Go dibangun menjadi binary (`go build`) lalu dijalankan systemd
 
 ## 3. Skema Database (PostgreSQL Lokal di VPS)
 
-Diagram ERD, detail relasi, indeks, kontrol akses, dan draf SQL lengkap ada di **[DATABASE.md](DATABASE.md)** — bagian ini ringkasannya.
+Diagram ERD, detail relasi, indeks, kontrol akses, dan draf SQL lengkap ada di **[DATABASE.md](database/DATABASE.md)** — bagian ini ringkasannya.
 
 ### `titles` — katalog semua konten
 | Kolom | Tipe | Keterangan |

@@ -1,6 +1,6 @@
 # KEAMANAN.md — Rancangan Keamanan SubSenpai
 
-Dokumen keamanan **resmi** SubSenpai: merangkum lapisan keamanan yang sudah dirancang di dokumen lain (dengan rujukannya) dan merinci keamanan gelombang ketiga sampai kelima — terutama **O8 Play Integrity** (putaran 3) dan **O17 Gerbang Versi Minimum** (putaran 4), disetujui 20 Nov 2026. Pendamping [STRUKTUR.md](STRUKTUR.md), [DATABASE.md](DATABASE.md), [FITUR.md](FITUR.md), dan [OPTIMASI.md](OPTIMASI.md).
+Dokumen keamanan **resmi** SubSenpai: merangkum lapisan keamanan yang sudah dirancang di dokumen lain (dengan rujukannya) dan merinci keamanan gelombang ketiga sampai kelima — terutama **O8 Play Integrity** (putaran 3) dan **O17 Gerbang Versi Minimum** (putaran 4), disetujui 20 Nov 2026. Pendamping [STRUKTUR.md](STRUKTUR.md), [DATABASE.md](database/DATABASE.md), [FITUR.md](FITUR.md), dan [OPTIMASI.md](OPTIMASI.md).
 
 ---
 

@@ -1,6 +1,6 @@
 # STRUKTUR_ADMIN.md — Panel Admin SubSenpai
 
-Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) dan **memantau** (antrean worker, kesehatan layanan, aktivitas) SubSenpai. Panel ini adalah **website terpisah khusus admin** (bukan bagian dari aplikasi Android — aplikasi user tidak memiliki layar maupun menu admin sama sekali). Website admin di-deploy di VPS yang sama di belakang Caddy pada alamat khusus admin; seluruh datanya dilayani **backend Go** lewat endpoint admin `/api/v1/admin/*` dengan cek role di backend. Skema database pendukung ada di [DATABASE.md](DATABASE.md); struktur aplikasi utama di [STRUKTUR.md](STRUKTUR.md).
+Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) dan **memantau** (antrean worker, kesehatan layanan, aktivitas) SubSenpai. Panel ini adalah **website terpisah khusus admin** (bukan bagian dari aplikasi Android — aplikasi user tidak memiliki layar maupun menu admin sama sekali). Website admin di-deploy di VPS yang sama di belakang Caddy pada alamat khusus admin; seluruh datanya dilayani **backend Go** lewat endpoint admin `/api/v1/admin/*` dengan cek role di backend. Skema database pendukung ada di [DATABASE.md](database/DATABASE.md); struktur aplikasi utama di [STRUKTUR.md](STRUKTUR.md).
 
 ## 1. Akses & Keamanan
 
@@ -106,7 +106,7 @@ Panel admin memakai tabel yang sama dengan aplikasi utama, ditambah:
 | `title_requests` + `title_request_votes` | Permintaan judul dari user + suara dukungan — ditindaklanjuti dari modul Katalog |
 | `user_devices` | Registri perangkat per akun — batas perangkat premium & pencabutan sesi |
 
-Detail kolom, relasi, dan SQL-nya ada di [DATABASE.md](DATABASE.md).
+Detail kolom, relasi, dan SQL-nya ada di [DATABASE.md](database/DATABASE.md).
 
 ## 5. Contoh Alur
 

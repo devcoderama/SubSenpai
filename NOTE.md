@@ -1,6 +1,6 @@
 # NOTE.md — Catatan Keputusan & Pertimbangan SubSenpai
 
-Catatan keputusan yang belum (atau sengaja tidak) menjadi bagian dokumen rancangan utama, disimpan agar alasannya tidak hilang. Dokumen rancangan: [README.md](README.md) · [STRUKTUR.md](STRUKTUR.md) · [DATABASE.md](DATABASE.md) · [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) · [FITUR.md](FITUR.md) · [KEAMANAN.md](KEAMANAN.md) · [OPTIMASI.md](OPTIMASI.md).
+Catatan keputusan yang belum (atau sengaja tidak) menjadi bagian dokumen rancangan utama, disimpan agar alasannya tidak hilang. Dokumen rancangan: [README.md](README.md) · [STRUKTUR.md](STRUKTUR.md) · [DATABASE.md](database/DATABASE.md) · [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) · [FITUR.md](FITUR.md) · [KEAMANAN.md](KEAMANAN.md) · [OPTIMASI.md](OPTIMASI.md).
 
 ---
 

@@ -7,9 +7,9 @@
 
 ✓ [README.md](README.md) → visi, fitur ringkas, model akses, arsitektur ringkas, roadmap, dan donasi
 ✓ [STRUKTUR.md](STRUKTUR.md) → arsitektur final: aplikasi Android Kotlin + backend Go + PostgreSQL lokal di VPS + worker
-✓ [DATABASE.md](DATABASE.md) → skema dasar 36 tabel, ERD, relasi, enum, indeks, dan draf SQL
+✓ [database/DATABASE.md](database/DATABASE.md) → skema dasar 36 tabel, ERD, relasi, enum, indeks, dan draf SQL
 ✓ [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) → panel admin website terpisah khusus admin
-✓ [STRUKTUR.md](STRUKTUR.md) + [DATABASE.md](DATABASE.md) + [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) → rekomendasi putaran 1–2 terintegrasi resmi
+✓ [STRUKTUR.md](STRUKTUR.md) + [database/DATABASE.md](database/DATABASE.md) + [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) → rekomendasi putaran 1–2 terintegrasi resmi
 ✓ [FITUR.md](FITUR.md) → fitur resmi F13–F39
 ✓ [KEAMANAN.md](KEAMANAN.md) → keamanan resmi, Play Integrity O8, gerbang versi minimum O17, dan token integrasi F35
 ✓ [OPTIMASI.md](OPTIMASI.md) → optimasi resmi O9–O27
@@ -17,8 +17,9 @@
 ✓ [PROGRES.md](PROGRES.md) → peta alur progres ini
 ✓ [android/README.md](android/README.md) → struktur aplikasi Android (folder `android/` di akar repo)
 ✓ [web_admin/README.md](web_admin/README.md) → struktur panel admin web (folder `web_admin/` di akar repo)
-- [DATABASE.md](DATABASE.md) → sinkronisasi final seluruh perubahan skema F13–F39 dan O8–O27 ke ERD, relasi, enum, indeks, dan DDL
-- [DATABASE.md](DATABASE.md) → migrasi awal final dari DDL hasil sinkronisasi
+- [database/DATABASE.md](database/DATABASE.md) → sinkronisasi final seluruh perubahan skema F13–F39 dan O8–O27 ke ERD, relasi, enum, indeks, dan DDL
+- [database/DATABASE.md](database/DATABASE.md) → migrasi awal final dari DDL hasil sinkronisasi
+✓ [database/database.sql](database/database.sql) → draf SQL skema dasar (diekstrak dari DATABASE.md Bagian 7)
 
 ## Alur Pembangunan
 
