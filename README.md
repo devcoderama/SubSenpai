@@ -54,7 +54,7 @@ Pemisahan berdasarkan **jenis data**, bukan per genre:
 
 | Bagian | Teknologi | Fungsi |
 | --- | --- | --- |
-| Frontend | Next.js (standalone) di VPS | Katalog, player, reader, Chat Global, panel admin — tampilan saja |
+| Klien | Aplikasi Android (Kotlin) di perangkat user | Katalog, player, reader, Chat Global, panel admin — semua tampilan & interaksi; tidak ada versi web |
 | Backend API | **Go** di VPS (binary + systemd, di belakang Caddy) | Semua logika: katalog, gerbang akses, subtitle, chat, premium, voucher, admin + enkripsi response `xdata`/`xtime` |
 | Database + Auth | Supabase (PostgreSQL) | Katalog multi-konten, episode/chapter, subtitle, user, langganan |
 | File storage | Cloudflare R2 / Supabase Storage | Poster, halaman komik & file subtitle (.srt/.ass) |

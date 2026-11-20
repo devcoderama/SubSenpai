@@ -7,7 +7,7 @@ Rancangan struktur proyek: susunan folder, skema database, model akses, dan alur
 - **Satu katalog, banyak tipe konten.** Anime, donghua, film, manga, manhua, manhwa hidup di tabel katalog yang sama dengan kolom `type`. Database TIDAK dipecah per genre maupun per tipe: genre dan tipe hanyalah kolom, karena pencarian lintas keduanya tidak bisa di-JOIN antar-database.
 - **Pisah per jenis data.** Metadata di PostgreSQL, berkas (poster, halaman komik, subtitle) di object storage, video tidak disimpan sama sekali.
 - **Video tidak pernah disimpan / tidak lewat server sendiri.** Player memutar stream HLS langsung dari sumber; server hanya menyimpan metadata dan URL.
-- **Backend Go di VPS.** Backend ditulis dengan **Go** dan dijalankan di **VPS** sebagai binary mandiri di belakang reverse proxy — bukan serverless. Satu binary ringan (hemat RAM, tanpa runtime tambahan) melayani API; proses latar (antrean subtitle, polling pembayaran) berjalan sebagai goroutine/job terjadwal di layanan yang sama atau binary worker terpisah. Frontend Next.js hanya tampilan (mode standalone, boleh di VPS yang sama) — semua logika, gerbang akses, dan data lewat API Go.
+- **Backend Go di VPS.** Backend ditulis dengan **Go** dan dijalankan di **VPS** sebagai binary mandiri di belakang reverse proxy — bukan serverless. Satu binary ringan (hemat RAM, tanpa runtime tambahan) melayani API; proses latar (antrean subtitle, polling pembayaran) berjalan sebagai goroutine/job terjadwal di layanan yang sama atau binary worker terpisah. **Tidak ada frontend web** — satu-satunya klien adalah **aplikasi Android (Kotlin)** yang berjalan di perangkat user dan berbicara ke API Go; semua logika, gerbang akses, dan data ada di backend.
 - **Database & Auth tetap Supabase.** PostgreSQL + Supabase Auth (login Google) tetap dipakai; backend Go mengakses PostgreSQL secara langsung (driver pgx) dan memverifikasi token JWT Supabase Auth di middleware. Yang berubah hanya tempat komputasi berjalan (VPS), bukan skema datanya.
 - **Proses berat di job latar.** Antrean subtitle, terjemahan, dan pembangunan SRT dikerjakan job latar Go, tetapi transkripsi Whisper dititipkan ke API cloud (Groq/OpenAI) — VPS tidak punya GPU. Worker Python mandiri (faster-whisper di mesin GPU) hanya opsi bila nanti perlu full offline.
 - **Gerbang akses ditegakkan di server.** Batas tamu/premium dicek di API Go, bukan sekadar menyembunyikan tombol di UI.
@@ -22,21 +22,11 @@ SubSenpai/
 ├── STRUKTUR_ADMIN.md       # Rancangan panel admin
 ├── DATABASE.md             # Skema database (ERD + SQL)
 ├── apps/
-│   └── web/                # Frontend Next.js — tampilan saja (standalone, TANPA folder api/)
-│       ├── app/
-│       │   ├── page.tsx                # Beranda: katalog & sorotan
-│       │   ├── browse/[type]/          # Telusur per tipe (anime/donghua/film/manga/...)
-│       │   ├── title/[slug]/           # Halaman detail judul + daftar episode/chapter
-│       │   ├── watch/[episodeId]/      # Halaman nonton (player + subtitle)
-│       │   ├── read/[chapterId]/       # Halaman baca komik (per halaman gambar)
-│       │   ├── genre/[genre]/          # Telusur per genre
-│       │   ├── search/                 # Pencarian
-│       │   ├── watchlist/              # Watchlist user (login)
-│       │   ├── premium/                # Halaman langganan & pembayaran
-│       │   ├── chat/                   # Chat Global (kanal realtime)
-│       │   └── admin/                  # Panel admin (detail: STRUKTUR_ADMIN.md)
-│       ├── components/                 # Komponen UI (kartu judul, player, reader, dsb.)
-│       └── lib/                        # Klien API (fetch + dekripsi xdata/xtime), sesi Supabase Auth, tipe data, util UI
+│   └── android/            # Aplikasi Android (Kotlin) — SATU-SATUNYA klien, berjalan di perangkat user
+│       └── app/src/main/java/com/subsenpai/
+│           ├── ui/                     # Layar: beranda, telusur, detail, player, reader, chat, premium, watchlist, admin
+│           ├── data/                   # Klien API Go (Retrofit/OkHttp) + dekripsi xdata/xtime, sesi Supabase Auth, model data
+│           └── player/                 # Player HLS (Media3/ExoPlayer) + overlay subtitle
 ├── backend/                # Backend Go — dijalankan di VPS
 │   ├── cmd/
 │   │   ├── server/                     # main.go — layanan HTTP API
@@ -55,11 +45,11 @@ SubSenpai/
 │   └── seed/               # Data awal (daftar genre, tipe, kanal chat, dsb.)
 ├── deploy/
 │   ├── Caddyfile           # Reverse proxy + HTTPS otomatis (Let's Encrypt)
-│   └── systemd/            # subsenpai-api.service, subsenpai-worker.service, subsenpai-web.service
+│   └── systemd/            # subsenpai-api.service, subsenpai-worker.service
 └── docs/                   # Catatan tambahan (sumber data, riset iklan, dsb.)
 ```
 
-Catatan: backend Go dibangun menjadi binary (`go build`) lalu dijalankan systemd di VPS — tidak perlu Docker maupun runtime lain. Frontend Next.js dibangun mode standalone dan dijalankan sebagai layanan Node terpisah di VPS yang sama. Rincian deployment ada di Bagian 10.
+Catatan: backend Go dibangun menjadi binary (`go build`) lalu dijalankan systemd di VPS — tidak perlu Docker, Node, maupun runtime lain; VPS hanya menjalankan layanan Go + Caddy. Aplikasi Android didistribusikan sebagai APK / lewat Play Store. Rincian deployment ada di Bagian 10.
 
 ## 3. Skema Database (Supabase / PostgreSQL)
 
@@ -118,6 +108,7 @@ Diagram ERD, detail relasi, indeks, RLS, dan draf SQL lengkap ada di **[DATABASE
 ### Data user & monetisasi (Supabase Auth)
 - Akun dikelola **Supabase Auth** (`auth.users`) — tidak buat tabel kredensial sendiri.
 - **Login wajib Google (OAuth)** — hanya provider Google yang diaktifkan; pendaftaran email/password DIMATIKAN. Tujuannya menghindari bot: akun palsu harus lebih dulu memiliki akun Google yang lolos anti-abuse Google. Bukan anti-bot mutlak — lapisan cadangan bila masih kecolongan: Cloudflare Turnstile (captcha tak terlihat, gratis) di endpoint sensitif + rate limit API.
+- Alur login di aplikasi: user masuk lewat **Google Sign-In** di Android → token ID Google ditukar menjadi sesi Supabase Auth (`signInWithIdToken`) → JWT sesi dikirim sebagai header `Authorization` ke API Go pada setiap request, dan backend memverifikasinya.
 - `profiles` — 1:1 dengan user: nama tampil, avatar, `is_premium` (cache status), `premium_until`, `role` (`user`/`admin` — penanda akses panel admin).
 - `subscriptions` — user_id, plan, status (`active`/`expired`/`cancelled`), current_period_end, provider (`midtrans`/`xendit`/`manual`/`voucher`), provider_ref.
 - `vouchers` — kode premium sekali pakai: dibuat admin (promo, bisa ditujukan ke user tertentu) atau dibeli user untuk dihadiahkan ke user lain; penukaran menambah hari premium penukar (detail di DATABASE.md).
@@ -141,7 +132,7 @@ Penegakan: setiap permintaan memutar episode / membuka chapter melewati cek akse
 
 ## 5. Panel Admin
 
-Pengelolaan & pemantauan berjalan di route `/admin` pada frontend, khusus user ber-`role = 'admin'` (dicek di backend Go pada setiap request API admin, bukan sekadar menu disembunyikan). Modulnya: dashboard ringkasan, manajemen katalog, manajemen subtitle (antrean + retry), manajemen user, langganan & pembayaran, voucher premium, laporan user, monitoring, dan pengaturan platform. Rancangan lengkapnya: **[STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md)**.
+Pengelolaan & pemantauan berjalan sebagai **layar admin di dalam aplikasi yang sama**, khusus user ber-`role = 'admin'` (menu admin disembunyikan untuk user biasa DAN tetap dicek di backend Go pada setiap request API admin). Modulnya: dashboard ringkasan, manajemen katalog, manajemen subtitle (antrean + retry), manajemen user, langganan & pembayaran, voucher premium, laporan user, monitoring, dan pengaturan platform. Rancangan lengkapnya: **[STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md)**.
 
 ## 6. Alur Data
 
@@ -213,7 +204,7 @@ Spesifikasi:
 - **Algoritma**: AES-256-GCM (enkripsi + tag integritas). Kunci 32 byte disimpan sebagai env server `API_ENC_KEY` — tidak pernah masuk repo.
 - **Isi `xdata`**: `base64url( IV acak 12 byte ‖ ciphertext ‖ tag GCM )` dari response JSON asli (UTF-8). `xtime` (detik Unix saat response dibuat) dipakai sebagai *additional authenticated data* (AAD) — mengubah `xtime` membuat dekripsi gagal.
 - **Alur di aplikasi**: terima envelope → periksa `xtime` (ditolak bila selisih dengan waktu perangkat > 300 detik — anti-replay) → dekripsi → JSON asal → tampilkan. Bila tag GCM tidak cocok, response dianggap dimanipulasi dan dibuang.
-- **Penerapan terpusat**: enkripsi dilakukan satu middleware pembungkus response di backend Go (`internal/middleware`, memakai `crypto/aes` + `crypto/cipher` bawaan Go), jadi tiap handler tidak mengimplementasikan sendiri-sendiri. Sisi aplikasi memakai helper dekripsi di `apps/web/lib`.
+- **Penerapan terpusat**: enkripsi dilakukan satu middleware pembungkus response di backend Go (`internal/middleware`, memakai `crypto/aes` + `crypto/cipher` bawaan Go), jadi tiap handler tidak mengimplementasikan sendiri-sendiri. Sisi aplikasi memakai modul dekripsi di klien Android (AES/GCM bawaan platform). Karena kuncinya tertanam di binary aplikasi (bukan halaman web), lapisan ini di aplikasi native sedikit lebih kuat daripada di web — tetap bukan pengganti autentikasi.
 - **Berlaku untuk**: semua endpoint JSON backend Go di `/api/v1/*` (katalog, gerbang akses, subtitle, chat, premium, admin).
 - **Pengecualian**: webhook pembayaran (server-ke-server, punya tanda tangan gateway sendiri), file media/HLS/SRT dan halaman HTML (bukan JSON).
 - **Rotasi kunci**: mengganti `API_ENC_KEY` di server dan di aplikasi secara bersamaan; envelope tidak membawa versi kunci (format sengaja tetap dua field).
@@ -227,20 +218,20 @@ Satu VPS menjalankan seluruh aplikasi (spesifikasi awal cukup 1–2 vCPU / 1–2
 | Komponen | Bentuk | Port lokal |
 | --- | --- | --- |
 | Reverse proxy | Caddy (HTTPS otomatis Let's Encrypt) | 80/443 (publik) |
-| Frontend | Next.js standalone (layanan Node, systemd `subsenpai-web`) | 3000 |
 | Backend API | Binary Go (systemd `subsenpai-api`) | 8080 |
 | Worker | Binary Go kedua dari basis kode yang sama (systemd `subsenpai-worker`) — antrean subtitle, polling GoPay, pembersih sesi | — |
 | Database & Auth | Supabase (PostgreSQL + Google OAuth) — di luar VPS | — |
 | Berkas | Cloudflare R2 — di luar VPS | — |
 
-- Caddy meneruskan `/api/*` ke backend Go dan sisanya ke frontend; hanya Caddy yang terekspos ke internet.
+- Caddy meneruskan seluruh request (API publik, mis. `api.subsenpai...`) ke backend Go; hanya Caddy yang terekspos ke internet, layanan Go hanya mendengarkan di localhost.
 - Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, `API_ENC_KEY`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi/terjemahan, kredensial R2. Tidak masuk repo (repo hanya berisi `.env.example`).
-- Alur rilis: `go build` → unggah binary → `systemctl restart subsenpai-api subsenpai-worker`. Frontend: `next build` (standalone) → unggah → restart `subsenpai-web`.
+- Alur rilis: `go build` → unggah binary → `systemctl restart subsenpai-api subsenpai-worker`. Pembaruan aplikasi Android lewat rilis APK/Play Store seperti biasa (di luar VPS).
 - Cadangan: database diurus Supabase; yang perlu dicadangkan dari VPS hanya file env dan konfigurasi `deploy/`.
 
 ## 11. Batasan yang Disadari
 
 - Satu VPS adalah titik tunggal kegagalan — bila VPS mati, seluruh layanan berhenti. Mitigasi awal: pantau uptime + restart otomatis systemd; pisahkan worker ke mesin lain bila antrean subtitle membesar.
+- Aplikasi saja, tanpa versi web: penemuan konten lewat mesin pencari (SEO) tidak ada — distribusi & pertumbuhan mengandalkan APK/Play Store dan promosi komunitas. Sebagai gantinya VPS jauh lebih ringan (komponen terberat sebelumnya, Next.js, hilang).
 - Project Supabase gratis bisa di-pause bila lama tidak aktif — aktivitas berkala menjaganya tetap bangun.
 - Sumber konten resmi umumnya berkunci wilayah + DRM; daftar sumber yang benar-benar bisa dipakai dicatat terpisah di `docs/` setelah riset.
 - Iklan: konten seperti ini umumnya ditolak AdSense — jaringan iklan alternatif diteliti di fase monetisasi.

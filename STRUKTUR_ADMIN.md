@@ -1,6 +1,6 @@
 # STRUKTUR_ADMIN.md — Panel Admin SubSenpai
 
-Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) dan **memantau** (antrean worker, kesehatan layanan, aktivitas) SubSenpai. Panel ini adalah halaman frontend Next.js di route `/admin` (bukan aplikasi terpisah); seluruh datanya dilayani **backend Go** lewat endpoint admin `/api/v1/admin/*` dengan cek role di backend. Skema database pendukung ada di [DATABASE.md](DATABASE.md); struktur aplikasi utama di [STRUKTUR.md](STRUKTUR.md).
+Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) dan **memantau** (antrean worker, kesehatan layanan, aktivitas) SubSenpai. Panel ini adalah **layar admin di dalam aplikasi Android yang sama** (bukan aplikasi terpisah; menu admin hanya muncul untuk role `admin`); seluruh datanya dilayani **backend Go** lewat endpoint admin `/api/v1/admin/*` dengan cek role di backend. Skema database pendukung ada di [DATABASE.md](DATABASE.md); struktur aplikasi utama di [STRUKTUR.md](STRUKTUR.md).
 
 ## 1. Akses & Keamanan
 
@@ -13,25 +13,20 @@ Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) d
 ## 2. Struktur Folder
 
 ```
-apps/web/
-├── app/
-│   └── admin/                  # Panel admin (route /admin)
-│       ├── page.tsx            # Dashboard ringkasan
-│       ├── titles/             # Kelola katalog (judul, episode, chapter)
-│       ├── subtitles/          # Antrean & hasil subtitle
-│       ├── users/              # Kelola user & premium manual
-│       ├── subscriptions/      # Langganan & transaksi
-│       ├── vouchers/           # Voucher premium (buat, bagikan, pantau klaim)
-│       ├── chat/               # Moderasi Chat Global (pesan, kanal, stiker)
-│       ├── reports/            # Laporan user (link mati, subtitle salah)
-│       ├── monitoring/         # Kesehatan sistem & metrik
-│       └── settings/           # Pengaturan platform
-├── components/admin/           # Komponen UI panel (tabel, form, kartu metrik)
-└── lib/admin.ts                # Helper UI: klien API admin, format metrik
+apps/android/.../ui/admin/      # Layar admin di aplikasi (satu layar per modul)
+├── DashboardScreen             # Ringkasan
+├── TitlesScreen                # Kelola katalog (judul, episode, chapter)
+├── SubtitlesScreen             # Antrean & hasil subtitle
+├── UsersScreen                 # Kelola user & premium manual
+├── SubscriptionsScreen         # Langganan & transaksi
+├── VouchersScreen              # Voucher premium (buat, bagikan, pantau klaim)
+├── ChatModerationScreen        # Moderasi Chat Global (pesan, kanal, stiker)
+├── ReportsScreen               # Laporan user (link mati, subtitle salah)
+├── MonitoringScreen            # Kesehatan sistem & metrik
+└── SettingsScreen              # Pengaturan platform
 
-API admin TIDAK berada di folder frontend — endpoint-nya hidup di backend Go
-(backend/internal/httpapi, grup /api/v1/admin/*) dan semua cek role,
-penulisan service-role, audit log, dan agregasi metrik terjadi di sana.
+API admin hidup di backend Go (backend/internal/httpapi, grup /api/v1/admin/*) —
+semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di sana.
 ```
 
 ## 3. Modul Panel
@@ -78,7 +73,7 @@ penulisan service-role, audit log, dan agregasi metrik terjadi di sana.
 ### 3.8 Monitoring
 - **Antrean worker**: jumlah per status + episode yang paling lama menunggu; lonjakan `failed` = tanda sumber/API transkripsi bermasalah.
 - **Aktivitas platform** (agregasi dari `watch_history`, `read_history`, `guest_access`): tontonan/bacaan per hari, judul terlaris, rasio tamu yang mentok batas 1 episode (calon user login).
-- **Kesehatan layanan luar**: tautan cepat ke status Supabase, Vercel, Cloudflare, dan API transkripsi; sisa kuota/kuota terpakai dicatat manual di halaman ini.
+- **Kesehatan layanan luar**: tautan cepat ke status Supabase, VPS, Cloudflare, dan API transkripsi; sisa kuota/kuota terpakai dicatat manual di halaman ini.
 - **Penyimpanan**: perkiraan pemakaian R2 (poster + halaman komik + SRT) terhadap batas gratis 10 GB.
 - Catatan: ambang sederhana (mis. subtitle `failed` > 10 dalam sehari) bisa dikembangkan menjadi notifikasi otomatis ke Telegram/email admin.
 
