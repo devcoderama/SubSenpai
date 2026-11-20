@@ -115,6 +115,10 @@ tailwind.config = {
   .tblrow{padding:.45rem .6rem;border:1px solid #26314d;border-radius:.6rem;margin:.35rem 0;background:rgba(255,255,255,.04);font-size:.92em}
   .msg-ai ul{list-style:disc;padding-left:1.15rem;margin:.3rem 0}
   .msg-ai b{color:#fff}
+  #chatMsgs{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  @media (max-width:639px){
+    #chatPanel{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+  }
   @media (prefers-reduced-motion: reduce){
     html{scroll-behavior:auto}
     .reveal{opacity:1;transform:none;transition:none}
@@ -342,7 +346,7 @@ tailwind.config = {
 </script>
 <!-- ================= CHATBOT AI ================= -->
 <button id="chatFab" class="fixed bottom-5 right-5 z-[80] w-14 h-14 rounded-full bg-gradient-to-r from-pink to-violet shadow-lg shadow-pink/40 grid place-items-center text-2xl text-white hover:scale-105 active:scale-95 transition" aria-label="Tanya Senpai AI"><i class="fa-solid fa-robot"></i></button>
-<div id="chatPanel" class="fixed z-[90] bottom-0 right-0 sm:bottom-5 sm:right-5 w-full sm:w-[384px] max-w-[100vw] h-[80svh] sm:h-[560px] bg-[#0e1424] border border-line sm:rounded-3xl rounded-t-3xl flex-col overflow-hidden shadow-2xl shadow-black/60" style="display:none">
+<div id="chatPanel" class="fixed z-[90] inset-0 sm:inset-auto sm:bottom-5 sm:right-5 w-full sm:w-[384px] max-w-[100vw] h-[100dvh] sm:h-[560px] bg-[#0e1424] border border-line rounded-none sm:rounded-3xl flex-col overflow-hidden shadow-2xl shadow-black/60" style="display:none">
   <div class="flex items-center gap-3 px-4 h-16 bg-gradient-to-r from-pink/25 to-violet/25 border-b border-line shrink-0">
     <span class="w-10 h-10 grid place-items-center rounded-full bg-gradient-to-r from-pink to-violet text-lg text-white"><i class="fa-solid fa-robot"></i></span>
     <div class="leading-tight">
@@ -450,8 +454,8 @@ tailwind.config = {
       render('assistant', 'Halo! Aku Senpai, asisten AI di dokumentasi SubSenpai. Tanya apa saja seputar pengembangan aplikasinya - progres, fitur, teknologi, atau rencana rilisnya.');
     hist.forEach(function(m){ render(m.role, m.content); });
   }
-  function openChat(){ panel.style.display = 'flex'; fab.style.display = 'none'; greet(); setTimeout(function(){ input.focus(); }, 60); }
-  function closeChat(){ panel.style.display = 'none'; fab.style.display = 'grid'; }
+  function openChat(){ panel.style.display = 'flex'; fab.style.display = 'none'; document.body.style.overflow = 'hidden'; greet(); setTimeout(function(){ input.focus(); }, 60); }
+  function closeChat(){ panel.style.display = 'none'; fab.style.display = 'grid'; document.body.style.overflow = ''; }
   fab.addEventListener('click', openChat);
   document.getElementById('chatClose').addEventListener('click', closeChat);
   document.querySelectorAll('.chip').forEach(function(c){
