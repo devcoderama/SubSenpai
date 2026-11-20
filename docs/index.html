@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SubSenpai — Dokumentasi | Streaming Anime, Donghua & Film + Baca Manga, Manhua, Manhwa</title>
+<meta name="description" content="Dokumentasi resmi SubSenpai: aplikasi Android untuk streaming anime, donghua & film dengan subtitle otomatis, dan membaca manga, manhua & manhwa. Backend Go di VPS, panel admin web terpisah.">
+<meta property="og:title" content="SubSenpai — Dokumentasi Resmi">
+<meta property="og:description" content="Streaming anime, donghua & film dengan subtitle otomatis + baca manga, manhua & manhwa. Masih tahap rancangan.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://raw.githubusercontent.com/devcoderama/SubSenpai/main/donasi/qris-donasi.jpg">
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --line:#30363d; --text:#e6edf3; --muted:#9aa7b4;
+    --accent:#f97316; --accent2:#38bdf8; --ok:#3fb950;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:960px;margin:0 auto;padding:24px 18px 64px}
+  header.hero{text-align:center;padding:48px 16px 28px}
+  header.hero h1{font-size:2.6rem;margin:0 0 8px}
+  header.hero p.tag{font-size:1.15rem;color:var(--muted);margin:0 auto;max-width:640px}
+  .badge{display:inline-block;margin-top:16px;padding:4px 14px;border:1px solid var(--accent);color:var(--accent);border-radius:999px;font-size:.85rem}
+  h2{margin-top:44px;border-bottom:1px solid var(--line);padding-bottom:8px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;margin-top:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .card h3{margin:0 0 6px;font-size:1.05rem}
+  .card p{margin:0;color:var(--muted);font-size:.93rem}
+  .card a.btn{display:inline-block;margin-top:10px;font-size:.9rem}
+  table{width:100%;border-collapse:collapse;margin-top:14px}
+  th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+  th{background:var(--panel)}
+  ul.flow{list-style:none;padding-left:4px}
+  ul.flow li{margin:5px 0}
+  .done{color:var(--ok)}
+  .todo{color:var(--muted)}
+  .center{text-align:center}
+  img.qris{width:300px;max-width:80%;border-radius:12px;border:1px solid var(--line)}
+  footer{margin-top:56px;text-align:center;color:var(--muted);font-size:.88rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>SubSenpai 🎌</h1>
+    <p class="tag">Streaming <strong>anime, donghua &amp; film</strong> dengan subtitle otomatis, dan membaca <strong>manga, manhua &amp; manhwa</strong> — dalam satu aplikasi Android.</p>
+    <span class="badge">🚧 Masih tahap rancangan — belum ada versi yang bisa dipakai</span>
+  </header>
+
+  <h2>📖 Tentang</h2>
+  <p>SubSenpai adalah aplikasi Android (Kotlin) dengan backend Go yang berjalan di VPS. Konten video diputar langsung dari sumbernya (HLS), subtitle bahasa asal disiapkan worker (caption/Whisper) lalu <strong>diterjemahkan di perangkat masing-masing user</strong>, dan komik dari sumber ber-Cloudflare dibaca lewat perangkat user dengan pola WebView clearance seperti Mihon. Model aksesnya freemium: tamu maksimal 1 episode/chapter, user login menonton dengan iklan, premium tanpa iklan.</p>
+  <p>Seluruh rancangan bersifat terbuka dan tersimpan di repo GitHub — halaman ini adalah pintu masuk dokumentasinya.</p>
+
+  <h2>🏗️ Arsitektur</h2>
+  <table>
+    <tr><th>Bagian</th><th>Teknologi</th><th>Keterangan</th></tr>
+    <tr><td>Aplikasi user</td><td>Android (Kotlin)</td><td>Satu-satunya klien untuk user; tidak ada versi web</td></tr>
+    <tr><td>Panel admin</td><td>Website terpisah</td><td>Khusus admin, di belakang Caddy pada alamat khusus</td></tr>
+    <tr><td>Backend</td><td>Go (API + worker) di VPS</td><td>Login Google → JWT backend, response API terenkripsi <code>xdata/xtime</code> (kunci sesi ECDH)</td></tr>
+    <tr><td>Database</td><td>PostgreSQL lokal di VPS</td><td>Skema dasar 36 tabel; cadangan malam ke R2</td></tr>
+    <tr><td>Distribusi</td><td>Website resmi &amp; GitHub Releases</td><td>Play Store ditunda (lihat NOTE.md)</td></tr>
+  </table>
+
+  <h2>📚 Dokumentasi</h2>
+  <div class="cards">
+    <div class="card"><h3>README</h3><p>Gambaran umum proyek, fitur, model akses, dan roadmap.</p><a class="btn" href="https://github.com/devcoderama/SubSenpai/blob/main/README.md">Buka →</a></div>
+    <div class="card"><h3>PROGRES</h3><p>Peta alur progres dari awal sampai akhir — apa yang sudah selesai dan apa yang belum.</p><a class="btn" href="https://github.com/devcoderama/SubSenpai/blob/main/PROGRES.md">Buka →</a></div>
+    <div class="card"><h3>STRUKTUR</h3><p>Arsitektur lengkap: struktur folder, alur data, pembayaran, chat, keamanan API, deployment.</p><a class="btn" href="https://github.com/devcoderama/SubSenpai/blob/main/STRUKTUR.md">Buka →</a></div>
+    <div class="card"><h3>Database</h3><p>ERD, relasi, enum, indeks, dan draf SQL skema PostgreSQL.</p><a class="btn" href="https://github.com/devcoderama/SubSenpai/blob/main/database/DATABASE.md">Buka →</a></div>
+    <div class="card"><h3>Panel Admin</h3><p>Rancangan website admin: modul dashboard, katalog, subtitle, user, langganan, monitoring.</p><a class="btn" href="https://github.com/devcoderama/SubSenpai/blob/main/STRUKTUR_ADMIN.md">Buka →</a></div>
+    <div class="card"><h3>FITUR</h3><p>Fitur resmi F13–F39: Tanya Senpai AI, kontribusi terjemahan, nonton bareng, OCR balon komik, dan lainnya.</p><a class="btn" href="https://github.com/devcoderama/SubSenpai/blob/main/FITUR.md">Buka →</a></div>
+    <div class="card"><h3>KEAMANAN</h3><p>Lapisan keamanan, Play Integrity, gerbang versi minimum, dan aturan token integrasi.</p><a class="btn" href="https://github.com/devcoderama/SubSenpai/blob/main/KEAMANAN.md">Buka →</a></div>
+    <div class="card"><h3>OPTIMASI</h3><p>Optimasi resmi O9–O27: failover sumber, partisi tabel, pra-saring transkripsi, rilis bertahap.</p><a class="btn" href="https://github.com/devcoderama/SubSenpai/blob/main/OPTIMASI.md">Buka →</a></div>
+    <div class="card"><h3>Aplikasi Android</h3><p>Struktur folder aplikasi: paket ui, data, dan player.</p><a class="btn" href="https://github.com/devcoderama/SubSenpai/blob/main/android/README.md">Buka →</a></div>
+    <div class="card"><h3>Panel Admin Web</h3><p>Struktur folder website admin: halaman per modul dan klien API admin.</p><a class="btn" href="https://github.com/devcoderama/SubSenpai/blob/main/web_admin/README.md">Buka →</a></div>
+    <div class="card"><h3>NOTE</h3><p>Keputusan distribusi (website resmi &amp; GitHub saja) beserta pertimbangan Play Store.</p><a class="btn" href="https://github.com/devcoderama/SubSenpai/blob/main/NOTE.md">Buka →</a></div>
+    <div class="card"><h3>Repo GitHub</h3><p>Seluruh berkas proyek di satu tempat.</p><a class="btn" href="https://github.com/devcoderama/SubSenpai">Buka →</a></div>
+  </div>
+
+  <h2>🗺️ Progres Singkat</h2>
+  <ul class="flow">
+    <li><span class="done">✓</span> Rancangan: visi, arsitektur, skema database dasar, panel admin, fitur F13–F39, keamanan, optimasi O9–O27</li>
+    <li><span class="todo">-</span> Sinkronisasi final skema database (gabungkan perubahan gelombang 3–5 ke DDL)</li>
+    <li><span class="todo">-</span> Pembangunan: katalog &amp; player → worker subtitle → akun → freemium &amp; sosial → mode baca → fitur lanjutan</li>
+    <li><span class="todo">-</span> Deployment VPS &amp; rilis APK bertahap lewat website resmi &amp; GitHub Releases</li>
+  </ul>
+  <p>Rincian lengkapnya ada di <a href="https://github.com/devcoderama/SubSenpai/blob/main/PROGRES.md">PROGRES.md</a>.</p>
+
+  <h2>☕ Dukung SubSenpai</h2>
+  <p class="center">Donasi membantu biaya VPS &amp; pengembangan. Scan QRIS berikut:</p>
+  <p class="center"><img class="qris" src="https://raw.githubusercontent.com/devcoderama/SubSenpai/main/donasi/qris-donasi.jpg" alt="QRIS donasi SubSenpai"></p>
+
+  <footer>
+    SubSenpai — dokumentasi resmi. Proyek masih dalam tahap rancangan; konten berasal dari sumber pihak ketiga dan kualitas subtitle mesin bersifat "cukup dimengerti", bukan setara fansub.
+  </footer>
+
+</div>
+</body>
+</html>
