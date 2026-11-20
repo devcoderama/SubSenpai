@@ -62,6 +62,17 @@ tailwind.config = {
   .sidelink.act i{color:#ff6b9d}
   .msg-ai{background:rgba(255,255,255,.06);border:1px solid #26314d}
   .msg-user{background:linear-gradient(90deg,rgba(255,107,157,.25),rgba(167,139,250,.25));border:1px solid rgba(167,139,250,.4)}
+  @keyframes dotty{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-5px);opacity:1}}
+  .tdot{width:7px;height:7px;border-radius:99px;background:#ff6b9d;display:inline-block;animation:dotty 1.15s infinite}
+  .tdot:nth-child(2){animation-delay:.15s;background:#a78bfa}
+  .tdot:nth-child(3){animation-delay:.3s;background:#38bdf8}
+  @keyframes bobble{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-6px) rotate(5deg)}}
+  .bobble{animation:bobble 1.5s ease-in-out infinite}
+  @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+  .shimmerline{height:3px;border-radius:99px;margin-top:.55rem;background:linear-gradient(90deg,rgba(255,107,157,.15),rgba(255,107,157,.8),rgba(167,139,250,.8),rgba(56,189,248,.15));background-size:200% 100%;animation:shimmer 1.6s linear infinite}
+  .tblrow{padding:.45rem .6rem;border:1px solid #26314d;border-radius:.6rem;margin:.35rem 0;background:rgba(255,255,255,.04);font-size:.92em}
+  .msg-ai ul{list-style:disc;padding-left:1.15rem;margin:.3rem 0}
+  .msg-ai b{color:#fff}
   @media (prefers-reduced-motion: reduce){
     html{scroll-behavior:auto}
     .reveal{opacity:1;transform:none;transition:none}
@@ -318,7 +329,7 @@ tailwind.config = {
     "STATUS: masih TAHAP RANCANGAN - aplikasinya belum dibuat dan belum bisa diunduh. Yang sudah selesai adalah dokumen rancangannya (visi, arsitektur, skema database dasar, fitur F13-F39, keamanan, optimasi O9-O27) di repo GitHub devcoderama/SubSenpai. Langkah berikutnya: sinkronisasi final skema database, lalu pembangunan bertahap (katalog & player, worker subtitle, akun, freemium & sosial, mode baca, fitur lanjutan), deployment server, dan rilis APK bertahap lewat website resmi & GitHub Releases (bukan Play Store untuk saat ini). Belum ada tanggal rilis resmi.",
     "TEKNOLOGI: aplikasi Android Kotlin; backend Go di VPS; database PostgreSQL lokal di VPS; subtitle disiapkan worker (caption/Whisper menjadi subtitle bahasa asal) lalu diterjemahkan di perangkat pengguna; komik dari sumber ber-Cloudflare dibaca lewat WebView di perangkat pengguna (pola seperti Mihon); login Google; model freemium (tamu maksimal 1 episode/chapter, user login dengan iklan, premium tanpa iklan; pembayaran QRIS/e-wallet dan voucher).",
     "FITUR PENGGUNA: subtitle otomatis multi-bahasa (9 bahasa antarmuka), terjemahan balon komik via OCR, Tanya Senpai (asisten rekomendasi AI di dalam aplikasi), chat global/grup/DM, nonton bareng, koleksi & permintaan judul, misi/level/Rekap Senpai, unduhan offline premium, Cast & Picture-in-Picture, notifikasi rilis, multi-profil & profil Anak, pencatatan progres otomatis ke AniList/MyAnimeList.",
-    "ATURAN: jangan mengarang tanggal rilis atau fakta di luar fakta di atas; bila ditanya hal di luar SubSenpai, alihkan dengan sopan; jangan membahas hal internal pengelolaan; bila tidak tahu, katakan terus terang dan arahkan ke PROGRES.md atau repo GitHub."
+    "ATURAN: jangan mengarang tanggal rilis atau fakta di luar fakta di atas; bila ditanya hal di luar SubSenpai, alihkan dengan sopan; jangan membahas hal internal pengelolaan; bila tidak tahu, katakan terus terang dan arahkan ke PROGRES.md atau repo GitHub. FORMAT JAWABAN: gunakan paragraf singkat dan daftar poin bertanda '-'; JANGAN memakai tabel markdown; teks tebal hanya seperlunya."
   ].join("\n");
   var KEY = 'subsenpai-docs-chat-v1';
   var hist = [];
@@ -326,13 +337,70 @@ tailwind.config = {
   var panel = document.getElementById('chatPanel'), msgs = document.getElementById('chatMsgs'),
       form = document.getElementById('chatForm'), input = document.getElementById('chatInput'),
       fab = document.getElementById('chatFab'), busy = false;
+  function mdRender(md){
+    function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function inline(s){
+      return s.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')
+              .replace(/`([^`]+)`/g,'<code style="background:rgba(255,255,255,.09);padding:0 .3em;border-radius:.3em">$1</code>')
+              .replace(/\*([^*]+)\*/g,'<i>$1</i>');
+    }
+    var lines = esc(md).split('\n'), out = [], i = 0;
+    while (i < lines.length){
+      var line = lines[i].trim();
+      if (!line){ i++; continue; }
+      if (line.charAt(0) === '|'){
+        var rows = [];
+        while (i < lines.length && lines[i].trim().charAt(0) === '|'){
+          var cells = lines[i].trim().replace(/^\||\|$/g,'').split('|').map(function(c){ return c.trim(); });
+          if (!/^[\-: ]+$/.test(cells.join(''))) rows.push(cells);
+          i++;
+        }
+        if (rows.length > 1){
+          var head = rows[0];
+          for (var r = 1; r < rows.length; r++){
+            var parts = [];
+            for (var k = 0; k < rows[r].length; k++)
+              parts.push((head[k] ? '<span style="color:#9aa7c7">' + inline(head[k]) + ':</span> ' : '') + inline(rows[r][k]));
+            out.push('<div class="tblrow">' + parts.join('<br>') + '</div>');
+          }
+        }
+        continue;
+      }
+      var h = line.match(/^#{1,4}\s+(.*)$/);
+      if (h){ out.push('<div style="font-weight:800;margin:.35rem 0 .15rem">' + inline(h[1]) + '</div>'); i++; continue; }
+      if (/^[-*\u2022]\s+/.test(line) || /^\d+[.)]\s+/.test(line)){
+        var items = [];
+        while (i < lines.length && (/^[-*\u2022]\s+/.test(lines[i].trim()) || /^\d+[.)]\s+/.test(lines[i].trim()))){
+          items.push('<li>' + inline(lines[i].trim().replace(/^[-*\u2022]\s+/,'').replace(/^\d+[.)]\s+/,'')) + '</li>');
+          i++;
+        }
+        out.push('<ul>' + items.join('') + '</ul>');
+        continue;
+      }
+      if (/^-{3,}$/.test(line)){ out.push('<hr style="border-color:#26314d;margin:.5rem 0">'); i++; continue; }
+      out.push('<div style="margin:.2rem 0">' + inline(line) + '</div>');
+      i++;
+    }
+    return out.join('');
+  }
   function render(role, text){
     var d = document.createElement('div');
-    d.className = 'max-w-[85%] px-3.5 py-2.5 rounded-2xl whitespace-pre-wrap leading-relaxed ' + (role === 'user' ? 'msg-user ml-auto' : 'msg-ai');
-    d.textContent = text;
+    d.className = 'max-w-[85%] px-3.5 py-2.5 rounded-2xl leading-relaxed ' + (role === 'user' ? 'msg-user ml-auto whitespace-pre-wrap' : 'msg-ai');
+    if (role === 'assistant') d.innerHTML = mdRender(text); else d.textContent = text;
     msgs.appendChild(d);
     msgs.scrollTop = msgs.scrollHeight;
     return d;
+  }
+  var WAIT_MSGS = ['Senpai sedang berpikir…','Mencari jawaban terbaik…','Menyiapkan penjelasan untukmu…','Sedikit lagi, ya…'];
+  function showWait(){
+    var d = document.createElement('div');
+    d.className = 'msg-ai max-w-[85%] px-3.5 py-3 rounded-2xl';
+    d.innerHTML = '<div style="display:flex;align-items:center;gap:.6rem"><span class="bobble" style="display:grid;place-items:center;width:2rem;height:2rem;border-radius:99px;background:linear-gradient(90deg,#ff6b9d,#a78bfa);color:#fff;flex-shrink:0"><i class="fa-solid fa-robot"></i></span><span style="display:inline-flex;gap:4px"><span class="tdot"></span><span class="tdot"></span><span class="tdot"></span></span><span class="wstat" style="color:#9aa7c7;font-size:.82rem">Senpai sedang berpikir…</span></div><div class="shimmerline"></div>';
+    msgs.appendChild(d);
+    msgs.scrollTop = msgs.scrollHeight;
+    var idx = 0, stat = d.querySelector('.wstat');
+    var iv = setInterval(function(){ idx = (idx + 1) % WAIT_MSGS.length; if (stat) stat.textContent = WAIT_MSGS[idx]; }, 2200);
+    return { el: d, stop: function(){ clearInterval(iv); } };
   }
   function save(){ try { localStorage.setItem(KEY, JSON.stringify(hist.slice(-30))); } catch(e){} }
   function greet(){
@@ -354,17 +422,17 @@ tailwind.config = {
     input.value = '';
     hist.push({role:'user', content:text}); render('user', text); save();
     busy = true;
-    var wait = render('assistant', 'Senpai sedang mengetik…');
+    var wait = showWait();
     fetch('https://text.pollinations.ai/', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ model:'openai', messages: [{role:'system', content:SYS}].concat(hist) })
     }).then(function(r){ return r.text(); }).then(function(txt){
       var out = txt;
       try { var j = JSON.parse(txt); if (j.choices && j.choices[0]) out = j.choices[0].message.content; } catch(e){}
-      wait.remove();
+      wait.stop(); wait.el.remove();
       hist.push({role:'assistant', content:out}); render('assistant', out); save();
     }).catch(function(){
-      wait.remove();
+      wait.stop(); wait.el.remove();
       render('assistant', 'Maaf, layanan AI gratisnya sedang sibuk. Coba lagi sebentar lagi, ya.');
     }).finally(function(){ busy = false; });
   });
