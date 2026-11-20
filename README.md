@@ -6,6 +6,8 @@ SubSenpai adalah aplikasi streaming & baca: anime dan donghua dari sumber asalny
 
 > 🚧 **MASIH DALAM TAHAP PENGEMBANGAN** — repo ini baru berisi rancangan dan struktur awal. Belum ada versi yang bisa dipakai.
 
+📖 **Dokumentasi:** [Situs dokumentasi (Netlify)](https://celebrated-semolina-d9f3c5.netlify.app/) — sumbernya folder `docs/` di repo ini, terbit otomatis setiap push.
+
 ## ✨ Fitur yang Direncanakan
 
 - 📺 **Katalog multi-konten** — anime, donghua, film, manga, manhua, manhwa; telusur & cari berdasarkan judul, tipe, genre, musim, dan tahun
