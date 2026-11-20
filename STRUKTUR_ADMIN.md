@@ -13,7 +13,7 @@ Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) d
 ## 2. Struktur Folder
 
 ```
-apps/android/.../ui/admin/      # Layar admin di aplikasi (satu layar per modul)
+android/.../ui/admin/      # Layar admin di aplikasi (satu layar per modul)
 ├── DashboardScreen             # Ringkasan
 ├── TitlesScreen                # Kelola katalog (judul, episode, chapter, permintaan judul)
 ├── SubtitlesScreen             # Antrean & hasil subtitle

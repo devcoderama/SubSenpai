@@ -25,12 +25,11 @@ SubSenpai/
 ├── STRUKTUR.md             # Dokumen ini
 ├── STRUKTUR_ADMIN.md       # Rancangan panel admin
 ├── DATABASE.md             # Skema database (ERD + SQL)
-├── apps/
-│   └── android/            # Aplikasi Android (Kotlin) — SATU-SATUNYA klien, berjalan di perangkat user
-│       └── app/src/main/java/com/subsenpai/
-│           ├── ui/                     # Layar: beranda, telusur, detail, player, reader, chat, dm, teman, grup, koleksi, pencapaian, rekap, keamanan akun, premium, watchlist, admin
-│           ├── data/                   # Klien API Go (Retrofit/OkHttp) + dekripsi xdata/xtime, sesi JWT backend, model data, basis data lokal katalog (sinkronisasi delta), klien terjemahan Google gratis (endpoint `gtx` dari perangkat user) + cache terjemahan lokal
-│           └── player/                 # Player HLS (Media3/ExoPlayer) + overlay subtitle + penerjemah subtitle di perangkat (endpoint `gtx` dari IP user)
+├── android/                # Aplikasi Android (Kotlin) — SATU-SATUNYA klien, berjalan di perangkat user (rincian: android/README.md)
+│   └── app/src/main/java/com/subsenpai/
+│       ├── ui/                         # Layar: beranda, telusur, detail, player, reader, chat, dm, teman, grup, koleksi, pencapaian, rekap, keamanan akun, premium, watchlist, admin
+│       ├── data/                       # Klien API Go (Retrofit/OkHttp) + dekripsi xdata/xtime, sesi JWT backend, model data, basis data lokal katalog (sinkronisasi delta), klien terjemahan Google gratis (endpoint `gtx` dari perangkat user) + cache terjemahan lokal
+│       └── player/                     # Player HLS (Media3/ExoPlayer) + overlay subtitle + penerjemah subtitle di perangkat (endpoint `gtx` dari IP user)
 ├── backend/                # Backend Go — dijalankan di VPS
 │   ├── cmd/
 │   │   ├── server/                     # main.go — layanan HTTP API
