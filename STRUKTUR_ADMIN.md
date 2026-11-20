@@ -1,6 +1,6 @@
 # STRUKTUR_ADMIN.md — Panel Admin SubSenpai
 
-Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) dan **memantau** (antrean worker, kesehatan layanan, aktivitas) SubSenpai. Panel ini adalah bagian dari aplikasi Next.js yang sama, terpisah di route `/admin` — bukan aplikasi terpisah. Skema database pendukung ada di [DATABASE.md](DATABASE.md); struktur aplikasi utama di [STRUKTUR.md](STRUKTUR.md).
+Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) dan **memantau** (antrean worker, kesehatan layanan, aktivitas) SubSenpai. Panel ini adalah halaman frontend Next.js di route `/admin` (bukan aplikasi terpisah); seluruh datanya dilayani **backend Go** lewat endpoint admin `/api/v1/admin/*` dengan cek role di backend. Skema database pendukung ada di [DATABASE.md](DATABASE.md); struktur aplikasi utama di [STRUKTUR.md](STRUKTUR.md).
 
 ## 1. Akses & Keamanan
 
@@ -26,9 +26,12 @@ apps/web/
 │       ├── reports/            # Laporan user (link mati, subtitle salah)
 │       ├── monitoring/         # Kesehatan sistem & metrik
 │       └── settings/           # Pengaturan platform
-├── app/api/admin/              # API khusus admin (semua cek role di server)
 ├── components/admin/           # Komponen UI panel (tabel, form, kartu metrik)
-└── lib/admin.ts                # Helper: guard role, audit log, agregasi metrik
+└── lib/admin.ts                # Helper UI: klien API admin, format metrik
+
+API admin TIDAK berada di folder frontend — endpoint-nya hidup di backend Go
+(backend/internal/httpapi, grup /api/v1/admin/*) dan semua cek role,
+penulisan service-role, audit log, dan agregasi metrik terjadi di sana.
 ```
 
 ## 3. Modul Panel

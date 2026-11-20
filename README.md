@@ -54,11 +54,12 @@ Pemisahan berdasarkan **jenis data**, bukan per genre:
 
 | Bagian | Teknologi | Fungsi |
 | --- | --- | --- |
-| Frontend + API | Next.js di Vercel | Katalog, player, reader, API tipis, gerbang akses |
+| Frontend | Next.js (standalone) di VPS | Katalog, player, reader, Chat Global, panel admin — tampilan saja |
+| Backend API | **Go** di VPS (binary + systemd, di belakang Caddy) | Semua logika: katalog, gerbang akses, subtitle, chat, premium, voucher, admin + enkripsi response `xdata`/`xtime` |
 | Database + Auth | Supabase (PostgreSQL) | Katalog multi-konten, episode/chapter, subtitle, user, langganan |
 | File storage | Cloudflare R2 / Supabase Storage | Poster, halaman komik & file subtitle (.srt/.ass) |
-| Video | Stream langsung dari sumber (HLS) | Tidak lewat server sendiri — hemat bandwidth & durasi |
-| Worker subtitle | Next.js (antrean + terjemah + SRT) + API transkripsi cloud | Transkripsi dititipkan ke API Whisper (Groq/OpenAI); worker Python mandiri hanya bila perlu full offline |
+| Video | Stream langsung dari sumber (HLS) | Tidak lewat server sendiri — hemat bandwidth |
+| Worker subtitle | Job latar Go (antrean + terjemah + SRT) + API transkripsi cloud | Transkripsi dititipkan ke API Whisper (Groq/OpenAI); worker Python mandiri hanya bila perlu full offline |
 | Pembayaran | Midtrans / Xendit + GoPay Merchant API pihak ketiga | Langganan premium & voucher (QRIS, e-wallet, transfer). Jalur GoPay: QRIS dinamis + konfirmasi polling mutasi (tanpa webhook) — [Api-Gopar-Merch](https://github.com/ZeroByte000/Api-Gopar-Merch) |
 | Panel admin | Route `/admin` (role admin) | Kelola katalog, subtitle, user, langganan + monitoring — [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) |
 

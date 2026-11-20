@@ -7,9 +7,11 @@ Rancangan struktur proyek: susunan folder, skema database, model akses, dan alur
 - **Satu katalog, banyak tipe konten.** Anime, donghua, film, manga, manhua, manhwa hidup di tabel katalog yang sama dengan kolom `type`. Database TIDAK dipecah per genre maupun per tipe: genre dan tipe hanyalah kolom, karena pencarian lintas keduanya tidak bisa di-JOIN antar-database.
 - **Pisah per jenis data.** Metadata di PostgreSQL, berkas (poster, halaman komik, subtitle) di object storage, video tidak disimpan sama sekali.
 - **Video tidak pernah disimpan / tidak lewat server sendiri.** Player memutar stream HLS langsung dari sumber; server hanya menyimpan metadata dan URL.
-- **Proses berat di luar Vercel.** Antrean subtitle, terjemahan, dan pembangunan SRT dikerjakan Next.js, tetapi transkripsi Whisper dititipkan ke API cloud (Groq/OpenAI) — serverless Vercel tidak punya GPU dan durasinya terbatas. Worker Python mandiri (faster-whisper di mesin GPU) hanya opsi bila nanti perlu full offline.
-- **Gerbang akses ditegakkan di server.** Batas tamu/premium dicek di API, bukan sekadar menyembunyikan tombol di UI.
-- **Semua serba gratis dulu.** Vercel (hobby) + Supabase (free) + Cloudflare R2 (free 10 GB); biaya variabel hanya API transkripsi (per menit audio) dan payment gateway (potongan per transaksi).
+- **Backend Go di VPS.** Backend ditulis dengan **Go** dan dijalankan di **VPS** sebagai binary mandiri di belakang reverse proxy — bukan serverless. Satu binary ringan (hemat RAM, tanpa runtime tambahan) melayani API; proses latar (antrean subtitle, polling pembayaran) berjalan sebagai goroutine/job terjadwal di layanan yang sama atau binary worker terpisah. Frontend Next.js hanya tampilan (mode standalone, boleh di VPS yang sama) — semua logika, gerbang akses, dan data lewat API Go.
+- **Database & Auth tetap Supabase.** PostgreSQL + Supabase Auth (login Google) tetap dipakai; backend Go mengakses PostgreSQL secara langsung (driver pgx) dan memverifikasi token JWT Supabase Auth di middleware. Yang berubah hanya tempat komputasi berjalan (VPS), bukan skema datanya.
+- **Proses berat di job latar.** Antrean subtitle, terjemahan, dan pembangunan SRT dikerjakan job latar Go, tetapi transkripsi Whisper dititipkan ke API cloud (Groq/OpenAI) — VPS tidak punya GPU. Worker Python mandiri (faster-whisper di mesin GPU) hanya opsi bila nanti perlu full offline.
+- **Gerbang akses ditegakkan di server.** Batas tamu/premium dicek di API Go, bukan sekadar menyembunyikan tombol di UI.
+- **Biaya tetap & terukur.** VPS (biaya tetap per bulan) + Supabase (free) + Cloudflare R2 (free 10 GB); biaya variabel hanya API transkripsi (per menit audio) dan payment gateway (potongan per transaksi).
 
 ## 2. Struktur Folder
 
@@ -17,8 +19,10 @@ Rancangan struktur proyek: susunan folder, skema database, model akses, dan alur
 SubSenpai/
 ├── README.md               # Gambaran umum proyek
 ├── STRUKTUR.md             # Dokumen ini
+├── STRUKTUR_ADMIN.md       # Rancangan panel admin
+├── DATABASE.md             # Skema database (ERD + SQL)
 ├── apps/
-│   └── web/                # Aplikasi Next.js (deploy ke Vercel)
+│   └── web/                # Frontend Next.js — tampilan saja (standalone, TANPA folder api/)
 │       ├── app/
 │       │   ├── page.tsx                # Beranda: katalog & sorotan
 │       │   ├── browse/[type]/          # Telusur per tipe (anime/donghua/film/manga/...)
@@ -30,23 +34,32 @@ SubSenpai/
 │       │   ├── watchlist/              # Watchlist user (login)
 │       │   ├── premium/                # Halaman langganan & pembayaran
 │       │   ├── chat/                   # Chat Global (kanal realtime)
-│       │   ├── admin/                  # Panel admin (detail: STRUKTUR_ADMIN.md)
-│       │   └── api/                    # API tipis (katalog, akses, subtitle, progres, webhook bayar, admin)
+│       │   └── admin/                  # Panel admin (detail: STRUKTUR_ADMIN.md)
 │       ├── components/                 # Komponen UI (kartu judul, player, reader, dsb.)
-│       └── lib/                        # Client Supabase, cek akses (gate), enkripsi response (crypto), util, tipe data
-├── worker/
-│   └── subtitle/           # Worker subtitle (bagian dari Next.js / job terpisah)
-│       ├── queue.ts        # Ambil antrean episode tanpa subtitle
-│       ├── transcribe.ts   # Panggil API transkripsi (Groq/OpenAI Whisper)
-│       ├── translate.ts    # Terjemahan per baris (Google/DeepL)
-│       └── build-srt.ts    # Gabung teks + timing -> .srt/.ass, unggah ke R2
+│       └── lib/                        # Klien API (fetch + dekripsi xdata/xtime), sesi Supabase Auth, tipe data, util UI
+├── backend/                # Backend Go — dijalankan di VPS
+│   ├── cmd/
+│   │   ├── server/                     # main.go — layanan HTTP API
+│   │   └── worker/                     # main.go — job latar (antrean subtitle, polling GoPay, pembersih sesi)
+│   ├── internal/
+│   │   ├── httpapi/                    # Router (chi) + handler per domain: katalog, akses, subtitle, chat, premium, voucher, admin, webhook
+│   │   ├── middleware/                 # Auth (verifikasi JWT Supabase), enkripsi response xdata/xtime, rate limit, CORS, logging
+│   │   ├── db/                         # Akses PostgreSQL (pgx) + query per domain
+│   │   ├── store/                      # Object storage R2 (poster, halaman komik, SRT, stiker)
+│   │   ├── jobs/                       # Worker subtitle (antrean → transkripsi API → terjemah → SRT → R2), polling pembayaran, dsb.
+│   │   └── config/                     # Baca konfigurasi dari env
+│   ├── go.mod
+│   └── .env.example                    # DATABASE_URL, API_ENC_KEY, kredensial gateway & API transkripsi (contoh tanpa nilai asli)
 ├── supabase/
 │   ├── migrations/         # Migrasi skema PostgreSQL
-│   └── seed/               # Data awal (daftar genre, tipe, dsb.)
+│   └── seed/               # Data awal (daftar genre, tipe, kanal chat, dsb.)
+├── deploy/
+│   ├── Caddyfile           # Reverse proxy + HTTPS otomatis (Let's Encrypt)
+│   └── systemd/            # subsenpai-api.service, subsenpai-worker.service, subsenpai-web.service
 └── docs/                   # Catatan tambahan (sumber data, riset iklan, dsb.)
 ```
 
-Catatan: `worker/subtitle` versi awal berjalan sebagai job yang dipicu dari Next.js (cron/route internal). Versi Python (faster-whisper + Sugoi, full offline) disimpan sebagai opsi cadangan di folder yang sama bila diperlukan.
+Catatan: backend Go dibangun menjadi binary (`go build`) lalu dijalankan systemd di VPS — tidak perlu Docker maupun runtime lain. Frontend Next.js dibangun mode standalone dan dijalankan sebagai layanan Node terpisah di VPS yang sama. Rincian deployment ada di Bagian 10.
 
 ## 3. Skema Database (Supabase / PostgreSQL)
 
@@ -128,12 +141,12 @@ Penegakan: setiap permintaan memutar episode / membuka chapter melewati cek akse
 
 ## 5. Panel Admin
 
-Pengelolaan & pemantauan berjalan di route `/admin` dalam aplikasi yang sama, khusus user ber-`role = 'admin'` (dicek di server, bukan sekadar menu disembunyikan). Modulnya: dashboard ringkasan, manajemen katalog, manajemen subtitle (antrean + retry), manajemen user, langganan & pembayaran, voucher premium, laporan user, monitoring, dan pengaturan platform. Rancangan lengkapnya: **[STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md)**.
+Pengelolaan & pemantauan berjalan di route `/admin` pada frontend, khusus user ber-`role = 'admin'` (dicek di backend Go pada setiap request API admin, bukan sekadar menu disembunyikan). Modulnya: dashboard ringkasan, manajemen katalog, manajemen subtitle (antrean + retry), manajemen user, langganan & pembayaran, voucher premium, laporan user, monitoring, dan pengaturan platform. Rancangan lengkapnya: **[STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md)**.
 
 ## 6. Alur Data
 
 1. **Katalog masuk** — metadata judul & episode/chapter ditulis ke Supabase; poster & halaman komik diunggah ke R2.
-2. **User membuka halaman nonton/baca** — API mengecek gerbang akses (Bagian 4) → Next.js membaca metadata dari Supabase → player memutar `video_url` langsung dari sumber / reader memuat gambar halaman dari R2.
+2. **User membuka halaman nonton/baca** — API Go mengecek gerbang akses (Bagian 4) dan membaca metadata dari PostgreSQL → player memutar `video_url` langsung dari sumber / reader memuat gambar halaman dari R2.
 3. **Subtitle diminta** (video saja) — player mengecek tabel `subtitles`:
    - Sudah `done` → muat file dari R2, selesai.
    - Belum ada → buat baris `queued`; worker memprosesnya.
@@ -160,7 +173,7 @@ Alurnya (berlaku untuk langganan premium maupun pembelian voucher):
 1. User memilih paket → server membuat baris `payment_sessions` ber-provider `gopay` dengan **nominal unik** (harga + kode unik acak 1–999, mis. Rp30.000 → Rp30.417) dan masa berlaku ±15 menit.
 2. Server memanggil `/api/create-payment` dengan nominal itu → QR dinamis ditampilkan ke user.
 3. User membayar dengan aplikasi apa pun (GoPay, DANA, OVO, m-banking — QRIS bersifat lintas aplikasi).
-4. **Tidak ada webhook** — server melakukan *polling* `/api/cek-transaksi` berkala memakai token login merchant (token disimpan & diperbarui di server) dan mencocokkan transaksi berstatus `success` yang jumlahnya **persis** nominal unik, dalam jendela waktu sesi.
+4. **Tidak ada webhook** — job polling di backend Go (goroutine berkala pada layanan worker) memanggil `/api/cek-transaksi` memakai token login merchant (token disimpan & diperbarui di server) dan mencocokkan transaksi berstatus `success` yang jumlahnya **persis** nominal unik, dalam jendela waktu sesi.
 5. Cocok → sesi menjadi `paid`, `subscriptions.provider_ref` / `vouchers.payment_ref` diisi id referensi GoPay, lalu premium diaktifkan / voucher diterbitkan (sama seperti jalur webhook). Lewat batas waktu tanpa kecocokan → sesi `expired` dan nominal uniknya bebas dipakai sesi lain.
 
 Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
@@ -200,16 +213,34 @@ Spesifikasi:
 - **Algoritma**: AES-256-GCM (enkripsi + tag integritas). Kunci 32 byte disimpan sebagai env server `API_ENC_KEY` — tidak pernah masuk repo.
 - **Isi `xdata`**: `base64url( IV acak 12 byte ‖ ciphertext ‖ tag GCM )` dari response JSON asli (UTF-8). `xtime` (detik Unix saat response dibuat) dipakai sebagai *additional authenticated data* (AAD) — mengubah `xtime` membuat dekripsi gagal.
 - **Alur di aplikasi**: terima envelope → periksa `xtime` (ditolak bila selisih dengan waktu perangkat > 300 detik — anti-replay) → dekripsi → JSON asal → tampilkan. Bila tag GCM tidak cocok, response dianggap dimanipulasi dan dibuang.
-- **Penerapan terpusat**: enkripsi dilakukan satu helper pembungkus response di `lib/crypto.ts` (+ middleware), jadi tiap endpoint tidak mengimplementasikan sendiri-sendiri.
-- **Berlaku untuk**: semua endpoint JSON di `app/api/` (katalog, gerbang akses, subtitle, chat, premium, admin).
+- **Penerapan terpusat**: enkripsi dilakukan satu middleware pembungkus response di backend Go (`internal/middleware`, memakai `crypto/aes` + `crypto/cipher` bawaan Go), jadi tiap handler tidak mengimplementasikan sendiri-sendiri. Sisi aplikasi memakai helper dekripsi di `apps/web/lib`.
+- **Berlaku untuk**: semua endpoint JSON backend Go di `/api/v1/*` (katalog, gerbang akses, subtitle, chat, premium, admin).
 - **Pengecualian**: webhook pembayaran (server-ke-server, punya tanda tangan gateway sendiri), file media/HLS/SRT dan halaman HTML (bukan JSON).
 - **Rotasi kunci**: mengganti `API_ENC_KEY` di server dan di aplikasi secara bersamaan; envelope tidak membawa versi kunci (format sengaja tetap dua field).
 
 Catatan jujur soal batas lapisan ini: kunci dekripsi harus ikut tertanam di aplikasi klien, jadi pada aplikasi web kunci itu pada prinsipnya bisa ditemukan orang yang sangat berniat. Lapisan ini berfungsi sebagai **anti-scraping** (API tidak bisa dipanen mentah-mentah), **integritas** (response yang diubah di tengah jalan ketahuan), dan **anti-replay** — BUKAN pengganti HTTPS, login, dan gerbang akses di server. Data yang benar-benar rahasia tidak boleh hanya mengandalkan lapisan ini.
 
-## 10. Batasan yang Disadari
+## 10. Deployment (VPS)
 
-- Fungsi serverless Vercel punya batas durasi & bandwidth — tidak dipakai untuk streaming video maupun menjalankan model Whisper.
+Satu VPS menjalankan seluruh aplikasi (spesifikasi awal cukup 1–2 vCPU / 1–2 GB RAM karena binary Go ringan):
+
+| Komponen | Bentuk | Port lokal |
+| --- | --- | --- |
+| Reverse proxy | Caddy (HTTPS otomatis Let's Encrypt) | 80/443 (publik) |
+| Frontend | Next.js standalone (layanan Node, systemd `subsenpai-web`) | 3000 |
+| Backend API | Binary Go (systemd `subsenpai-api`) | 8080 |
+| Worker | Binary Go kedua dari basis kode yang sama (systemd `subsenpai-worker`) — antrean subtitle, polling GoPay, pembersih sesi | — |
+| Database & Auth | Supabase (PostgreSQL + Google OAuth) — di luar VPS | — |
+| Berkas | Cloudflare R2 — di luar VPS | — |
+
+- Caddy meneruskan `/api/*` ke backend Go dan sisanya ke frontend; hanya Caddy yang terekspos ke internet.
+- Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, `API_ENC_KEY`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi/terjemahan, kredensial R2. Tidak masuk repo (repo hanya berisi `.env.example`).
+- Alur rilis: `go build` → unggah binary → `systemctl restart subsenpai-api subsenpai-worker`. Frontend: `next build` (standalone) → unggah → restart `subsenpai-web`.
+- Cadangan: database diurus Supabase; yang perlu dicadangkan dari VPS hanya file env dan konfigurasi `deploy/`.
+
+## 11. Batasan yang Disadari
+
+- Satu VPS adalah titik tunggal kegagalan — bila VPS mati, seluruh layanan berhenti. Mitigasi awal: pantau uptime + restart otomatis systemd; pisahkan worker ke mesin lain bila antrean subtitle membesar.
 - Project Supabase gratis bisa di-pause bila lama tidak aktif — aktivitas berkala menjaganya tetap bangun.
 - Sumber konten resmi umumnya berkunci wilayah + DRM; daftar sumber yang benar-benar bisa dipakai dicatat terpisah di `docs/` setelah riset.
 - Iklan: konten seperti ini umumnya ditolak AdSense — jaringan iklan alternatif diteliti di fase monetisasi.
