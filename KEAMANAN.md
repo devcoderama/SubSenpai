@@ -56,7 +56,7 @@ Memastikan permintaan aksi bernilai datang dari **aplikasi resmi yang tidak dimo
 
 ## 6. O17 — Gerbang Versi Minimum Aplikasi
 
-Distribusi lewat APK/Play Store berarti akan selalu ada user yang tertinggal di versi lama. Gerbang versi memastikan versi bermasalah tidak hidup selamanya:
+Distribusi lewat APK (website resmi & GitHub Releases) berarti akan selalu ada user yang tertinggal di versi lama. Gerbang versi memastikan versi bermasalah tidak hidup selamanya:
 
 - Admin mengatur **versi minimum yang didukung** dari pengaturan platform, beserta tautan unduh resmi dan catatan rilis singkat.
 - Aplikasi memeriksa versi minimum saat mulai dan berkala; respons API menyertakan sinyal khusus (`APP_UPDATE_REQUIRED`) begitu versi aplikasi berada di bawah minimum.

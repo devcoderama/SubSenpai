@@ -53,7 +53,7 @@ SubSenpai/
 └── docs/                   # Catatan tambahan (sumber data, riset iklan, dsb.)
 ```
 
-Catatan: backend Go dibangun menjadi binary (`go build`) lalu dijalankan systemd di VPS — tidak perlu Docker, Node, maupun runtime lain; VPS hanya menjalankan layanan Go + Caddy. Aplikasi Android didistribusikan sebagai APK / lewat Play Store. Rincian deployment ada di Bagian 12.
+Catatan: backend Go dibangun menjadi binary (`go build`) lalu dijalankan systemd di VPS — tidak perlu Docker, Node, maupun runtime lain; VPS hanya menjalankan layanan Go + Caddy. Aplikasi Android didistribusikan sebagai APK lewat website resmi & GitHub Releases (keputusan distribusi: lihat NOTE.md). Rincian deployment ada di Bagian 12.
 
 ## 3. Skema Database (PostgreSQL Lokal di VPS)
 
@@ -306,14 +306,14 @@ Satu VPS menjalankan seluruh aplikasi (spesifikasi awal 1 vCPU / 4 GB RAM — bi
 - Caddy meneruskan seluruh request (API publik, mis. `api.subsenpai...`) ke backend Go; hanya Caddy yang terekspos ke internet, layanan Go hanya mendengarkan di localhost.
 - Domain diarahkan lewat **Cloudflare** (proxy aktif): cache tepi untuk response katalog publik, IP asli VPS tersembunyi, dan proteksi DDoS dasar — gratis.
 - Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi, kunci API ImgBB, kredensial R2. Terjemahan tidak menyentuh server sama sekali (aplikasi memanggil endpoint publik gratis Google Translate langsung dari perangkat user), jadi tidak ada kredensial terjemahan di server. Tidak masuk repo (repo hanya berisi `.env.example`). Kunci sesi `xdata` TIDAK termasuk env/disk — dibuat per sesi dan hidup di memori saja (Bagian 11).
-- Alur rilis: `go build` → unggah binary → `systemctl restart subsenpai-api subsenpai-worker`. Pembaruan aplikasi Android lewat rilis APK/Play Store seperti biasa (di luar VPS).
+- Alur rilis: `go build` → unggah binary → `systemctl restart subsenpai-api subsenpai-worker`. Pembaruan aplikasi Android lewat rilis APK di website resmi & GitHub Releases (di luar VPS; lihat NOTE.md).
 - Cadangan: `pg_dump` database berjalan terjadwal dari VPS (timer systemd, mis. tiap malam) dan hasilnya diunggah ke R2 — database lokal tidak mempunyai pemulihan titik-waktu bawaan, jadi dump ini penyelamat utamanya — dan dump TIDAK boleh hanya disimpan di VPS yang sama: unggahan ke R2 (di luar VPS) adalah bagian wajibnya, karena bila disk VPS rusak, database dan cadangannya tidak boleh hilang bersamaan. File env dan konfigurasi `deploy/` dicadangkan bersama dump. Setiap 3 bulan dilakukan **uji pemulihan**: dump terakhir dicoba dipulihkan ke database kosong dan hasilnya dicatat di modul Monitoring — cadangan yang belum pernah dipulihkan adalah harapan, bukan cadangan.
 - Pemantauan: endpoint `GET /healthz` (jawaban polos `{ok: true}`, tanpa enkripsi) dipantau pemantau uptime eksternal gratis (mis. UptimeRobot) agar admin tahu dalam hitungan menit bila VPS atau layanan mati. Aplikasi Android juga mengirim **laporan crash** (Firebase Crashlytics gratis, atau GlitchTip yang di-host sendiri) bertanda versi rilis — error di perangkat user tidak terlihat dari server, jadi laporan crash adalah satu-satunya cara mengetahuinya; ringkasannya ditautkan dari modul Monitoring panel admin.
 
 ## 13. Batasan yang Disadari
 
 - Satu VPS adalah titik tunggal kegagalan — bila VPS mati, seluruh layanan berhenti. Mitigasi awal: pantau uptime + restart otomatis systemd; pisahkan worker ke mesin lain bila antrean subtitle membesar.
-- Aplikasi saja, tanpa versi web: penemuan konten lewat mesin pencari (SEO) tidak ada — distribusi & pertumbuhan mengandalkan APK/Play Store dan promosi komunitas. Sebagai gantinya VPS jauh lebih ringan (komponen terberat sebelumnya, Next.js, hilang).
+- Aplikasi saja, tanpa versi web: penemuan konten lewat mesin pencari (SEO) tidak ada — distribusi & pertumbuhan mengandalkan unduhan APK dari website resmi & GitHub Releases serta promosi komunitas (Play Store ditunda — lihat NOTE.md). Sebagai gantinya VPS jauh lebih ringan (komponen terberat sebelumnya, Next.js, hilang).
 - Database lokal berbagi nasib dengan VPS: bila VPS atau disknya mati, database ikut mati — dimitigasi cadangan `pg_dump` terjadwal yang wajib terunggah ke R2 (di luar VPS) dan pemantauan sisa disk dari panel admin. Ruang database juga berbagi disk dengan sistem & binary, jadi pertumbuhan tabel besar (pesan chat, riwayat) dipantau; arsip berkala disiapkan bila mulai sesak.
 - Sumber konten resmi umumnya berkunci wilayah + DRM; daftar sumber yang benar-benar bisa dipakai dicatat terpisah di `docs/` setelah riset.
 - Iklan: konten seperti ini umumnya ditolak AdSense — jaringan iklan alternatif diteliti di fase monetisasi.
