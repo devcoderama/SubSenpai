@@ -16,6 +16,7 @@
 ✓ [NOTE.md](NOTE.md) → distribusi aplikasi hanya melalui website resmi & GitHub Releases
 ✓ [PROGRES.md](PROGRES.md) → peta alur progres ini
 ✓ [android/README.md](android/README.md) → struktur aplikasi Android (folder `android/` di akar repo)
+✓ [web_admin/README.md](web_admin/README.md) → struktur panel admin web (folder `web_admin/` di akar repo)
 - [DATABASE.md](DATABASE.md) → sinkronisasi final seluruh perubahan skema F13–F39 dan O8–O27 ke ERD, relasi, enum, indeks, dan DDL
 - [DATABASE.md](DATABASE.md) → migrasi awal final dari DDL hasil sinkronisasi
 

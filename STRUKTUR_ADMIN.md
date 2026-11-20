@@ -12,23 +12,7 @@ Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) d
 
 ## 2. Struktur Folder
 
-```
-admin/                     # Aplikasi web panel admin (website terpisah dari aplikasi Android; satu halaman per modul)
-├── DashboardPage             # Ringkasan
-├── TitlesPage                # Kelola katalog (judul, episode, chapter, permintaan judul)
-├── SubtitlesPage             # Antrean & hasil subtitle
-├── UsersPage                 # Kelola user, premium manual & perangkat akun
-├── SubscriptionsPage         # Langganan & transaksi
-├── VouchersPage              # Voucher premium (buat, bagikan, pantau klaim)
-├── ChatModerationPage        # Moderasi Chat Global (pesan, kanal, stiker)
-├── ReportsPage               # Laporan user (link mati, subtitle salah)
-├── MonitoringPage            # Kesehatan sistem & metrik
-├── NotificationsPage         # Broadcast notifikasi manual (promo/event)
-└── SettingsPage              # Pengaturan platform
-
-API admin hidup di backend Go (backend/internal/httpapi, grup /api/v1/admin/*) —
-semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di sana.
-```
+Struktur folder & daftar halaman panel tinggal di **[web_admin/README.md](web_admin/README.md)** (folder `web_admin/` di akar repo). API admin hidup di backend Go (backend/internal/httpapi, grup `/api/v1/admin/*`) — semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di sana.
 
 ## 3. Modul Panel
 

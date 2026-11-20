@@ -43,7 +43,7 @@ SubSenpai/
 │   │   └── config/                     # Baca konfigurasi dari env
 │   ├── go.mod
 │   └── .env.example                    # DATABASE_URL, kredensial gateway & API transkripsi (contoh tanpa nilai asli)
-├── admin/                  # Panel admin web (website terpisah khusus admin; rincian: STRUKTUR_ADMIN.md)
+├── web_admin/              # Panel admin web (website terpisah khusus admin; rincian: web_admin/README.md + STRUKTUR_ADMIN.md)
 ├── db/
 │   ├── migrations/         # Migrasi skema PostgreSQL (lokal di VPS)
 │   └── seed/               # Data awal (daftar genre, tipe, kanal chat, dsb.)
