@@ -387,7 +387,7 @@ erDiagram
         text source_lang "bahasa asal (BCP-47, boleh kosong = deteksi)"
         text target_lang "bahasa tujuan (BCP-47)"
         text translated_text
-        text provider "google"
+        text provider "gtx"
         timestamptz created_at
     }
 ```
@@ -434,7 +434,7 @@ Catatan: tidak ada layanan auth eksternal — `profiles` adalah tabel user itu s
 | `collection_follows` | User yang mengikuti sebuah koleksi | Komunitas |
 | `user_achievements` | Pencapaian yang sudah dibuka user (kunci pencapaian + waktu) | User |
 | `user_devices` | Registri perangkat per akun — batas perangkat premium & keamanan sesi | Sistem |
-| `translations` | Cache terjemahan Google Translate (sinopsis/komentar/pesan/deskripsi) per bahasa target | Sistem |
+| `translations` | Cache terjemahan Google Translate gratis (endpoint `gtx`) untuk sinopsis/komentar/pesan/deskripsi per bahasa target | Sistem |
 
 ## 3. Relasi (Foreign Key)
 
@@ -474,7 +474,7 @@ Catatan: tidak ada layanan auth eksternal — `profiles` adalah tabel user itu s
 - `titles.type` ∈ `anime, donghua, film, manga, manhua, manhwa`
 - `titles.status` ∈ `ongoing, completed`
 - `subtitles.lang` adalah kode bahasa **BCP-47** (daftar bahasa aktif dikelola di pengaturan admin; bawaan `id` selalu dibuat lebih dulu, bahasa lain on-demand); `subtitles.source` ∈ `caption, whisper`; `subtitles.status` ∈ `queued, processing, done, failed`
-- `profiles.app_language` kode BCP-47, bawaan `id` — bahasa antarmuka user sekaligus bahasa bawaan subtitle & tombol Terjemahkan; `translations.provider` = `google` (satu-satunya penyedia terjemahan)
+- `profiles.app_language` kode BCP-47, bawaan `id` — bahasa antarmuka user sekaligus bahasa bawaan subtitle & tombol Terjemahkan; `translations.provider` = `gtx` (endpoint publik gratis Google Translate, pola D TRADE — tanpa API key, tanpa biaya)
 - `subscriptions.status` ∈ `active, expired, cancelled`; `subscriptions.provider` ∈ `midtrans, xendit, gopay, manual, voucher, trial` (`gopay` = GoPay Merchant API pihak ketiga, konfirmasi via polling; `manual` = diberi admin dari panel; `voucher` = hasil penukaran kode voucher; `trial` = uji coba premium gratis 3 hari, sekali per akun, ditandai `profiles.trial_used_at`)
 - `payment_sessions.purpose` ∈ `subscription, voucher`; `payment_sessions.status` ∈ `pending, paid, expired`
 - `vouchers.source` ∈ `admin, purchase, referral`; `vouchers.status` ∈ `active, redeemed, expired, revoked`
@@ -967,7 +967,7 @@ create table translations (
   source_lang text,
   target_lang text not null,
   translated_text text not null,
-  provider text not null default 'google',
+  provider text not null default 'gtx',
   created_at timestamptz not null default now(),
   unique (entity_type, entity_id, field, target_lang)
 );
