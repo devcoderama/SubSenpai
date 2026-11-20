@@ -35,7 +35,7 @@ SubSenpai/
 │   │   ├── httpapi/                    # Router (chi) + handler per domain: katalog, akses, subtitle, chat, premium, voucher, admin, webhook
 │   │   ├── middleware/                 # Auth (verifikasi JWT Supabase), enkripsi response xdata/xtime, rate limit, CORS, logging
 │   │   ├── db/                         # Akses PostgreSQL (pgx) + query per domain
-│   │   ├── store/                      # Object storage R2 (poster, halaman komik, SRT, stiker)
+│   │   ├── store/                      # Object storage R2 (poster, halaman komik, SRT, stiker katalog) + klien ImgBB (gambar chat & stiker pribadi user)
 │   │   ├── jobs/                       # Worker subtitle (antrean → transkripsi API → terjemah → SRT → R2), polling pembayaran, dsb.
 │   │   └── config/                     # Baca konfigurasi dari env
 │   ├── go.mod
@@ -186,6 +186,7 @@ Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
   - **Emoji pendamping nama** (`profiles.name_emoji`)
   - **Paket stiker premium** — pesan bisa berupa stiker gambar (dari R2, tabel `stickers`); user gratis hanya mendapat stiker dasar + emoji standar
   - Kustomisasi diperiksa di server. Bila langganan berakhir, tampilan kembali ke bawaan — pengaturan tetap tersimpan dan aktif lagi saat user berlangganan kembali.
+- **Kirim gambar & stiker pribadi**: user bisa mengirim gambar di chat dan menyimpan stiker buatannya sendiri (`user_stickers`). Gambar TIDAK disimpan sebagai berkas mentah di server maupun database — aplikasi mengirim gambar ke backend Go, backend mengunggahnya ke **ImgBB** (`POST https://api.imgbb.com/1/upload`; kunci API ImgBB hanya ada di server), lalu yang disimpan di database hanya **URL** hasilnya (`chat_messages.image_url`). Batas ImgBB maks 32 MB per gambar dan tanpa expiration (gambar tidak kedaluwarsa). `delete_url` dari ImgBB disimpan internal di server untuk keperluan moderasi — tidak pernah dikirim ke aplikasi. Stiker katalog resmi tetap di R2.
 - **Moderasi**: batas laju pengiriman, filter kata terlarang, admin/mod dapat menghapus pesan (soft-delete) dan membisukan user (`chat_muted_until`); user dapat melaporkan pesan (masuk `reports` bertarget `chat_message`). Modul adminnya dirinci di STRUKTUR_ADMIN.md.
 
 ## 9. Teman & Grup
@@ -243,7 +244,7 @@ Satu VPS menjalankan seluruh aplikasi (spesifikasi awal cukup 1–2 vCPU / 1–2
 | Berkas | Cloudflare R2 — di luar VPS | — |
 
 - Caddy meneruskan seluruh request (API publik, mis. `api.subsenpai...`) ke backend Go; hanya Caddy yang terekspos ke internet, layanan Go hanya mendengarkan di localhost.
-- Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi/terjemahan, kredensial R2. Tidak masuk repo (repo hanya berisi `.env.example`). Kunci sesi `xdata` TIDAK termasuk env/disk — dibuat per sesi dan hidup di memori saja (Bagian 10).
+- Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi/terjemahan, kunci API ImgBB, kredensial R2. Tidak masuk repo (repo hanya berisi `.env.example`). Kunci sesi `xdata` TIDAK termasuk env/disk — dibuat per sesi dan hidup di memori saja (Bagian 10).
 - Alur rilis: `go build` → unggah binary → `systemctl restart subsenpai-api subsenpai-worker`. Pembaruan aplikasi Android lewat rilis APK/Play Store seperti biasa (di luar VPS).
 - Cadangan: database diurus Supabase; yang perlu dicadangkan dari VPS hanya file env dan konfigurasi `deploy/`.
 
@@ -255,3 +256,4 @@ Satu VPS menjalankan seluruh aplikasi (spesifikasi awal cukup 1–2 vCPU / 1–2
 - Sumber konten resmi umumnya berkunci wilayah + DRM; daftar sumber yang benar-benar bisa dipakai dicatat terpisah di `docs/` setelah riset.
 - Iklan: konten seperti ini umumnya ditolak AdSense — jaringan iklan alternatif diteliti di fase monetisasi.
 - Menerjemahkan komik secara otomatis (OCR + menimpa teks pada gambar) di luar cakupan rancangan ini.
+- Gambar kiriman user bergantung pada ImgBB, layanan hosting gambar gratis pihak ketiga tanpa SLA — gambar bisa saja hilang dari sisi mereka. Karena itu ImgBB hanya untuk gambar chat & stiker pribadi (risiko rendah); aset penting (poster, halaman komik, stiker katalog) tetap di R2 yang kita kendalikan.

@@ -28,6 +28,7 @@ erDiagram
     chat_channels ||--o{ chat_messages : "kanal berisi"
     profiles ||--o{ chat_messages : "mengirim"
     stickers ||--o{ chat_messages : "dipakai di"
+    profiles ||--o{ user_stickers : "punya stiker pribadi"
     profiles ||--o{ friendships : "mengirim permintaan"
     profiles ||--o{ user_blocks : "memblokir"
     profiles ||--o{ groups : "membuat"
@@ -183,9 +184,10 @@ erDiagram
         uuid id PK
         uuid channel_id FK
         uuid user_id FK
-        text kind "text|sticker"
+        text kind "text|sticker|image"
         text body "isi teks, maks 500"
-        uuid sticker_id FK "terisi bila kind=sticker"
+        uuid sticker_id FK "stiker katalog, bila kind=sticker"
+        text image_url "URL ImgBB, bila image / stiker pribadi"
         timestamptz created_at
         timestamptz deleted_at "soft-delete moderasi"
     }
@@ -222,6 +224,13 @@ erDiagram
         text role "owner|admin|member"
         timestamptz joined_at
     }
+    user_stickers {
+        uuid id PK
+        uuid user_id FK
+        text image_url "URL ImgBB"
+        text delete_url "internal server saja"
+        timestamptz created_at
+    }
 ```
 
 Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar sebagai tabel aplikasi). `profiles.id` adalah FK 1:1 ke `auth.users.id`. Login **wajib Google OAuth**; pendaftaran email/password dimatikan.
@@ -252,6 +261,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 | `user_blocks` | Blokir antar-user (menolak permintaan & undangan) | Sosial |
 | `groups` | Grup buatan user (publik/privat, pemilik, avatar) | Sosial |
 | `group_members` | Keanggotaan grup + peran (owner/admin/member) | Sosial |
+| `user_stickers` | Stiker pribadi buatan user — gambar dihosting di ImgBB, DB hanya menyimpan URL | Komunitas |
 
 ## 3. Relasi (Foreign Key)
 
@@ -273,6 +283,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `friendships (requester_id, addressee_id)` — kunci utama gabungan; kedua FK ke `profiles.id` (relasi user-ke-user); satu baris per pasangan (arah = siapa yang meminta)
 - `user_blocks (blocker_id, blocked_id)` — kunci utama gabungan, kedua FK ke `profiles.id`
 - `groups.owner_id → profiles.id`; `group_members (group_id, user_id)` — kunci utama gabungan; `chat_channels.group_id → groups.id` (unik — satu grup satu kanal chat)
+- `user_stickers.user_id → profiles.id`; gambarnya sendiri TIDAK disimpan di DB — hanya `image_url` (ImgBB) + `delete_url` internal untuk moderasi
 
 ## 4. Nilai yang Dibatasi (cek/enum)
 
@@ -284,7 +295,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `vouchers.source` ∈ `admin, purchase`; `vouchers.status` ∈ `active, redeemed, expired, revoked`
 - `profiles.role` ∈ `user, admin`
 - `reports.target_kind` ∈ `episode, chapter, subtitle, chat_message, group`; `reports.status` ∈ `open, resolved, dismissed`
-- `chat_messages.kind` ∈ `text, sticker`
+- `chat_messages.kind` ∈ `text, sticker, image` (teks → `body`; stiker katalog → `sticker_id`; gambar & stiker pribadi → `image_url` berisi URL ImgBB)
 - `chat_channels.kind` ∈ `global, group` (`group_id` wajib terisi bila `group`, kosong bila `global`)
 - `friendships.status` ∈ `pending, accepted`; `group_members.role` ∈ `owner, admin, member`
 
@@ -314,6 +325,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - **`payment_sessions`**: ditulis & diperbarui hanya oleh API server (termasuk proses polling); user hanya membaca sesi miliknya untuk melihat status pembayaran.
 - **Chat**: `chat_channels` & `stickers` baca-publik; `chat_messages` dibaca user login, ditulis hanya atas nama pengirim sendiri (`auth.uid() = user_id`) lewat API/Realtime, dan penghapusan (soft-delete) hanya oleh admin/mod. Kolom kustomisasi premium di `profiles` (`name_color`, `name_emoji`) hanya bisa diubah lewat API yang memeriksa status premium di server.
 - **Sosial**: `friendships` & `user_blocks` hanya terlihat oleh kedua pihak yang terlibat; perubahan (kirim/terima/tolak/blokir) lewat API. `groups` publik bisa dibaca semua user login; grup privat hanya oleh anggotanya. Pesan kanal grup hanya bisa dibaca/ditulis anggota grup itu (dicek di API/Realtime berdasarkan `group_members`).
+- **`user_stickers` & gambar chat**: dikelola pemiliknya lewat API (unggah selalu lewat backend — kunci API ImgBB tidak pernah ke klien). Kolom `delete_url` (ImgBB) bersifat internal server: tidak pernah dipilih untuk dikirim ke aplikasi, hanya dipakai admin saat menghapus gambar yang melanggar.
 
 ## 7. Draf SQL (titik awal migrasi)
 
@@ -511,12 +523,18 @@ create table chat_messages (
   id uuid primary key default gen_random_uuid(),
   channel_id uuid not null references chat_channels(id) on delete cascade,
   user_id uuid not null references profiles(id) on delete cascade,
-  kind text not null default 'text' check (kind in ('text','sticker')),
+  kind text not null default 'text' check (kind in ('text','sticker','image')),
   body text check (char_length(body) <= 500),
   sticker_id uuid references stickers(id) on delete set null,
+  image_url text,
+  image_delete_url text,
   created_at timestamptz not null default now(),
   deleted_at timestamptz,
-  check ((kind = 'text' and body is not null) or (kind = 'sticker' and sticker_id is not null))
+  check (
+    (kind = 'text' and body is not null)
+    or (kind = 'sticker' and (sticker_id is not null or image_url is not null))
+    or (kind = 'image' and image_url is not null)
+  )
 );
 create index chat_messages_channel_idx on chat_messages (channel_id, created_at desc);
 
@@ -561,4 +579,13 @@ create index group_members_user_idx on group_members (user_id);
 alter table chat_channels
   add constraint chat_channels_group_fk
   foreign key (group_id) references groups(id) on delete cascade;
+
+create table user_stickers (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  image_url text not null,
+  delete_url text,
+  created_at timestamptz not null default now()
+);
+create index user_stickers_user_idx on user_stickers (user_id, created_at desc);
 ```
