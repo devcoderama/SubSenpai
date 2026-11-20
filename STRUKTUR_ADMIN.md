@@ -88,6 +88,7 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - Kelola kanal chat: tambah/ubah nama, deskripsi, dan urutan kanal; atur teks banner pengumuman di atas chat.
 - Kelola katalog stiker: unggah paket stiker (gambar ke R2) dan tandai mana yang khusus premium.
 - Atur filter kata terlarang dan mode lambat (jeda minimum antar-pesan) per kanal bila chat sedang rusuh.
+- Grup terlaporkan (`reports` bertarget `group`): periksa grupnya — beri peringatan ke owner, batasi, atau bubarkan grup yang melanggar. Urusan sehari-hari di dalam grup (keluarkan anggota, hapus pesan) adalah wewenang admin grup, bukan admin platform.
 
 ## 4. Tabel Pendukung
 

@@ -17,7 +17,8 @@ SubSenpai adalah aplikasi streaming & baca: anime dan donghua dari sumber asalny
 - 🎟️ **Freemium** — tamu: 1 episode/chapter; login gratis: lanjut dengan iklan; premium: tanpa iklan, semua terbuka
 - 🎁 **Voucher premium** — admin membagikan kode promo; user juga bisa membeli voucher untuk dihadiahkan ke user lain. Kode sekali pakai, ditukar menjadi hari premium
 - 💬 **Chat Global** — obrolan realtime per kanal topik (Umum, Anime, Donghua, Manga, Rekomendasi) untuk user login. User **premium** bisa mengustomisasi warna nickname, memasang emoji di nama, dan memakai stiker eksklusif
-- 🔐 **Response API terenkripsi** — semua response JSON backend dibungkus envelope `xdata`/`xtime` (AES-256-GCM dengan **kunci sesi sekali pakai hasil tukar kunci ECDH** — tidak ada kunci yang tertanam di aplikasi) dan baru dibuka di aplikasi — anti-scraping, anti-tamper, anti-replay (detail di STRUKTUR.md Bagian 9)
+- 👥 **Teman & Grup** — tambah teman lewat kode teman, buat grup publik/privat dengan kanal chatnya sendiri, undang teman, dan kelola anggota dengan peran owner/admin/member
+- 🔐 **Response API terenkripsi** — semua response JSON backend dibungkus envelope `xdata`/`xtime` (AES-256-GCM dengan **kunci sesi sekali pakai hasil tukar kunci ECDH** — tidak ada kunci yang tertanam di aplikasi) dan baru dibuka di aplikasi — anti-scraping, anti-tamper, anti-replay (detail di STRUKTUR.md Bagian 10)
 - 🌙 **Mode gelap** — tema bawaan untuk nonton malam
 
 ## 🗣️ Cara Kerja Subtitle Otomatis
@@ -71,7 +72,7 @@ Detail folder, skema database, model akses, dan alur data: lihat **[STRUKTUR.md]
 - [ ] Fase 1 — Katalog multi-konten + halaman detail + player HLS
 - [ ] Fase 2 — Worker subtitle otomatis (transkripsi → terjemah → SRT)
 - [ ] Fase 3 — Akun, watchlist, riwayat
-- [ ] Fase 4 — Gerbang freemium (tamu 1 episode) + iklan + premium + Chat Global
+- [ ] Fase 4 — Gerbang freemium (tamu 1 episode) + iklan + premium + Chat Global, teman & grup
 - [ ] Fase 5 — Mode baca manga/manhua/manhwa
 - [ ] Fase 6 — Pencarian lanjutan, rekomendasi, dan pemolesan UI
 

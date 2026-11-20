@@ -24,7 +24,7 @@ SubSenpai/
 ├── apps/
 │   └── android/            # Aplikasi Android (Kotlin) — SATU-SATUNYA klien, berjalan di perangkat user
 │       └── app/src/main/java/com/subsenpai/
-│           ├── ui/                     # Layar: beranda, telusur, detail, player, reader, chat, premium, watchlist, admin
+│           ├── ui/                     # Layar: beranda, telusur, detail, player, reader, chat, teman, grup, premium, watchlist, admin
 │           ├── data/                   # Klien API Go (Retrofit/OkHttp) + dekripsi xdata/xtime, sesi Supabase Auth, model data
 │           └── player/                 # Player HLS (Media3/ExoPlayer) + overlay subtitle
 ├── backend/                # Backend Go — dijalankan di VPS
@@ -49,7 +49,7 @@ SubSenpai/
 └── docs/                   # Catatan tambahan (sumber data, riset iklan, dsb.)
 ```
 
-Catatan: backend Go dibangun menjadi binary (`go build`) lalu dijalankan systemd di VPS — tidak perlu Docker, Node, maupun runtime lain; VPS hanya menjalankan layanan Go + Caddy. Aplikasi Android didistribusikan sebagai APK / lewat Play Store. Rincian deployment ada di Bagian 10.
+Catatan: backend Go dibangun menjadi binary (`go build`) lalu dijalankan systemd di VPS — tidak perlu Docker, Node, maupun runtime lain; VPS hanya menjalankan layanan Go + Caddy. Aplikasi Android didistribusikan sebagai APK / lewat Play Store. Rincian deployment ada di Bagian 11.
 
 ## 3. Skema Database (Supabase / PostgreSQL)
 
@@ -188,7 +188,22 @@ Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
   - Kustomisasi diperiksa di server. Bila langganan berakhir, tampilan kembali ke bawaan — pengaturan tetap tersimpan dan aktif lagi saat user berlangganan kembali.
 - **Moderasi**: batas laju pengiriman, filter kata terlarang, admin/mod dapat menghapus pesan (soft-delete) dan membisukan user (`chat_muted_until`); user dapat melaporkan pesan (masuk `reports` bertarget `chat_message`). Modul adminnya dirinci di STRUKTUR_ADMIN.md.
 
-## 9. Keamanan API — Enkripsi Response (`xdata` / `xtime`)
+## 9. Teman & Grup
+
+### Teman
+- Setiap user punya **kode teman** unik (`profiles.friend_code`) — tambah teman dengan memasukkan kode itu, atau mencari nama pengguna.
+- Alur: kirim permintaan (`friendships` berstatus `pending`) → penerima **menerima** (menjadi `accepted`) atau **menolak** (permintaan dihapus). Daftar teman tampil di profil masing-masing.
+- **Blokir** (`user_blocks`): user yang diblokir tidak bisa mengirim permintaan teman maupun undangan grup, dan pertemanan yang sudah ada terputus.
+- Khusus user login — tamu tidak memiliki fitur sosial sama sekali.
+
+### Grup
+- User login bisa **membuat grup** (`groups`): nama, deskripsi, avatar, dan sifat **publik** (bisa dicari & diikuti siapa saja) atau **privat** (hanya lewat undangan/persetujuan).
+- Peran anggota (`group_members`): `owner` (pembuat grup; satu-satunya yang bisa membubarkan grup), `admin` (diangkat owner; ikut memoderasi), `member`.
+- Setiap grup otomatis memiliki **satu kanal chat sendiri** (`chat_channels` berkind `group`) — memakai sistem chat yang sama dengan Chat Global (pesan teks, stiker, kustomisasi premium), tetapi hanya anggota grup yang bisa membaca & menulis di dalamnya.
+- Bergabung: grup publik bisa langsung diikuti; grup privat lewat undangan dari daftar teman atau permintaan bergabung yang disetujui admin grup.
+- Moderasi dua lapis: admin grup mengeluarkan anggota & menghapus pesan di kanal grupnya; grup yang dilaporkan user (`reports` bertarget `group`) ditindak admin platform (peringatan sampai pembubaran) — lihat STRUKTUR_ADMIN.md.
+
+## 10. Keamanan API — Enkripsi Response (`xdata` / `xtime`)
 
 Semua response JSON dari backend TIDAK dikirim mentah. Backend membungkusnya dalam **envelope terenkripsi**, dan aplikasi di sisi klien membukanya kembali menjadi response asal sebelum ditampilkan:
 
@@ -215,7 +230,7 @@ Kenapa bukan kunci dari signature URL atau kunci statis tertanam: path URL bersi
 
 Catatan jujur soal batas lapisan ini: penyerang yang sangat berniat tetap bisa meniru handshake aplikasi dan berbicara ke API seperti aplikasi asli. Lapisan ini berfungsi sebagai **anti-scraping massal**, **integritas**, **anti-replay**, dan **kerahasiaan per sesi** — BUKAN pengganti HTTPS, login, dan gerbang akses di server.
 
-## 10. Deployment (VPS)
+## 11. Deployment (VPS)
 
 Satu VPS menjalankan seluruh aplikasi (spesifikasi awal cukup 1–2 vCPU / 1–2 GB RAM karena binary Go ringan):
 
@@ -228,11 +243,11 @@ Satu VPS menjalankan seluruh aplikasi (spesifikasi awal cukup 1–2 vCPU / 1–2
 | Berkas | Cloudflare R2 — di luar VPS | — |
 
 - Caddy meneruskan seluruh request (API publik, mis. `api.subsenpai...`) ke backend Go; hanya Caddy yang terekspos ke internet, layanan Go hanya mendengarkan di localhost.
-- Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi/terjemahan, kredensial R2. Tidak masuk repo (repo hanya berisi `.env.example`). Kunci sesi `xdata` TIDAK termasuk env/disk — dibuat per sesi dan hidup di memori saja (Bagian 9).
+- Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi/terjemahan, kredensial R2. Tidak masuk repo (repo hanya berisi `.env.example`). Kunci sesi `xdata` TIDAK termasuk env/disk — dibuat per sesi dan hidup di memori saja (Bagian 10).
 - Alur rilis: `go build` → unggah binary → `systemctl restart subsenpai-api subsenpai-worker`. Pembaruan aplikasi Android lewat rilis APK/Play Store seperti biasa (di luar VPS).
 - Cadangan: database diurus Supabase; yang perlu dicadangkan dari VPS hanya file env dan konfigurasi `deploy/`.
 
-## 11. Batasan yang Disadari
+## 12. Batasan yang Disadari
 
 - Satu VPS adalah titik tunggal kegagalan — bila VPS mati, seluruh layanan berhenti. Mitigasi awal: pantau uptime + restart otomatis systemd; pisahkan worker ke mesin lain bila antrean subtitle membesar.
 - Aplikasi saja, tanpa versi web: penemuan konten lewat mesin pencari (SEO) tidak ada — distribusi & pertumbuhan mengandalkan APK/Play Store dan promosi komunitas. Sebagai gantinya VPS jauh lebih ringan (komponen terberat sebelumnya, Next.js, hilang).

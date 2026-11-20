@@ -28,6 +28,12 @@ erDiagram
     chat_channels ||--o{ chat_messages : "kanal berisi"
     profiles ||--o{ chat_messages : "mengirim"
     stickers ||--o{ chat_messages : "dipakai di"
+    profiles ||--o{ friendships : "mengirim permintaan"
+    profiles ||--o{ user_blocks : "memblokir"
+    profiles ||--o{ groups : "membuat"
+    groups ||--o{ group_members : "beranggotakan"
+    profiles ||--o{ group_members : "bergabung"
+    groups ||--o| chat_channels : "punya kanal chat"
 
     titles {
         uuid id PK
@@ -85,6 +91,7 @@ erDiagram
         text name_color "warna nickname chat (premium)"
         text name_emoji "emoji di nama chat (premium)"
         timestamptz chat_muted_until "bisukan chat s.d."
+        text friend_code UK "kode tambah teman"
     }
     subscriptions {
         uuid id PK
@@ -123,7 +130,7 @@ erDiagram
     reports {
         uuid id PK
         uuid user_id FK "pelapor, boleh kosong"
-        text target_kind "episode|chapter|subtitle"
+        text target_kind "episode|chapter|subtitle|chat_message|group"
         uuid target_id "id target yang dilaporkan"
         text reason
         text status "open|resolved|dismissed"
@@ -169,6 +176,8 @@ erDiagram
         text name
         text description
         int sort_order
+        text kind "global|group"
+        uuid group_id FK "terisi bila kind=group"
     }
     chat_messages {
         uuid id PK
@@ -186,6 +195,32 @@ erDiagram
         text name
         text image_url "R2"
         boolean is_premium "khusus premium"
+    }
+    friendships {
+        uuid requester_id PK,FK
+        uuid addressee_id PK,FK
+        text status "pending|accepted"
+        timestamptz created_at
+    }
+    user_blocks {
+        uuid blocker_id PK,FK
+        uuid blocked_id PK,FK
+        timestamptz created_at
+    }
+    groups {
+        uuid id PK
+        text name
+        text description
+        text avatar_url "R2"
+        uuid owner_id FK
+        boolean is_public
+        timestamptz created_at
+    }
+    group_members {
+        uuid group_id PK,FK
+        uuid user_id PK,FK
+        text role "owner|admin|member"
+        timestamptz joined_at
     }
 ```
 
@@ -213,6 +248,10 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 | `chat_channels` | Kanal Chat Global (Umum, Anime, Donghua, Manga, Rekomendasi) | Komunitas |
 | `chat_messages` | Pesan Chat Global (teks / stiker), soft-delete untuk moderasi | Komunitas |
 | `stickers` | Katalog stiker chat (sebagian khusus premium) | Komunitas |
+| `friendships` | Pertemanan antar-user (permintaan + status) | Sosial |
+| `user_blocks` | Blokir antar-user (menolak permintaan & undangan) | Sosial |
+| `groups` | Grup buatan user (publik/privat, pemilik, avatar) | Sosial |
+| `group_members` | Keanggotaan grup + peran (owner/admin/member) | Sosial |
 
 ## 3. Relasi (Foreign Key)
 
@@ -231,6 +270,9 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `vouchers.created_by → profiles.id` (admin pembuat / user pembeli); `vouchers.assigned_to → profiles.id` (boleh kosong = siapa saja boleh menukar); `vouchers.redeemed_by → profiles.id` (kosong sampai ditukar)
 - `payment_sessions.user_id → profiles.id`; target bayarnya (langganan/voucher) dicocokkan lewat `purpose` + konteks sesi, referensi hasil pencocokan disimpan di `matched_ref`
 - `chat_messages.channel_id → chat_channels.id`; `chat_messages.user_id → profiles.id`; `chat_messages.sticker_id → stickers.id` (hanya terisi untuk pesan stiker)
+- `friendships (requester_id, addressee_id)` — kunci utama gabungan; kedua FK ke `profiles.id` (relasi user-ke-user); satu baris per pasangan (arah = siapa yang meminta)
+- `user_blocks (blocker_id, blocked_id)` — kunci utama gabungan, kedua FK ke `profiles.id`
+- `groups.owner_id → profiles.id`; `group_members (group_id, user_id)` — kunci utama gabungan; `chat_channels.group_id → groups.id` (unik — satu grup satu kanal chat)
 
 ## 4. Nilai yang Dibatasi (cek/enum)
 
@@ -241,8 +283,10 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `payment_sessions.purpose` ∈ `subscription, voucher`; `payment_sessions.status` ∈ `pending, paid, expired`
 - `vouchers.source` ∈ `admin, purchase`; `vouchers.status` ∈ `active, redeemed, expired, revoked`
 - `profiles.role` ∈ `user, admin`
-- `reports.target_kind` ∈ `episode, chapter, subtitle, chat_message`; `reports.status` ∈ `open, resolved, dismissed`
+- `reports.target_kind` ∈ `episode, chapter, subtitle, chat_message, group`; `reports.status` ∈ `open, resolved, dismissed`
 - `chat_messages.kind` ∈ `text, sticker`
+- `chat_channels.kind` ∈ `global, group` (`group_id` wajib terisi bila `group`, kosong bila `global`)
+- `friendships.status` ∈ `pending, accepted`; `group_members.role` ∈ `owner, admin, member`
 
 ## 5. Indeks Penting
 
@@ -257,6 +301,8 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `read_history (user_id, updated_at desc)` — "lanjutkan membaca"
 - `guest_access (device_key)` — cek batas tamu
 - `chat_messages (channel_id, created_at desc)` — riwayat & muat pesan per kanal
+- `profiles.friend_code` — unik (pencarian teman lewat kode)
+- `group_members (user_id)` — daftar grup milik seorang user; `groups (name)` — pencarian grup
 
 ## 6. Row Level Security (RLS) — Supabase
 
@@ -267,6 +313,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - **`vouchers`**: user membaca voucher yang ia buat/beli atau yang ditujukan kepadanya; penukaran (redeem) dan penerbitan voucher pembelian hanya lewat API (service role) agar atomik dan tidak bisa diakali; admin membaca semua.
 - **`payment_sessions`**: ditulis & diperbarui hanya oleh API server (termasuk proses polling); user hanya membaca sesi miliknya untuk melihat status pembayaran.
 - **Chat**: `chat_channels` & `stickers` baca-publik; `chat_messages` dibaca user login, ditulis hanya atas nama pengirim sendiri (`auth.uid() = user_id`) lewat API/Realtime, dan penghapusan (soft-delete) hanya oleh admin/mod. Kolom kustomisasi premium di `profiles` (`name_color`, `name_emoji`) hanya bisa diubah lewat API yang memeriksa status premium di server.
+- **Sosial**: `friendships` & `user_blocks` hanya terlihat oleh kedua pihak yang terlibat; perubahan (kirim/terima/tolak/blokir) lewat API. `groups` publik bisa dibaca semua user login; grup privat hanya oleh anggotanya. Pesan kanal grup hanya bisa dibaca/ditulis anggota grup itu (dicek di API/Realtime berdasarkan `group_members`).
 
 ## 7. Draf SQL (titik awal migrasi)
 
@@ -337,7 +384,8 @@ create table profiles (
   role text not null default 'user' check (role in ('user','admin')),
   name_color text,
   name_emoji text,
-  chat_muted_until timestamptz
+  chat_muted_until timestamptz,
+  friend_code text unique
 );
 
 create table subscriptions (
@@ -389,7 +437,7 @@ create index guest_access_device_idx on guest_access (device_key);
 create table reports (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references profiles(id) on delete set null,
-  target_kind text not null check (target_kind in ('episode','chapter','subtitle','chat_message')),
+  target_kind text not null check (target_kind in ('episode','chapter','subtitle','chat_message','group')),
   target_id uuid not null,
   reason text not null,
   status text not null default 'open' check (status in ('open','resolved','dismissed')),
@@ -444,7 +492,11 @@ create table chat_channels (
   slug text not null unique,
   name text not null,
   description text,
-  sort_order int not null default 0
+  sort_order int not null default 0,
+  kind text not null default 'global' check (kind in ('global','group')),
+  group_id uuid,
+  unique (group_id),
+  check ((kind = 'group') = (group_id is not null))
 );
 
 create table stickers (
@@ -467,4 +519,46 @@ create table chat_messages (
   check ((kind = 'text' and body is not null) or (kind = 'sticker' and sticker_id is not null))
 );
 create index chat_messages_channel_idx on chat_messages (channel_id, created_at desc);
+
+create table friendships (
+  requester_id uuid not null references profiles(id) on delete cascade,
+  addressee_id uuid not null references profiles(id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending','accepted')),
+  created_at timestamptz not null default now(),
+  primary key (requester_id, addressee_id),
+  check (requester_id <> addressee_id)
+);
+
+create table user_blocks (
+  blocker_id uuid not null references profiles(id) on delete cascade,
+  blocked_id uuid not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker_id, blocked_id),
+  check (blocker_id <> blocked_id)
+);
+
+create table groups (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text,
+  avatar_url text,
+  owner_id uuid not null references profiles(id) on delete cascade,
+  is_public boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create index groups_name_idx on groups (name);
+
+create table group_members (
+  group_id uuid not null references groups(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  role text not null default 'member' check (role in ('owner','admin','member')),
+  joined_at timestamptz not null default now(),
+  primary key (group_id, user_id)
+);
+create index group_members_user_idx on group_members (user_id);
+
+-- FK kanal chat grup (tabel groups baru ada setelah chat_channels dibuat)
+alter table chat_channels
+  add constraint chat_channels_group_fk
+  foreign key (group_id) references groups(id) on delete cascade;
 ```
