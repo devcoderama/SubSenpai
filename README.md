@@ -1,37 +1,49 @@
 # SubSenpai 🎌
 
-**Nonton anime langsung dari sumber Jepang, subtitle Indonesia otomatis.**
+**Anime, donghua, film, dan komik dalam satu aplikasi — konten video dengan subtitle Indonesia otomatis.**
 
-SubSenpai adalah aplikasi streaming anime yang mengambil video dari sumber Jepang (raw, tanpa subtitle) lalu membuat subtitle-nya secara otomatis: audio ditranskripsi oleh Whisper, diterjemahkan dengan terjemahan mesin, dan ditampilkan sebagai subtitle di player — tanpa menunggu fansub.
+SubSenpai adalah aplikasi streaming & baca: anime dan donghua dari sumber asalnya (raw, tanpa subtitle) dengan subtitle yang dibuat otomatis lewat pipeline Whisper + terjemahan mesin, film, serta manga/manhua/manhwa untuk dibaca. Tamu bisa mencicipi 1 episode/chapter; sisanya dibuka lewat login — gratis dengan iklan, atau premium tanpa iklan.
 
 > 🚧 **MASIH DALAM TAHAP PENGEMBANGAN** — repo ini baru berisi rancangan dan struktur awal. Belum ada versi yang bisa dipakai.
 
 ## ✨ Fitur yang Direncanakan
 
-- 📺 **Katalog anime** — telusur & cari berdasarkan judul, genre, musim, dan tahun
+- 📺 **Katalog multi-konten** — anime, donghua, film, manga, manhua, manhwa; telusur & cari berdasarkan judul, tipe, genre, musim, dan tahun
 - ▶️ **Streaming langsung** — video diputar langsung dari sumbernya (HLS) ke player
-- 🗣️ **Subtitle otomatis Jepang → Indonesia** — dibuat oleh pipeline Whisper + terjemahan mesin
-- ⚡ **Jalur cepat caption** — kalau sumbernya punya closed caption bahasa Jepang, caption langsung diterjemahkan (timing presisi, tanpa transkripsi)
-- 👤 **Akun pengguna** — daftar/masuk, watchlist, dan riwayat tontonan (Supabase Auth)
+- 📖 **Mode baca** — chapter komik per halaman gambar, nyaman di HP
+- 🗣️ **Subtitle otomatis → Indonesia** — untuk konten video, dibuat oleh pipeline Whisper + terjemahan mesin
+- ⚡ **Jalur cepat caption** — kalau sumbernya punya closed caption bahasa asal, caption langsung diterjemahkan (timing presisi, tanpa transkripsi)
+- 👤 **Akun pengguna** — daftar/masuk, watchlist, dan riwayat tontonan/bacaan (Supabase Auth)
+- 🎟️ **Freemium** — tamu: 1 episode/chapter; login gratis: lanjut dengan iklan; premium: tanpa iklan, semua terbuka
 - 🌙 **Mode gelap** — tema bawaan untuk nonton malam
 
 ## 🗣️ Cara Kerja Subtitle Otomatis
 
 ```
-Video raw (Jepang) ──► ekstrak audio ──► Whisper (transkripsi + timestamp)
-                                              │
-                                              ▼
-                        teks Jepang ──► terjemahan mesin ──► file .srt/.ass
-                                              │
-                                              ▼
-                                  tampil sebagai subtitle di player
+Video raw ──► ekstrak audio ──► Whisper (transkripsi + timestamp)
+                                       │
+                                       ▼
+                 teks bahasa asal ──► terjemahan mesin ──► file .srt/.ass
+                                       │
+                                       ▼
+                           tampil sebagai subtitle di player
 ```
 
-1. **Transkripsi** — audio episode ditranskripsi oleh Whisper (large-v3; WhisperX untuk timing per kata) menjadi teks Jepang bertimestamp.
+1. **Transkripsi** — audio ditranskripsi oleh Whisper (large-v3; WhisperX untuk timing per kata) menjadi teks bertimestamp.
 2. **Terjemahan** — teks diterjemahkan per baris ke bahasa Indonesia (Google Translate API / DeepL / Sugoi Translator untuk jalur offline).
 3. **Penyajian** — teks terjemahan + timestamp digabung menjadi file `.srt`/`.ass`, disimpan di object storage, lalu dimuat player sebagai track subtitle.
 
-Catatan jujur: kualitas subtitle mesin adalah "cukup untuk mengikuti cerita", bukan setara fansub manusia — nama karakter, istilah khas, dan lagu pembuka/penutup adalah titik lemahnya.
+Catatan jujur: kualitas subtitle mesin adalah "cukup untuk mengikuti cerita", bukan setara fansub manusia — nama karakter, istilah khas, dan lagu pembuka/penutup adalah titik lemahnya. Subtitle otomatis hanya untuk konten video; menerjemahkan komik (OCR + menimpa teks pada gambar) adalah persoalan terpisah yang jauh lebih berat.
+
+## 🎟️ Model Akses (Freemium)
+
+| Pengguna | Akses |
+| --- | --- |
+| Tamu (belum login) | Maksimal **1 episode / 1 chapter** |
+| Login gratis | Semua katalog, **dengan iklan** |
+| Premium (langganan) | Semua katalog, **tanpa iklan** |
+
+Gerbang akses ditegakkan di server (API), bukan sekadar disembunyikan di tampilan. Pembayaran premium direncanakan lewat payment gateway lokal (Midtrans/Xendit — bisa QRIS). Jaringan iklan untuk konten seperti ini umumnya bukan AdSense; pilihannya diteliti di fase monetisasi.
 
 ## 🏗️ Arsitektur
 
@@ -39,22 +51,25 @@ Pemisahan berdasarkan **jenis data**, bukan per genre:
 
 | Bagian | Teknologi | Fungsi |
 | --- | --- | --- |
-| Frontend + API | Next.js di Vercel | Halaman katalog, player, API tipis |
-| Database + Auth | Supabase (PostgreSQL) | Katalog anime, episode, subtitle, data user |
-| File storage | Cloudflare R2 / Supabase Storage | Poster & file subtitle (.srt/.ass) |
+| Frontend + API | Next.js di Vercel | Katalog, player, reader, API tipis, gerbang akses |
+| Database + Auth | Supabase (PostgreSQL) | Katalog multi-konten, episode/chapter, subtitle, user, langganan |
+| File storage | Cloudflare R2 / Supabase Storage | Poster, halaman komik & file subtitle (.srt/.ass) |
 | Video | Stream langsung dari sumber (HLS) | Tidak lewat server sendiri — hemat bandwidth & durasi |
-| Worker subtitle | Python (faster-whisper) di mesin GPU | Transkripsi + terjemahan, menulis hasil ke database/storage |
+| Worker subtitle | Next.js (antrean + terjemah + SRT) + API transkripsi cloud | Transkripsi dititipkan ke API Whisper (Groq/OpenAI); worker Python mandiri hanya bila perlu full offline |
+| Pembayaran | Midtrans / Xendit | Langganan premium (QRIS, e-wallet, transfer) |
 
-Detail folder, skema database, dan alur data: lihat **[STRUKTUR.md](STRUKTUR.md)**.
+Detail folder, skema database, model akses, dan alur data: lihat **[STRUKTUR.md](STRUKTUR.md)**.
 
 ## 🗺️ Roadmap
 
 - [ ] Fase 0 — Rancangan & struktur repo *(sedang berjalan)*
-- [ ] Fase 1 — Katalog + halaman detail + player HLS
-- [ ] Fase 2 — Worker subtitle otomatis (Whisper → terjemah → SRT)
-- [ ] Fase 3 — Akun, watchlist, riwayat tontonan
-- [ ] Fase 4 — Pencarian lanjutan, rekomendasi, dan pemolesan UI
+- [ ] Fase 1 — Katalog multi-konten + halaman detail + player HLS
+- [ ] Fase 2 — Worker subtitle otomatis (transkripsi → terjemah → SRT)
+- [ ] Fase 3 — Akun, watchlist, riwayat
+- [ ] Fase 4 — Gerbang freemium (tamu 1 episode) + iklan + premium
+- [ ] Fase 5 — Mode baca manga/manhua/manhwa
+- [ ] Fase 6 — Pencarian lanjutan, rekomendasi, dan pemolesan UI
 
 ## ⚠️ Catatan
 
-Proyek hobi/eksperimen untuk belajar. Video berasal dari sumber pihak ketiga di Jepang; sebagian besar sumber resmi memakai kunci wilayah dan DRM, sehingga ketersediaan sumber adalah tantangan tersendiri. Subtitle dihasilkan mesin dan dapat mengandung kesalahan.
+Proyek hobi/eksperimen untuk belajar. Konten berasal dari sumber pihak ketiga; sebagian besar sumber resmi memakai kunci wilayah dan DRM, sehingga ketersediaan sumber adalah tantangan tersendiri. Subtitle dihasilkan mesin dan dapat mengandung kesalahan.
