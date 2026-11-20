@@ -6,9 +6,9 @@ Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) d
 
 - **Siapa admin**: kolom `role` di tabel `profiles` (`user` / `admin`). Login tetap **wajib Google OAuth**, sama seperti user biasa — yang membedakan hanya role-nya.
 - **Cek di server, selalu**: setiap request ke `/admin` dan API admin memverifikasi sesi + `role = 'admin'` di server (middleware + cek ulang di API). Menyembunyikan menu di UI BUKAN pengaman.
-- **Tulis lewat service role**: operasi admin (ubah katalog, status premium, retry subtitle) dijalankan API server dengan service role key Supabase — key tidak pernah dikirim ke browser.
+- **Tulis lewat backend**: operasi admin (ubah katalog, status premium, retry subtitle) dijalankan backend Go — satu-satunya pemegang akses database (PostgreSQL lokal hanya mendengarkan localhost); aplikasi tidak pernah menyentuh database secara langsung.
 - **Jejak audit**: setiap aksi penting admin dicatat ke tabel `admin_logs` (siapa, aksi apa, target apa, kapan).
-- **Akun admin pertama**: ditetapkan manual sekali dari Supabase Dashboard (ubah `role` user pemilik menjadi `admin`); setelah itu admin bisa mengangkat admin lain dari panel.
+- **Akun admin pertama**: ditetapkan manual sekali langsung di database VPS (ubah `role` user pemilik menjadi `admin` lewat SQL); setelah itu admin bisa mengangkat admin lain dari panel.
 
 ## 2. Struktur Folder
 
@@ -53,9 +53,9 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - Picu pembuatan subtitle untuk episode tertentu di luar antrean otomatis.
 
 ### 3.4 Manajemen User
-- Daftar user (dari `profiles` + Supabase Auth): email, tanggal daftar, status premium.
+- Daftar user (dari `profiles`): email, tanggal daftar, status premium.
 - Beri/cabut premium manual (mis. kompensasi, promo) — tercatat di `admin_logs`.
-- Blokir user bermasalah (ban di Supabase Auth).
+- Blokir user bermasalah: tandai `profiles.is_banned` — sesi aktifnya dicabut oleh backend dan login berikutnya ditolak.
 - Perangkat akun (`user_devices`): lihat jumlah perangkat aktif seorang user dan cabut perangkat dari panel bila ada laporan akun dipakai orang lain — user juga bisa mencabut perangkatnya sendiri dari halaman keamanan akun.
 
 ### 3.5 Langganan & Pembayaran
@@ -78,7 +78,7 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 ### 3.8 Monitoring
 - **Antrean worker**: jumlah per status + episode yang paling lama menunggu; lonjakan `failed` = tanda sumber/API transkripsi bermasalah.
 - **Aktivitas platform**: dibaca dari tabel agregat `daily_stats` (dihitung worker tiap malam dari `watch_history`, `read_history`, `guest_access` agar dashboard tetap ringan): tontonan/bacaan per hari, judul terlaris, rasio tamu yang mentok batas 1 episode (calon user login).
-- **Kesehatan layanan luar**: tautan cepat ke status Supabase, VPS, Cloudflare, dan API transkripsi; sisa kuota/kuota terpakai dicatat manual di halaman ini.
+- **Kesehatan layanan**: status VPS & PostgreSQL lokal (ukuran database berjalan, sisa disk), tautan cepat ke status Cloudflare dan API transkripsi; sisa kuota/kuota terpakai dicatat manual di halaman ini.
 - **Penyimpanan**: perkiraan pemakaian R2 (poster + halaman komik + SRT) terhadap batas gratis 10 GB.
 - Catatan: ambang sederhana (mis. subtitle `failed` > 10 dalam sehari) bisa dikembangkan menjadi notifikasi otomatis ke Telegram/email admin.
 - **Laporan crash aplikasi**: ringkasan/tautan ke Crashlytics/GlitchTip (jumlah crash per versi rilis) — lonjakan crash setelah sebuah rilis adalah tanda harus segera diperbaiki/rollback.
@@ -96,6 +96,7 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - Kelola katalog stiker: unggah paket stiker (gambar ke R2) dan tandai mana yang khusus premium.
 - Atur filter kata terlarang, **filter tautan luar** (pola URL yang otomatis ditolak server di chat & komentar — berlaku juga untuk promosi berkedok teks; domain resmi aplikasi dikecualikan karena dipakai kartu berbagi), dan mode lambat (jeda minimum antar-pesan) per kanal bila chat sedang rusuh.
 - Grup terlaporkan (`reports` bertarget `group`): periksa grupnya — beri peringatan ke owner, batasi, atau bubarkan grup yang melanggar. Urusan sehari-hari di dalam grup (keluarkan anggota, hapus pesan) adalah wewenang admin grup, bukan admin platform.
+- Tautan undangan grup yang disalahgunakan (mis. grup dilaporkan karena tautannya menyebar ke komunitas yang salah): admin platform bisa memaksa kode undangan grup diatur ulang atau penerimaan lewat tautan dimatikan dari sisi server.
 - Gambar/stiker kiriman user yang dilaporkan: hapus gambarnya dari ImgBB memakai `delete_url` yang tersimpan di server, lalu soft-delete pesannya — menghapus baris pesan saja tidak menghapus gambar di ImgBB.
 - Komentar terlaporkan (`reports` bertarget `comment`) ditangani seperti pesan chat: periksa konteksnya, soft-delete bila melanggar, bisukan penulisnya bila berulang.
 

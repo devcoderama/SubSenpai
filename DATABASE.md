@@ -1,6 +1,6 @@
 # DATABASE.md — Struktur Database SubSenpai
 
-Skema PostgreSQL (Supabase) SubSenpai dalam bentuk **diagram ERD**, detail kolom, relasi, indeks, dan draf SQL. Dokumen ini adalah pendalaman dari Bagian 3 [STRUKTUR.md](STRUKTUR.md) — bila ada perbedaan, yang berlaku adalah dokumen ini untuk urusan database.
+Skema PostgreSQL SubSenpai — database berjalan **lokal di VPS** (bukan Supabase; alasan & konsekuensi aksesnya di Bagian 6) — dalam bentuk **diagram ERD**, detail kolom, relasi, indeks, dan draf SQL. Dokumen ini adalah pendalaman dari Bagian 3 [STRUKTUR.md](STRUKTUR.md) — bila ada perbedaan, yang berlaku adalah dokumen ini untuk urusan database.
 
 ## 1. Diagram ERD
 
@@ -111,7 +111,9 @@ erDiagram
         text status "queued|processing|done|failed"
     }
     profiles {
-        uuid id PK "FK ke auth.users"
+        uuid id PK
+        text email UK "dari akun Google"
+        text google_sub UK "identitas Google"
         text display_name
         text avatar_url
         boolean is_premium "cache status"
@@ -124,6 +126,7 @@ erDiagram
         int xp "poin aktivitas"
         int level "level aktivitas"
         boolean hide_adult "sembunyikan 18+"
+        boolean is_banned "akun dinonaktifkan admin"
         boolean show_online "tampilkan status online"
         boolean show_activity "tampilkan aktivitas tonton/baca"
         timestamptz trial_used_at "trial premium pernah dipakai"
@@ -259,6 +262,8 @@ erDiagram
         text avatar_url "R2"
         uuid owner_id FK
         boolean is_public
+        text invite_code UK "kode tautan undangan grup"
+        boolean invite_enabled "penerimaan via tautan aktif"
         timestamptz created_at
     }
     group_members {
@@ -375,7 +380,7 @@ erDiagram
     }
 ```
 
-Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar sebagai tabel aplikasi). `profiles.id` adalah FK 1:1 ke `auth.users.id`. Login **wajib Google OAuth**; pendaftaran email/password dimatikan.
+Catatan: tidak ada layanan auth eksternal — `profiles` adalah tabel user itu sendiri. Login **wajib Google**: backend memverifikasi token ID Google, mencocokkan user lewat `google_sub` yang unik, lalu menerbitkan JWT sesinya sendiri. Kata sandi tidak pernah disimpan di mana pun (tidak ada pendaftaran email/password).
 
 ## 2. Ringkasan Tabel
 
@@ -386,7 +391,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 | `chapters` | Chapter untuk manga/manhua/manhwa | Katalog |
 | `chapter_pages` | Halaman gambar per chapter | Katalog |
 | `subtitles` | File subtitle per episode + status antrean worker | Katalog |
-| `profiles` | Profil user (1:1 `auth.users`) + cache status premium | User |
+| `profiles` | Tabel user (identitas Google: email + google_sub) + profil + cache status premium | User |
 | `subscriptions` | Langganan premium & status pembayaran | Monetisasi |
 | `watchlist` | Judul favorit user + saklar notifikasi per judul (`notify`) | User |
 | `notifications` | Kotak masuk notifikasi user (rilis baru, broadcast admin, sistem) | Sistem |
@@ -403,7 +408,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 | `stickers` | Katalog stiker chat (sebagian khusus premium) | Komunitas |
 | `friendships` | Pertemanan antar-user (permintaan + status) | Sosial |
 | `user_blocks` | Blokir antar-user (menolak permintaan & undangan) | Sosial |
-| `groups` | Grup buatan user (publik/privat, pemilik, avatar) | Sosial |
+| `groups` | Grup buatan user (publik/privat, pemilik, avatar, kode tautan undangan) | Sosial |
 | `group_members` | Keanggotaan grup + peran (owner/admin/member) | Sosial |
 | `user_stickers` | Stiker pribadi buatan user — gambar dihosting di ImgBB, DB hanya menyimpan URL | Komunitas |
 | `comments` | Komentar user per episode / chapter | Komunitas |
@@ -424,7 +429,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `chapters.title_id → titles.id` (CASCADE)
 - `chapter_pages.chapter_id → chapters.id` (CASCADE)
 - `subtitles.episode_id → episodes.id` (CASCADE)
-- `profiles.id → auth.users.id` (CASCADE)
+- `profiles` adalah tabel user itu sendiri (tanpa FK ke layanan auth eksternal); identitas Google dicocokkan lewat kolom `google_sub` yang unik
 - `subscriptions.user_id → profiles.id` (CASCADE)
 - `watchlist (user_id, title_id)` — kunci utama gabungan
 - `watch_history (user_id, episode_id)` — kunci utama gabungan
@@ -437,7 +442,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `chat_messages.channel_id → chat_channels.id`; `chat_messages.user_id → profiles.id`; `chat_messages.sticker_id → stickers.id` (hanya terisi untuk pesan stiker)
 - `friendships (requester_id, addressee_id)` — kunci utama gabungan; kedua FK ke `profiles.id` (relasi user-ke-user); satu baris per pasangan (arah = siapa yang meminta)
 - `user_blocks (blocker_id, blocked_id)` — kunci utama gabungan, kedua FK ke `profiles.id`
-- `groups.owner_id → profiles.id`; `group_members (group_id, user_id)` — kunci utama gabungan; `chat_channels.group_id → groups.id` (unik — satu grup satu kanal chat)
+- `groups.owner_id → profiles.id`; `group_members (group_id, user_id)` — kunci utama gabungan; `chat_channels.group_id → groups.id` (unik — satu grup satu kanal chat); `groups.invite_code` unik — membentuk tautan undangan resmi aplikasi yang boleh dibagikan semua anggota ke luar aplikasi; mengatur ulang kode membatalkan tautan lama
 - `user_stickers.user_id → profiles.id`; gambarnya sendiri TIDAK disimpan di DB — hanya `image_url` (ImgBB) + `delete_url` internal untuk moderasi
 - `comments.user_id → profiles.id`; tepat satu dari `comments.episode_id` / `comments.chapter_id` terisi; `comments.parent_id → comments.id` (balasan **satu tingkat**: balasan atas balasan menempel ke induk yang sama, tidak bersarang lebih dalam)
 - `chat_messages.reply_to_id → chat_messages.id` (pesan yang dibalas; `ON DELETE SET NULL` — balasan tetap ada walau pesan asli dihapus); `chat_messages.ref_title_id / ref_episode_id` terisi hanya untuk pesan kartu berbagi (`kind = share`)
@@ -490,20 +495,21 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `chat_channels (dm_user_a_id, dm_user_b_id)` — unik parsial khusus `kind = 'dm'` (satu kanal DM per pasangan teman)
 - `title_requests (status, created_at desc)` — antrean permintaan judul untuk panel admin (urutan suara dihitung dari `title_request_votes`); `collections (owner_id)`; `collection_items (collection_id, position)`; `user_devices (user_id)`
 
-## 6. Row Level Security (RLS) — Supabase
+## 6. Kontrol Akses Data (tanpa Supabase)
 
-- **Katalog** (`titles`, `episodes`, `chapters`, `chapter_pages`, `subtitles`): boleh DIBACA publik (`anon` + `authenticated`); tulis hanya lewat **service role** (impor katalog & worker). Akses menonton tetap digerbang di API aplikasi (cek Bagian 4 STRUKTUR.md), bukan di RLS.
-- **Milik user** (`profiles`, `subscriptions`, `watchlist`, `watch_history`, `read_history`): user hanya bisa membaca/mengubah baris miliknya (`auth.uid() = id / user_id`). `subscriptions` hanya bisa diubah oleh service role (webhook pembayaran); user cukup membaca statusnya.
-- **`guest_access`**: hanya service role (ditulis/dicek oleh API).
-- **`reports`**: user login bisa MEMBUAT laporan atas namanya; membaca & mengubah status hanya admin. **`admin_logs`**: ditulis service role (dari API admin), dibaca hanya admin.
-- **`vouchers`**: user membaca voucher yang ia buat/beli atau yang ditujukan kepadanya; penukaran (redeem) dan penerbitan voucher pembelian hanya lewat API (service role) agar atomik dan tidak bisa diakali; admin membaca semua.
-- **`payment_sessions`**: ditulis & diperbarui hanya oleh API server (termasuk proses polling); user hanya membaca sesi miliknya untuk melihat status pembayaran.
-- **Chat**: `chat_channels` & `stickers` baca-publik; `chat_messages` dibaca user login, ditulis hanya atas nama pengirim sendiri (`auth.uid() = user_id`) lewat API/Realtime, dan penghapusan (soft-delete) hanya oleh admin/mod. Kolom kustomisasi premium di `profiles` (`name_color`, `name_emoji`) hanya bisa diubah lewat API yang memeriksa status premium di server.
-- **Sosial**: `friendships` & `user_blocks` hanya terlihat oleh kedua pihak yang terlibat; perubahan (kirim/terima/tolak/blokir) lewat API. `groups` publik bisa dibaca semua user login; grup privat hanya oleh anggotanya. Pesan kanal grup hanya bisa dibaca/ditulis anggota grup itu (dicek di API/Realtime berdasarkan `group_members`).
+Database berjalan **lokal di VPS** dan hanya mendengarkan **localhost** — satu-satunya pemegang kredensial database adalah backend Go & worker di mesin yang sama. Aplikasi Android tidak pernah menyentuh database secara langsung (semua lewat API), jadi tidak ada Row Level Security: aturan kepemilikan ditegakkan **backend di setiap query**, dengan id user selalu diambil dari JWT sesi yang sudah diverifikasi — tidak pernah dari input klien.
+
+- **Katalog** (`titles`, `episodes`, `chapters`, `chapter_pages`, `subtitles`): dibaca publik lewat API; tulis hanya oleh backend (impor katalog & worker). Akses menonton tetap digerbang di API (Bagian 4 STRUKTUR.md), bukan di database.
+- **Milik user** (`profiles`, `subscriptions`, `watchlist`, `watch_history`, `read_history`, `user_devices`, `user_achievements`, `notifications`): query backend selalu difilter ke pemilik sesi; `subscriptions` hanya diubah backend (webhook/polling pembayaran & aksi admin), user cukup membaca statusnya.
+- **`guest_access`**: hanya backend (ditulis & dicek oleh API).
+- **`reports`**: user login bisa membuat laporan atas namanya; membaca & mengubah status hanya admin (role dicek backend dari `profiles.role`). **`admin_logs`** & **`broadcasts`**: ditulis backend dari aksi admin, dibaca hanya admin.
+- **`vouchers`**: user membaca voucher yang ia buat/beli atau yang ditujukan kepadanya; penukaran dan penerbitan voucher pembelian hanya lewat API agar atomik dan tidak bisa diakali; admin membaca semua.
+- **`payment_sessions`**: ditulis & diperbarui hanya oleh backend (termasuk proses polling); user hanya membaca sesi miliknya untuk melihat status pembayaran.
+- **Chat**: `chat_channels` & `stickers` dibaca user login; `chat_messages` ditulis hanya atas nama pengirim dari sesi (tidak bisa mengatasnamakan user lain), dan penghapusan (soft-delete) hanya oleh admin/mod — atau admin grup di kanal grupnya. Kanal grup hanya bisa dibaca/ditulis anggotanya; kanal DM hanya oleh kedua pesertanya (dicek backend dari `group_members` / kolom peserta DM). Kolom kustomisasi premium di `profiles` (`name_color`, `name_emoji`) hanya bisa diubah lewat API yang memeriksa status premium di server.
+- **Sosial**: `friendships` & `user_blocks` hanya terlihat oleh kedua pihak yang terlibat; perubahan (kirim/terima/tolak/blokir) lewat API. `groups` publik bisa dibaca semua user login; grup privat hanya oleh anggotanya — kecuali pemegang **tautan undangan resmi** grup (`invite_code` aktif), yang memang diizinkan bergabung lewat tautan itu.
 - **`user_stickers` & gambar chat**: dikelola pemiliknya lewat API (unggah selalu lewat backend — kunci API ImgBB tidak pernah ke klien). Kolom `delete_url` (ImgBB) bersifat internal server: tidak pernah dipilih untuk dikirim ke aplikasi, hanya dipakai admin saat menghapus gambar yang melanggar.
-- **`comments` & `title_ratings`**: dibaca user login; ditulis/diubah hanya milik sendiri lewat API; penghapusan komentar (soft-delete) juga oleh admin/mod. **`device_tokens`**: hanya pemiliknya & service role (pengirim notifikasi). **`daily_stats`**: ditulis worker agregasi, dibaca admin.
-- **`notifications`**: hanya pemiliknya yang membaca & menandai terbaca; penulisan hanya oleh worker/service role (rilis baru & broadcast). **`broadcasts`**: hanya admin (membuat lewat panel; pengiriman dijalankan worker dan tercatat di `admin_logs`).
-- **Fitur sosial lanjutan**: pesan pada kanal DM hanya boleh dibaca/ditulis kedua pesertanya (dicek di API/Realtime, sama seperti kanal grup). `title_requests` & `title_request_votes` dibaca user login (permintaan bersifat publik agar bisa didukung user lain) dan ditulis atas nama sendiri lewat API. `collections` publik dibaca semua user login; koleksi privat hanya oleh pemilik & pengikutnya — `collection_items`/`collection_follows` mengikuti visibilitas koleksinya. `user_achievements` hanya pemiliknya & service role (worker menganugerahkan pencapaian). `user_devices` hanya pemiliknya (melihat & mencabut perangkatnya sendiri) & service role; batas perangkat premium ditegakkan di API.
+- **`comments` & `title_ratings`**: dibaca user login; ditulis/diubah hanya milik sendiri lewat API; penghapusan komentar (soft-delete) juga oleh admin/mod. **`device_tokens`**: hanya pemiliknya & backend (pengirim notifikasi). **`daily_stats`**: ditulis worker agregasi, dibaca admin.
+- **Koleksi & permintaan judul**: `collections` publik dibaca semua user login; koleksi privat hanya oleh pemilik & pengikutnya (`collection_items`/`collection_follows` mengikuti visibilitas koleksinya). `title_requests` & `title_request_votes` dibaca user login (permintaan bersifat publik agar bisa didukung), ditulis atas nama sendiri lewat API.
 
 ## 7. Draf SQL (titik awal migrasi)
 
@@ -583,7 +589,9 @@ create table subtitles (
 );
 
 create table profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key default gen_random_uuid(),
+  email text unique,
+  google_sub text unique,
   display_name text,
   avatar_url text,
   is_premium boolean not null default false,
@@ -600,7 +608,8 @@ create table profiles (
   show_activity boolean not null default true,
   trial_used_at timestamptz,
   last_active_date date,
-  streak_days int not null default 0
+  streak_days int not null default 0,
+  is_banned boolean not null default false
 );
 
 create table subscriptions (
@@ -778,6 +787,8 @@ create table groups (
   avatar_url text,
   owner_id uuid not null references profiles(id) on delete cascade,
   is_public boolean not null default true,
+  invite_code text unique,
+  invite_enabled boolean not null default true,
   created_at timestamptz not null default now()
 );
 create index groups_name_idx on groups (name);

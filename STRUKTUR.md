@@ -8,13 +8,13 @@ Rancangan struktur proyek: susunan folder, skema database, model akses, dan alur
 - **Pisah per jenis data.** Metadata di PostgreSQL, berkas (poster, halaman komik, subtitle) di object storage, video tidak disimpan sama sekali.
 - **Video tidak pernah disimpan / tidak lewat server sendiri.** Player memutar stream HLS langsung dari sumber; server hanya menyimpan metadata dan URL.
 - **Backend Go di VPS.** Backend ditulis dengan **Go** dan dijalankan di **VPS** sebagai binary mandiri di belakang reverse proxy — bukan serverless. Satu binary ringan (hemat RAM, tanpa runtime tambahan) melayani API; proses latar (antrean subtitle, polling pembayaran) berjalan sebagai goroutine/job terjadwal di layanan yang sama atau binary worker terpisah. **Tidak ada frontend web** — satu-satunya klien adalah **aplikasi Android (Kotlin)** yang berjalan di perangkat user dan berbicara ke API Go; semua logika, gerbang akses, dan data ada di backend.
-- **Database & Auth tetap Supabase.** PostgreSQL + Supabase Auth (login Google) tetap dipakai; backend Go mengakses PostgreSQL secara langsung (driver pgx) dan memverifikasi token JWT Supabase Auth di middleware. Yang berubah hanya tempat komputasi berjalan (VPS), bukan skema datanya.
+- **Database & Auth lokal di VPS — tanpa Supabase.** PostgreSQL berjalan **lokal di VPS yang sama** agar ruang penyimpanan database mengikuti disk VPS (mis. 50 GB NVMe) — jauh di atas batas database paket gratis Supabase (500 MB) yang cepat mentok oleh pesan chat & riwayat user. Auth ditangani backend Go sendiri: backend memverifikasi token ID Google, lalu menerbitkan **JWT sesi buatannya sendiri** (kunci tanda tangan di env server) yang diverifikasi middleware di setiap request. Aplikasi tidak pernah menyentuh database secara langsung — semua akses data lewat API Go, dan aturan kepemilikan data ditegakkan di query backend (pengganti RLS).
 - **Proses berat di job latar.** Antrean subtitle, terjemahan, dan pembangunan SRT dikerjakan job latar Go, tetapi transkripsi Whisper dititipkan ke API cloud (Groq/OpenAI) — VPS tidak punya GPU. Worker Python mandiri (faster-whisper di mesin GPU) hanya opsi bila nanti perlu full offline.
 - **Gerbang akses ditegakkan di server.** Batas tamu/premium dicek di API Go, bukan sekadar menyembunyikan tombol di UI.
 - **Cache untuk bacaan terbanyak.** Katalog (beranda, telusur) di-cache di memori backend Go (TTL 1–5 menit, dibuang saat admin mengubah katalog), dan domain API berjalan di belakang **Cloudflare** (cache tepi + proteksi dasar) — VPS kecil tidak perlu menjawab query yang sama berulang kali.
 - **API hemat request.** Layar beranda dilayani satu endpoint gabungan (sorotan + per tipe + blok Lanjutkan), dan semua daftar besar memakai pagination cursor — bukan `OFFSET`.
 - **Katalog tersinkron lokal di aplikasi.** Aplikasi menyimpan salinan katalog di penyimpanan lokal perangkat dan menyinkronkan hanya perubahannya memakai penanda `updated_at` (endpoint perubahan sejak waktu terakhir sinkron) — beranda tampil seketika tanpa menunggu jaringan, hemat kuota user, dan beban API turun.
-- **Biaya tetap & terukur.** VPS (biaya tetap per bulan) + Supabase (free) + Cloudflare R2 (free 10 GB); biaya variabel hanya API transkripsi (per menit audio) dan payment gateway (potongan per transaksi).
+- **Biaya tetap & terukur.** VPS (biaya tetap per bulan — sudah termasuk PostgreSQL lokal, tanpa langganan database terpisah) + Cloudflare R2 (free 10 GB); biaya variabel hanya API transkripsi (per menit audio) dan payment gateway (potongan per transaksi).
 
 ## 2. Struktur Folder
 
@@ -28,7 +28,7 @@ SubSenpai/
 │   └── android/            # Aplikasi Android (Kotlin) — SATU-SATUNYA klien, berjalan di perangkat user
 │       └── app/src/main/java/com/subsenpai/
 │           ├── ui/                     # Layar: beranda, telusur, detail, player, reader, chat, dm, teman, grup, koleksi, pencapaian, rekap, keamanan akun, premium, watchlist, admin
-│           ├── data/                   # Klien API Go (Retrofit/OkHttp) + dekripsi xdata/xtime, sesi Supabase Auth, model data, basis data lokal katalog (sinkronisasi delta)
+│           ├── data/                   # Klien API Go (Retrofit/OkHttp) + dekripsi xdata/xtime, sesi JWT backend, model data, basis data lokal katalog (sinkronisasi delta)
 │           └── player/                 # Player HLS (Media3/ExoPlayer) + overlay subtitle
 ├── backend/                # Backend Go — dijalankan di VPS
 │   ├── cmd/
@@ -36,15 +36,15 @@ SubSenpai/
 │   │   └── worker/                     # main.go — job latar (antrean subtitle, polling GoPay, pembersih sesi)
 │   ├── internal/
 │   │   ├── httpapi/                    # Router (chi) + handler per domain: katalog, akses, subtitle, chat, premium, voucher, admin, webhook
-│   │   ├── middleware/                 # Auth (verifikasi JWT Supabase), enkripsi response xdata/xtime, rate limit, CORS, logging
+│   │   ├── middleware/                 # Auth (verifikasi token Google saat login + JWT sesi backend), enkripsi response xdata/xtime, rate limit, CORS, logging
 │   │   ├── db/                         # Akses PostgreSQL (pgx) + query per domain
 │   │   ├── store/                      # Object storage R2 (poster, halaman komik, SRT, stiker katalog) + klien ImgBB (gambar chat & stiker pribadi user)
 │   │   ├── jobs/                       # Worker subtitle (antrean → transkripsi API → terjemah → SRT → R2), polling pembayaran, dsb.
 │   │   └── config/                     # Baca konfigurasi dari env
 │   ├── go.mod
 │   └── .env.example                    # DATABASE_URL, kredensial gateway & API transkripsi (contoh tanpa nilai asli)
-├── supabase/
-│   ├── migrations/         # Migrasi skema PostgreSQL
+├── db/
+│   ├── migrations/         # Migrasi skema PostgreSQL (lokal di VPS)
 │   └── seed/               # Data awal (daftar genre, tipe, kanal chat, dsb.)
 ├── deploy/
 │   ├── Caddyfile           # Reverse proxy + HTTPS otomatis (Let's Encrypt)
@@ -54,9 +54,9 @@ SubSenpai/
 
 Catatan: backend Go dibangun menjadi binary (`go build`) lalu dijalankan systemd di VPS — tidak perlu Docker, Node, maupun runtime lain; VPS hanya menjalankan layanan Go + Caddy. Aplikasi Android didistribusikan sebagai APK / lewat Play Store. Rincian deployment ada di Bagian 12.
 
-## 3. Skema Database (Supabase / PostgreSQL)
+## 3. Skema Database (PostgreSQL Lokal di VPS)
 
-Diagram ERD, detail relasi, indeks, RLS, dan draf SQL lengkap ada di **[DATABASE.md](DATABASE.md)** — bagian ini ringkasannya.
+Diagram ERD, detail relasi, indeks, kontrol akses, dan draf SQL lengkap ada di **[DATABASE.md](DATABASE.md)** — bagian ini ringkasannya.
 
 ### `titles` — katalog semua konten
 | Kolom | Tipe | Keterangan |
@@ -116,11 +116,11 @@ Reader mendukung dua mode: **halaman** (per gambar, cocok untuk manga) dan **gul
 | file_url | text | URL file subtitle (di R2) |
 | status | text | `queued` / `processing` / `done` / `failed` |
 
-### Data user & monetisasi (Supabase Auth)
-- Akun dikelola **Supabase Auth** (`auth.users`) — tidak buat tabel kredensial sendiri.
+### Data user & monetisasi (Auth oleh backend Go)
+- Akun adalah tabel `profiles` itu sendiri — tidak ada layanan auth eksternal dan tidak ada tabel kredensial: backend tidak pernah menyimpan kata sandi karena login hanya lewat Google.
 - **Login wajib Google (OAuth)** — hanya provider Google yang diaktifkan; pendaftaran email/password DIMATIKAN. Tujuannya menghindari bot: akun palsu harus lebih dulu memiliki akun Google yang lolos anti-abuse Google. Bukan anti-bot mutlak — lapisan cadangan bila masih kecolongan: Cloudflare Turnstile (captcha tak terlihat, gratis) di endpoint sensitif + rate limit API.
-- Alur login di aplikasi: user masuk lewat **Google Sign-In** di Android → token ID Google ditukar menjadi sesi Supabase Auth (`signInWithIdToken`) → JWT sesi dikirim sebagai header `Authorization` ke API Go pada setiap request, dan backend memverifikasinya.
-- `profiles` — 1:1 dengan user: nama tampil, avatar, `is_premium` (cache status), `premium_until`, `role` (`user`/`admin` — penanda akses panel admin), `friend_code` (kode teman yang juga berfungsi sebagai kode referral), `xp`/`level` (aktivitas, Bagian 9), `hide_adult` (saklar filter konten 18+, bawaan: sembunyi), `show_online`/`show_activity` (saklar privasi kehadiran sosial, Bagian 9), `trial_used_at` (penanda uji coba premium sudah dipakai, Bagian 4), `last_active_date`/`streak_days` (rentetan hari aktif, Bagian 9).
+- Alur login di aplikasi: user masuk lewat **Google Sign-In** di Android → token ID Google dikirim ke endpoint login backend → backend memverifikasinya ke Google (tanda tangan, audience, masa berlaku) → backend membuat/memperbarui baris `profiles` (dicocokkan lewat `google_sub` yang unik) dan menerbitkan **JWT sesi buatannya sendiri** → JWT itu dikirim sebagai header `Authorization` pada setiap request berikutnya dan diverifikasi middleware backend.
+- `profiles` — tabel user itu sendiri: `email` + `google_sub` (identitas Google, unik), nama tampil, avatar, `is_premium` (cache status), `premium_until`, `role` (`user`/`admin` — penanda akses panel admin), `friend_code` (kode teman yang juga berfungsi sebagai kode referral), `xp`/`level` (aktivitas, Bagian 9), `hide_adult` (saklar filter konten 18+, bawaan: sembunyi), `show_online`/`show_activity` (saklar privasi kehadiran sosial, Bagian 9), `trial_used_at` (penanda uji coba premium sudah dipakai, Bagian 4), `last_active_date`/`streak_days` (rentetan hari aktif, Bagian 9).
 - `subscriptions` — user_id, plan, status (`active`/`expired`/`cancelled`), current_period_end, provider (`midtrans`/`xendit`/`gopay`/`manual`/`voucher`/`trial`), provider_ref.
 - `vouchers` — kode premium sekali pakai: dibuat admin (promo, bisa ditujukan ke user tertentu) atau dibeli user untuk dihadiahkan ke user lain; penukaran menambah hari premium penukar (detail di DATABASE.md).
 - `watchlist` — user_id + title_id + `notify` (lonceng per judul: user mengaktifkan notifikasi hanya untuk judul favorit yang ia pilih, berlaku untuk semua tipe — anime, donghua, film, manga, manhua, manhwa).
@@ -166,7 +166,7 @@ Pengelolaan & pemantauan berjalan sebagai **layar admin di dalam aplikasi yang s
 
 ## 6. Alur Data
 
-1. **Katalog masuk** — metadata judul & episode/chapter ditulis ke Supabase; poster & halaman komik diunggah ke R2 setelah dikonversi ke **WebP + thumbnail** (ukuran turun 30–60%, muat daftar jauh lebih ringan).
+1. **Katalog masuk** — metadata judul & episode/chapter ditulis ke PostgreSQL lokal di VPS; poster & halaman komik diunggah ke R2 setelah dikonversi ke **WebP + thumbnail** (ukuran turun 30–60%, muat daftar jauh lebih ringan).
 2. **User membuka halaman nonton/baca** — API Go mengecek gerbang akses (Bagian 4) dan membaca metadata dari PostgreSQL → player memutar `video_url` langsung dari sumber / reader memuat gambar halaman dari R2. Agar perpindahan terasa seketika (**prefetch**): reader memuat lebih dulu 3 halaman berikutnya, dan player memuat awal episode berikutnya saat progres episode berjalan mencapai ±80%.
 3. **Subtitle diminta** (video saja) — player mengecek tabel `subtitles`:
    - Sudah `done` → muat file dari R2, selesai.
@@ -212,7 +212,7 @@ Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
 
 - Ruang obrolan publik **realtime** khusus user yang sudah login (tamu tidak ikut membaca/menulis — selaras dengan login Google wajib, sekaligus anti-spam).
 - **Kanal per topik**: Umum, Anime, Donghua, Film, Manga, Rekomendasi — dikelola admin lewat tabel `chat_channels`.
-- Teknologi: **Supabase Realtime** (tanpa server websocket terpisah) + Presence untuk menampilkan jumlah user online per kanal.
+- Teknologi: **WebSocket dari backend Go sendiri** (satu endpoint `/ws` di layanan API — Go menangani banyak koneksi ringan dengan mudah, jadi tidak perlu layanan realtime terpisah) + presence di memori server untuk menampilkan jumlah user online per kanal.
 - Tampilan pesan seperti aplikasi chat komunitas: avatar, nickname, badge Premium/Admin, stempel waktu, dan banner pengumuman di bagian atas (diatur admin — mis. peringatan anti-penipuan). Pesan teks maks 500 karakter.
 - **Kustomisasi khusus premium** (nilai jual langganan):
   - **Warna nickname** pilihan sendiri (`profiles.name_color`)
@@ -232,7 +232,7 @@ Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
 - Alur: kirim permintaan (`friendships` berstatus `pending`) → penerima **menerima** (menjadi `accepted`) atau **menolak** (permintaan dihapus). Daftar teman tampil di profil masing-masing.
 - **Blokir** (`user_blocks`): user yang diblokir tidak bisa mengirim permintaan teman maupun undangan grup, dan pertemanan yang sudah ada terputus.
 - **Chat pribadi (DM)** — sesama teman bisa mengobrol 1:1 lewat kanal khusus (`chat_channels` berkind `dm`, tepat satu kanal per pasangan teman). DM memakai sistem pesan yang sama persis dengan Chat Global: reply, stiker, gambar ImgBB (dengan kompresi & thumbnail), kartu berbagi, dan larangan tautan luar ikut berlaku. DM hanya bisa dimulai dengan teman — bukan orang asing — dan berhenti bisa dipakai bila salah satu pihak memblokir.
-- **Kehadiran sosial** — daftar teman menampilkan status online (Supabase Realtime Presence) dan aktivitas terakhir temannya ("sedang menonton X" / "baru membaca Y", dari riwayat terbaru). Keduanya bisa dimatikan per user lewat saklar privasi `show_online` / `show_activity` di profil.
+- **Kehadiran sosial** — daftar teman menampilkan status online (presence WebSocket backend) dan aktivitas terakhir temannya ("sedang menonton X" / "baru membaca Y", dari riwayat terbaru). Keduanya bisa dimatikan per user lewat saklar privasi `show_online` / `show_activity` di profil.
 - Khusus user login — tamu tidak memiliki fitur sosial sama sekali.
 
 ### Grup
@@ -240,7 +240,8 @@ Risiko & catatan (wajib dipahami sebelum memakai jalur ini):
 - Peran anggota (`group_members`): `owner` (pembuat grup; satu-satunya yang bisa membubarkan grup), `admin` (diangkat owner; ikut memoderasi), `member`.
 - Setiap grup otomatis memiliki **satu kanal chat sendiri** (`chat_channels` berkind `group`) — memakai sistem chat yang sama dengan Chat Global (pesan teks, stiker, kustomisasi premium), tetapi hanya anggota grup yang bisa membaca & menulis di dalamnya.
 - Bergabung: grup publik bisa langsung diikuti; grup privat lewat undangan dari daftar teman atau permintaan bergabung yang disetujui admin grup.
-- **Nonton bareng (watch party)** — anggota grup (atau sekumpulan teman) bisa membuka ruang putar tersinkron dari sebuah episode: satu host mengendalikan play/pause/seek dan posisi semua peserta mengikutinya (sinkronisasi lewat kanal Realtime sementara — sesi ini tidak disimpan sebagai data permanen), dengan chat di samping player. Ruang berakhir saat host menutupnya atau semua peserta keluar.
+- **Tautan undangan grup** — setiap grup punya **kode undangan** unik (`groups.invite_code`) yang membentuk tautan resmi aplikasi (mis. `https://subsenpai.app/g/<kode>`). **Semua anggota grup** boleh membagikan tautan itu ke media sosial lewat menu berbagi Android agar banyak anggota baru bergabung — ini pengecualian resmi dari aturan tanpa tautan luar: tautannya dibuat oleh aplikasi (domain milik SubSenpai), dibagikan KE LUAR aplikasi, dan membuka halaman unduh aplikasi + undangan grupnya; user tetap tidak bisa menempel tautan sembarang ke dalam chat/komentar. Membuka tautan dengan aplikasi terpasang langsung masuk ke grup — untuk grup privat, tautan itu sendiri adalah undangannya (pemegang tautan bisa bergabung tanpa persetujuan). Pengaman: owner/admin grup bisa **mengatur ulang kode** (tautan lama langsung mati) atau mematikan penerimaan lewat tautan (`invite_enabled`) bila tautan menyebar ke tempat yang salah.
+- **Nonton bareng (watch party)** — anggota grup (atau sekumpulan teman) bisa membuka ruang putar tersinkron dari sebuah episode: satu host mengendalikan play/pause/seek dan posisi semua peserta mengikutinya (sinkronisasi lewat kanal WebSocket sementara — sesi ini tidak disimpan sebagai data permanen), dengan chat di samping player. Ruang berakhir saat host menutupnya atau semua peserta keluar.
 - Moderasi dua lapis: admin grup mengeluarkan anggota & menghapus pesan di kanal grupnya; grup yang dilaporkan user (`reports` bertarget `group`) ditindak admin platform (peringatan sampai pembubaran) — lihat STRUKTUR_ADMIN.md.
 
 ### Level & Lencana Aktivitas
@@ -288,28 +289,29 @@ Catatan jujur soal batas lapisan ini: penyerang yang sangat berniat tetap bisa m
 
 ## 12. Deployment (VPS)
 
-Satu VPS menjalankan seluruh aplikasi (spesifikasi awal cukup 1–2 vCPU / 1–2 GB RAM karena binary Go ringan):
+Satu VPS menjalankan seluruh aplikasi (spesifikasi awal 1 vCPU / 4 GB RAM — binary Go ringan, tetapi PostgreSQL lokal ikut memakai RAM & disk):
 
 | Komponen | Bentuk | Port lokal |
 | --- | --- | --- |
 | Reverse proxy | Caddy (HTTPS otomatis Let's Encrypt) | 80/443 (publik) |
 | Backend API | Binary Go (systemd `subsenpai-api`) | 8080 |
 | Worker | Binary Go kedua dari basis kode yang sama (systemd `subsenpai-worker`) — antrean subtitle, polling GoPay, pembersih sesi | — |
-| Database & Auth | Supabase (PostgreSQL + Google OAuth) — di luar VPS | — |
+| Database | PostgreSQL lokal di VPS — data di disk VPS (mis. 50 GB NVMe), hanya mendengarkan localhost | 5432 (lokal) |
+| Auth | Di dalam backend Go (verifikasi token ID Google + JWT sesi buatan sendiri) | — |
 | Berkas | Cloudflare R2 — di luar VPS | — |
 
 - Caddy meneruskan seluruh request (API publik, mis. `api.subsenpai...`) ke backend Go; hanya Caddy yang terekspos ke internet, layanan Go hanya mendengarkan di localhost.
 - Domain diarahkan lewat **Cloudflare** (proxy aktif): cache tepi untuk response katalog publik, IP asli VPS tersembunyi, dan proteksi DDoS dasar — gratis.
 - Konfigurasi & rahasia backend di satu file env di VPS (mis. `/etc/subsenpai/backend.env`, izin 600): `DATABASE_URL`, kredensial payment gateway & GoPay Merchant, kunci API transkripsi/terjemahan, kunci API ImgBB, kredensial R2. Tidak masuk repo (repo hanya berisi `.env.example`). Kunci sesi `xdata` TIDAK termasuk env/disk — dibuat per sesi dan hidup di memori saja (Bagian 11).
 - Alur rilis: `go build` → unggah binary → `systemctl restart subsenpai-api subsenpai-worker`. Pembaruan aplikasi Android lewat rilis APK/Play Store seperti biasa (di luar VPS).
-- Cadangan: `pg_dump` database berjalan terjadwal dari VPS (timer systemd, mis. tiap malam) dan hasilnya diunggah ke R2 — Supabase free tidak mempunyai pemulihan titik-waktu, jadi dump ini penyelamat utamanya. File env dan konfigurasi `deploy/` dicadangkan bersama dump. Setiap 3 bulan dilakukan **uji pemulihan**: dump terakhir dicoba dipulihkan ke database kosong dan hasilnya dicatat di modul Monitoring — cadangan yang belum pernah dipulihkan adalah harapan, bukan cadangan.
+- Cadangan: `pg_dump` database berjalan terjadwal dari VPS (timer systemd, mis. tiap malam) dan hasilnya diunggah ke R2 — database lokal tidak mempunyai pemulihan titik-waktu bawaan, jadi dump ini penyelamat utamanya — dan dump TIDAK boleh hanya disimpan di VPS yang sama: unggahan ke R2 (di luar VPS) adalah bagian wajibnya, karena bila disk VPS rusak, database dan cadangannya tidak boleh hilang bersamaan. File env dan konfigurasi `deploy/` dicadangkan bersama dump. Setiap 3 bulan dilakukan **uji pemulihan**: dump terakhir dicoba dipulihkan ke database kosong dan hasilnya dicatat di modul Monitoring — cadangan yang belum pernah dipulihkan adalah harapan, bukan cadangan.
 - Pemantauan: endpoint `GET /healthz` (jawaban polos `{ok: true}`, tanpa enkripsi) dipantau pemantau uptime eksternal gratis (mis. UptimeRobot) agar admin tahu dalam hitungan menit bila VPS atau layanan mati. Aplikasi Android juga mengirim **laporan crash** (Firebase Crashlytics gratis, atau GlitchTip yang di-host sendiri) bertanda versi rilis — error di perangkat user tidak terlihat dari server, jadi laporan crash adalah satu-satunya cara mengetahuinya; ringkasannya ditautkan dari modul Monitoring panel admin.
 
 ## 13. Batasan yang Disadari
 
 - Satu VPS adalah titik tunggal kegagalan — bila VPS mati, seluruh layanan berhenti. Mitigasi awal: pantau uptime + restart otomatis systemd; pisahkan worker ke mesin lain bila antrean subtitle membesar.
 - Aplikasi saja, tanpa versi web: penemuan konten lewat mesin pencari (SEO) tidak ada — distribusi & pertumbuhan mengandalkan APK/Play Store dan promosi komunitas. Sebagai gantinya VPS jauh lebih ringan (komponen terberat sebelumnya, Next.js, hilang).
-- Project Supabase gratis bisa di-pause bila lama tidak aktif — aktivitas berkala menjaganya tetap bangun.
+- Database lokal berbagi nasib dengan VPS: bila VPS atau disknya mati, database ikut mati — dimitigasi cadangan `pg_dump` terjadwal yang wajib terunggah ke R2 (di luar VPS) dan pemantauan sisa disk dari panel admin. Ruang database juga berbagi disk dengan sistem & binary, jadi pertumbuhan tabel besar (pesan chat, riwayat) dipantau; arsip berkala disiapkan bila mulai sesak.
 - Sumber konten resmi umumnya berkunci wilayah + DRM; daftar sumber yang benar-benar bisa dipakai dicatat terpisah di `docs/` setelah riset.
 - Iklan: konten seperti ini umumnya ditolak AdSense — jaringan iklan alternatif diteliti di fase monetisasi.
 - Menerjemahkan komik secara otomatis (OCR + menimpa teks pada gambar) di luar cakupan rancangan ini.
