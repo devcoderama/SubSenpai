@@ -88,7 +88,7 @@ semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di 
 - Pesan terlaporkan (dari `reports` bertarget `chat_message`): hapus pesan (soft-delete), bisukan pengirimnya (`chat_muted_until`, bisa berdurasi), atau abaikan laporan.
 - Kelola kanal chat: tambah/ubah nama, deskripsi, dan urutan kanal; atur teks banner pengumuman di atas chat.
 - Kelola katalog stiker: unggah paket stiker (gambar ke R2) dan tandai mana yang khusus premium.
-- Atur filter kata terlarang dan mode lambat (jeda minimum antar-pesan) per kanal bila chat sedang rusuh.
+- Atur filter kata terlarang, **filter tautan luar** (pola URL yang otomatis ditolak server di chat & komentar — berlaku juga untuk promosi berkedok teks; domain resmi aplikasi dikecualikan karena dipakai kartu berbagi), dan mode lambat (jeda minimum antar-pesan) per kanal bila chat sedang rusuh.
 - Grup terlaporkan (`reports` bertarget `group`): periksa grupnya — beri peringatan ke owner, batasi, atau bubarkan grup yang melanggar. Urusan sehari-hari di dalam grup (keluarkan anggota, hapus pesan) adalah wewenang admin grup, bukan admin platform.
 - Gambar/stiker kiriman user yang dilaporkan: hapus gambarnya dari ImgBB memakai `delete_url` yang tersimpan di server, lalu soft-delete pesannya — menghapus baris pesan saja tidak menghapus gambar di ImgBB.
 - Komentar terlaporkan (`reports` bertarget `comment`) ditangani seperti pesan chat: periksa konteksnya, soft-delete bila melanggar, bisukan penulisnya bila berulang.

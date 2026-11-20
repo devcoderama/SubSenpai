@@ -43,6 +43,8 @@ erDiagram
     profiles ||--o{ device_tokens : "perangkat"
     profiles ||--o{ notifications : "menerima"
     profiles ||--o{ broadcasts : "admin mengirim"
+    chat_messages ||--o{ chat_messages : "membalas"
+    comments ||--o{ comments : "balasan"
 
     titles {
         uuid id PK
@@ -197,10 +199,13 @@ erDiagram
         uuid id PK
         uuid channel_id FK
         uuid user_id FK
-        text kind "text|sticker|image"
+        text kind "text|sticker|image|share"
         text body "isi teks, maks 500"
         uuid sticker_id FK "stiker katalog, bila kind=sticker"
         text image_url "URL ImgBB, bila image / stiker pribadi"
+        uuid reply_to_id FK "pesan yang dibalas"
+        uuid ref_title_id FK "judul kartu berbagi, bila kind=share"
+        uuid ref_episode_id FK "episode kartu berbagi, bila ada"
         timestamptz created_at
         timestamptz deleted_at "soft-delete moderasi"
     }
@@ -249,6 +254,7 @@ erDiagram
         uuid user_id FK
         uuid episode_id FK "salah satu terisi"
         uuid chapter_id FK "salah satu terisi"
+        uuid parent_id FK "komentar induk, bila ini balasan"
         text body
         timestamptz created_at
         timestamptz deleted_at "soft-delete moderasi"
@@ -353,7 +359,8 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `user_blocks (blocker_id, blocked_id)` — kunci utama gabungan, kedua FK ke `profiles.id`
 - `groups.owner_id → profiles.id`; `group_members (group_id, user_id)` — kunci utama gabungan; `chat_channels.group_id → groups.id` (unik — satu grup satu kanal chat)
 - `user_stickers.user_id → profiles.id`; gambarnya sendiri TIDAK disimpan di DB — hanya `image_url` (ImgBB) + `delete_url` internal untuk moderasi
-- `comments.user_id → profiles.id`; tepat satu dari `comments.episode_id` / `comments.chapter_id` terisi
+- `comments.user_id → profiles.id`; tepat satu dari `comments.episode_id` / `comments.chapter_id` terisi; `comments.parent_id → comments.id` (balasan **satu tingkat**: balasan atas balasan menempel ke induk yang sama, tidak bersarang lebih dalam)
+- `chat_messages.reply_to_id → chat_messages.id` (pesan yang dibalas; `ON DELETE SET NULL` — balasan tetap ada walau pesan asli dihapus); `chat_messages.ref_title_id / ref_episode_id` terisi hanya untuk pesan kartu berbagi (`kind = share`)
 - `title_ratings (user_id, title_id)` — kunci utama gabungan (satu penilaian per user per judul, bisa diubah)
 - `device_tokens (user_id, fcm_token)` — kunci utama gabungan; `daily_stats` tanpa FK (agregat sistem)
 - `notifications.user_id → profiles.id`; `notifications.broadcast_id → broadcasts.id` (kosong untuk notifikasi rilis/sistem); `broadcasts.admin_id → profiles.id`; `ref_title_id` di keduanya menunjuk `titles.id` bila notifikasi terkait judul tertentu
@@ -370,7 +377,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `reports.target_kind` ∈ `episode, chapter, subtitle, chat_message, group, comment`; `reports.status` ∈ `open, resolved, dismissed`
 - `title_ratings.score` ∈ 1–10
 - `notifications.kind` ∈ `release, broadcast, system`; `broadcasts.audience` ∈ `all, premium, free`
-- `chat_messages.kind` ∈ `text, sticker, image` (teks → `body`; stiker katalog → `sticker_id`; gambar & stiker pribadi → `image_url` berisi URL ImgBB)
+- `chat_messages.kind` ∈ `text, sticker, image, share` (teks → `body`; stiker katalog → `sticker_id`; gambar & stiker pribadi → `image_url` berisi URL ImgBB; kartu berbagi → `ref_title_id`)
 - `chat_channels.kind` ∈ `global, group` (`group_id` wajib terisi bila `group`, kosong bila `global`)
 - `friendships.status` ∈ `pending, accepted`; `group_members.role` ∈ `owner, admin, member`
 
@@ -611,17 +618,21 @@ create table chat_messages (
   id uuid primary key default gen_random_uuid(),
   channel_id uuid not null references chat_channels(id) on delete cascade,
   user_id uuid not null references profiles(id) on delete cascade,
-  kind text not null default 'text' check (kind in ('text','sticker','image')),
+  kind text not null default 'text' check (kind in ('text','sticker','image','share')),
   body text check (char_length(body) <= 500),
   sticker_id uuid references stickers(id) on delete set null,
   image_url text,
   image_delete_url text,
+  reply_to_id uuid references chat_messages(id) on delete set null,
+  ref_title_id uuid references titles(id) on delete set null,
+  ref_episode_id uuid references episodes(id) on delete set null,
   created_at timestamptz not null default now(),
   deleted_at timestamptz,
   check (
     (kind = 'text' and body is not null)
     or (kind = 'sticker' and (sticker_id is not null or image_url is not null))
     or (kind = 'image' and image_url is not null)
+    or (kind = 'share' and ref_title_id is not null)
   )
 );
 create index chat_messages_channel_idx on chat_messages (channel_id, created_at desc);
@@ -682,6 +693,7 @@ create table comments (
   user_id uuid not null references profiles(id) on delete cascade,
   episode_id uuid references episodes(id) on delete cascade,
   chapter_id uuid references chapters(id) on delete cascade,
+  parent_id uuid references comments(id) on delete cascade,
   body text not null,
   created_at timestamptz not null default now(),
   deleted_at timestamptz,
