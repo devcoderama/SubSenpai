@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config = {
@@ -55,6 +56,12 @@ tailwind.config = {
   .bglayer.on{opacity:1;animation:kenburns 16s ease-in-out infinite alternate}
   @keyframes kenburns{from{transform:scale(1)}to{transform:scale(1.09)}}
   .bgoverlay{position:fixed;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(180deg,rgba(11,15,26,.62),rgba(11,15,26,.80) 45%,rgba(11,15,26,.92))}
+  .sidelink{color:#c6d0e8}
+  .sidelink i{color:#a78bfa;transition:color .3s}
+  .sidelink.act{background:rgba(167,139,250,.15);color:#fff}
+  .sidelink.act i{color:#ff6b9d}
+  .msg-ai{background:rgba(255,255,255,.06);border:1px solid #26314d}
+  .msg-user{background:linear-gradient(90deg,rgba(255,107,157,.25),rgba(167,139,250,.25));border:1px solid rgba(167,139,250,.4)}
   @media (prefers-reduced-motion: reduce){
     html{scroll-behavior:auto}
     .reveal{opacity:1;transform:none;transition:none}
@@ -62,7 +69,7 @@ tailwind.config = {
   }
 </style>
 </head>
-<body class="text-slate-100 antialiased pb-20 md:pb-0">
+<body class="text-slate-100 antialiased">
 <div class="bgstack" aria-hidden="true">
   <div class="bglayer on" style="background-image:url('https://wallpaperbat.com/img/68747767-wallpaper-4k-anime-girl-mitsuha-miyamizu.jpg')"></div>
   <div class="bglayer" style="background-image:url('https://images5.alphacoders.com/111/thumb-1920-1112122.png')"></div>
@@ -75,20 +82,33 @@ tailwind.config = {
 
 <!-- ================= NAVBAR ATAS (desktop) ================= -->
 <header id="topbar" class="fixed top-0 left-0 right-0 z-50">
-  <div class="max-w-6xl mx-auto px-5 h-16 flex items-center gap-6">
+  <div class="max-w-6xl mx-auto px-5 h-16 flex items-center gap-4">
+    <button id="btnMenu" class="text-lg w-10 h-10 grid place-items-center rounded-full border border-line bg-white/5 hover:bg-white/10 transition" aria-label="Buka menu navigasi"><i class="fa-solid fa-bars"></i></button>
     <a href="#beranda" class="text-lg font-extrabold tracking-tight">SubSenpai <span class="text-pink">🎌</span></a>
-    <nav class="hidden md:flex mx-auto items-center gap-1 text-[.95rem]">
-      <a class="navlink" data-spy="beranda" href="#beranda">Beranda</a>
-      <a class="navlink" data-spy="fitur" href="#fitur">Fitur</a>
-      <a class="navlink" data-spy="cara-kerja" href="#cara-kerja">Cara Kerja</a>
-      <a class="navlink" data-spy="progres" href="#progres">Progres</a>
-      <a class="navlink" data-spy="dokumentasi" href="#dokumentasi">Dokumentasi</a>
-      <a class="navlink" data-spy="donasi" href="#donasi">Donasi</a>
-    </nav>
-    <a href="https://github.com/devcoderama/SubSenpai" class="hidden md:inline-block text-sm font-semibold border border-line rounded-full px-4 py-1.5 hover:border-violet transition-colors">GitHub ↗</a>
-    <a href="https://github.com/devcoderama/SubSenpai" class="md:hidden ml-auto text-sm font-semibold border border-line rounded-full px-4 py-1.5">GitHub ↗</a>
+    <a href="https://github.com/devcoderama/SubSenpai" class="ml-auto text-sm font-semibold border border-line rounded-full px-4 py-1.5 hover:border-violet transition-colors"><i class="fa-brands fa-github"></i> GitHub</a>
   </div>
 </header>
+<div id="sideOverlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] opacity-0 pointer-events-none transition-opacity duration-300"></div>
+<aside id="sidebar" class="fixed top-0 left-0 h-full w-[292px] max-w-[86vw] bg-[#0e1424]/95 backdrop-blur-xl border-r border-line z-[70] -translate-x-full transition-transform duration-500 flex flex-col" style="transition-timing-function:cubic-bezier(.22,.8,.32,1)" aria-label="Navigasi samping">
+  <div class="flex items-center gap-3 px-5 h-16 border-b border-line shrink-0">
+    <span class="text-lg font-extrabold">SubSenpai 🎌</span>
+    <button id="btnCloseSide" class="ml-auto w-9 h-9 grid place-items-center rounded-full border border-line hover:bg-white/10 transition" aria-label="Tutup menu"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <nav class="p-4 flex flex-col gap-1 text-[.98rem] overflow-y-auto">
+    <a class="sidelink flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 transition" data-spy="beranda" href="#beranda"><i class="fa-solid fa-house w-6 text-center"></i>Beranda</a>
+    <a class="sidelink flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 transition" data-spy="fitur" href="#fitur"><i class="fa-solid fa-wand-magic-sparkles w-6 text-center"></i>Fitur</a>
+    <a class="sidelink flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 transition" data-spy="cara-kerja" href="#cara-kerja"><i class="fa-solid fa-microphone-lines w-6 text-center"></i>Cara Kerja</a>
+    <a class="sidelink flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 transition" data-spy="progres" href="#progres"><i class="fa-solid fa-chart-line w-6 text-center"></i>Progres</a>
+    <a class="sidelink flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 transition" data-spy="dokumentasi" href="#dokumentasi"><i class="fa-solid fa-book-open w-6 text-center"></i>Dokumentasi</a>
+    <a class="sidelink flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 transition" data-spy="donasi" href="#donasi"><i class="fa-solid fa-mug-hot w-6 text-center"></i>Donasi</a>
+  </nav>
+  <div class="mt-auto p-5 border-t border-line text-sm text-mut shrink-0">
+    <span class="inline-block border border-pink/70 text-pink rounded-full px-3 py-0.5 text-xs">🚧 Tahap rancangan</span>
+    <p class="mt-3">Aplikasi belum dirilis — ikuti perkembangannya di GitHub.</p>
+    <a href="https://github.com/devcoderama/SubSenpai" class="inline-block mt-2 text-sky2 hover:underline"><i class="fa-brands fa-github"></i> devcoderama/SubSenpai</a>
+  </div>
+</aside>
+
 
 <!-- ================= HERO ================= -->
 <section id="beranda" data-bg="0" class="relative overflow-hidden min-h-[100svh] flex items-center">
@@ -99,8 +119,8 @@ tailwind.config = {
     <h1 class="reveal reveal-d1 mt-6 text-5xl md:text-7xl font-black leading-[1.05] tracking-tight">Nonton &amp; Baca<br><span class="bg-gradient-to-r from-pink via-violet to-sky2 bg-clip-text text-transparent">Tanpa Batas Bahasa</span></h1>
     <p class="reveal reveal-d2 mt-6 text-lg md:text-xl text-slate-200/90 max-w-2xl mx-auto">Streaming <strong>anime, donghua &amp; film</strong> dengan subtitle otomatis multi-bahasa, dan membaca <strong>manga, manhua &amp; manhwa</strong> dengan terjemahan balon komik — semua dalam satu aplikasi Android.</p>
     <div class="reveal reveal-d3 mt-9 flex flex-wrap justify-center gap-3">
-      <a href="#fitur" class="floaty bg-gradient-to-r from-pink to-violet text-white font-bold rounded-full px-7 py-3 shadow-lg shadow-pink/30 hover:opacity-90 transition">✨ Lihat Fitur</a>
-      <a href="#dokumentasi" class="border border-slate-300/40 bg-white/5 backdrop-blur font-semibold rounded-full px-7 py-3 hover:bg-white/10 transition">📚 Dokumentasi</a>
+      <a href="#fitur" class="floaty bg-gradient-to-r from-pink to-violet text-white font-bold rounded-full px-7 py-3 shadow-lg shadow-pink/30 hover:opacity-90 transition"><i class="fa-solid fa-wand-magic-sparkles"></i> Lihat Fitur</a>
+      <a href="#dokumentasi" class="border border-slate-300/40 bg-white/5 backdrop-blur font-semibold rounded-full px-7 py-3 hover:bg-white/10 transition"><i class="fa-solid fa-book-open"></i> Dokumentasi</a>
     </div>
     <div class="reveal reveal-d3 mt-12 flex flex-wrap justify-center gap-2 text-sm text-mut">
       <span class="border border-line rounded-full px-3 py-1 bg-ink/50 backdrop-blur">6 jenis konten</span>
@@ -117,18 +137,18 @@ tailwind.config = {
     <h2 class="reveal text-3xl md:text-4xl font-extrabold">✨ Fitur untuk Pengguna</h2>
     <p class="reveal text-mut mt-3 max-w-2xl">Semua fitur dirancang untuk penonton &amp; pembaca — dari subtitle otomatis sampai komunitas.</p>
     <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-10">
-      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl">💬</div><h3 class="font-bold mt-3">Subtitle Otomatis Multi-Bahasa</h3><p class="text-mut text-sm mt-1">Video raw diterjemahkan otomatis ke bahasamu — diterjemahkan langsung di HP-mu, jadi cepat dan tidak antre.</p></div>
-      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl">🗯️</div><h3 class="font-bold mt-3">Terjemahan Balon Komik</h3><p class="text-mut text-sm mt-1">Balon teks manga/manhua/manhwa dikenali otomatis dan diterjemahkan sebagai lapisan di atas gambar asli.</p></div>
-      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl">🛡️</div><h3 class="font-bold mt-3">Baca dari Sumber Ber-Cloudflare</h3><p class="text-mut text-sm mt-1">Komik dari situs yang dilindungi anti-bot tetap bisa dibaca — verifikasi sekali dari HP-mu, seperti di Mihon.</p></div>
-      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl">🤖</div><h3 class="font-bold mt-3">Tanya Senpai</h3><p class="text-mut text-sm mt-1">Asisten AI gratis di dalam aplikasi: minta rekomendasi dengan bahasa sehari-hari, jawabannya kartu judul yang bisa langsung dibuka.</p></div>
-      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl">💌</div><h3 class="font-bold mt-3">Chat Global, Grup &amp; DM</h3><p class="text-mut text-sm mt-1">Ngobrol per topik, buat grup dengan tautan undangan, DM antar teman, stiker &amp; gambar, polling seru.</p></div>
-      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl">🍿</div><h3 class="font-bold mt-3">Nonton Bareng</h3><p class="text-mut text-sm mt-1">Putar episode tersinkron bareng teman atau grupmu, lengkap dengan daftar bersama untuk merencanakan tontonan.</p></div>
-      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl">📺</div><h3 class="font-bold mt-3">Player Nyaman</h3><p class="text-mut text-sm mt-1">Lewati intro/outro, PiP, mode audio, Cast ke TV, gestur kecerahan/volume, dan pengatur waktu tidur.</p></div>
-      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl">⬇️</div><h3 class="font-bold mt-3">Unduhan Offline Premium</h3><p class="text-mut text-sm mt-1">Unduh pintar khusus Wi-Fi untuk ditonton tanpa internet, plus mode hemat data untuk kuota pas-pasan.</p></div>
-      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl">🏆</div><h3 class="font-bold mt-3">Misi, Level &amp; Rekap Senpai</h3><p class="text-mut text-sm mt-1">XP, lencana, streak harian, misi musiman berhadiah premium, tantangan antar teman, dan rekap statistik pribadi yang bisa dibagikan.</p></div>
-      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl">🔔</div><h3 class="font-bold mt-3">Notifikasi Rilis</h3><p class="text-mut text-sm mt-1">Tekan lonceng di judul favoritmu — episode/chapter baru langsung mengabari, dengan jam tenang agar tidurmu aman.</p></div>
-      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl">🎁</div><h3 class="font-bold mt-3">Premium Fleksibel</h3><p class="text-mut text-sm mt-1">Langganan via QRIS/e-wallet, voucher hadiah untuk teman, trial 3 hari, dan progres otomatis tercatat ke AniList/MyAnimeList.</p></div>
-      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl">👨‍👩‍👧</div><h3 class="font-bold mt-3">Multi-Profil &amp; Profil Anak</h3><p class="text-mut text-sm mt-1">Satu akun untuk sekeluarga: profil terpisah dengan riwayat masing-masing dan profil Anak terkunci PIN.</p></div>
+      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl text-violet"><i class="fa-solid fa-closed-captioning"></i></div><h3 class="font-bold mt-3">Subtitle Otomatis Multi-Bahasa</h3><p class="text-mut text-sm mt-1">Video raw diterjemahkan otomatis ke bahasamu — diterjemahkan langsung di HP-mu, jadi cepat dan tidak antre.</p></div>
+      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl text-violet"><i class="fa-solid fa-language"></i></div><h3 class="font-bold mt-3">Terjemahan Balon Komik</h3><p class="text-mut text-sm mt-1">Balon teks manga/manhua/manhwa dikenali otomatis dan diterjemahkan sebagai lapisan di atas gambar asli.</p></div>
+      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl text-violet"><i class="fa-solid fa-shield-halved"></i></div><h3 class="font-bold mt-3">Baca dari Sumber Ber-Cloudflare</h3><p class="text-mut text-sm mt-1">Komik dari situs yang dilindungi anti-bot tetap bisa dibaca — verifikasi sekali dari HP-mu, seperti di Mihon.</p></div>
+      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl text-violet"><i class="fa-solid fa-robot"></i></div><h3 class="font-bold mt-3">Tanya Senpai</h3><p class="text-mut text-sm mt-1">Asisten AI gratis di dalam aplikasi: minta rekomendasi dengan bahasa sehari-hari, jawabannya kartu judul yang bisa langsung dibuka.</p></div>
+      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl text-violet"><i class="fa-solid fa-comments"></i></div><h3 class="font-bold mt-3">Chat Global, Grup &amp; DM</h3><p class="text-mut text-sm mt-1">Ngobrol per topik, buat grup dengan tautan undangan, DM antar teman, stiker &amp; gambar, polling seru.</p></div>
+      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl text-violet"><i class="fa-solid fa-clapperboard"></i></div><h3 class="font-bold mt-3">Nonton Bareng</h3><p class="text-mut text-sm mt-1">Putar episode tersinkron bareng teman atau grupmu, lengkap dengan daftar bersama untuk merencanakan tontonan.</p></div>
+      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl text-violet"><i class="fa-solid fa-tv"></i></div><h3 class="font-bold mt-3">Player Nyaman</h3><p class="text-mut text-sm mt-1">Lewati intro/outro, PiP, mode audio, Cast ke TV, gestur kecerahan/volume, dan pengatur waktu tidur.</p></div>
+      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl text-violet"><i class="fa-solid fa-download"></i></div><h3 class="font-bold mt-3">Unduhan Offline Premium</h3><p class="text-mut text-sm mt-1">Unduh pintar khusus Wi-Fi untuk ditonton tanpa internet, plus mode hemat data untuk kuota pas-pasan.</p></div>
+      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl text-violet"><i class="fa-solid fa-trophy"></i></div><h3 class="font-bold mt-3">Misi, Level &amp; Rekap Senpai</h3><p class="text-mut text-sm mt-1">XP, lencana, streak harian, misi musiman berhadiah premium, tantangan antar teman, dan rekap statistik pribadi yang bisa dibagikan.</p></div>
+      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl text-violet"><i class="fa-solid fa-bell"></i></div><h3 class="font-bold mt-3">Notifikasi Rilis</h3><p class="text-mut text-sm mt-1">Tekan lonceng di judul favoritmu — episode/chapter baru langsung mengabari, dengan jam tenang agar tidurmu aman.</p></div>
+      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl text-violet"><i class="fa-solid fa-gift"></i></div><h3 class="font-bold mt-3">Premium Fleksibel</h3><p class="text-mut text-sm mt-1">Langganan via QRIS/e-wallet, voucher hadiah untuk teman, trial 3 hari, dan progres otomatis tercatat ke AniList/MyAnimeList.</p></div>
+      <div class="card reveal bg-panel border border-line rounded-2xl p-6"><div class="text-3xl text-violet"><i class="fa-solid fa-people-roof"></i></div><h3 class="font-bold mt-3">Multi-Profil &amp; Profil Anak</h3><p class="text-mut text-sm mt-1">Satu akun untuk sekeluarga: profil terpisah dengan riwayat masing-masing dan profil Anak terkunci PIN.</p></div>
     </div>
   </div>
 </section>
@@ -206,17 +226,6 @@ tailwind.config = {
   <a class="text-sky2 hover:underline" href="https://github.com/devcoderama/SubSenpai">Repo GitHub</a>
 </footer>
 
-<!-- ================= BOTTOM NAV (mobile, seperti D TRADE) ================= -->
-<nav class="bnav md:hidden fixed bottom-0 left-0 right-0 z-50 bg-ink/85 backdrop-blur-xl border-t border-line" style="padding-bottom:env(safe-area-inset-bottom)">
-  <div class="grid grid-cols-5 text-[.68rem] font-medium">
-    <a data-spy="beranda" href="#beranda" class="flex flex-col items-center gap-0.5 py-2"><span class="text-lg leading-none">🏠</span>Beranda<span class="dot w-1 h-1 rounded-full bg-pink"></span></a>
-    <a data-spy="fitur" href="#fitur" class="flex flex-col items-center gap-0.5 py-2"><span class="text-lg leading-none">✨</span>Fitur<span class="dot w-1 h-1 rounded-full bg-pink"></span></a>
-    <a data-spy="cara-kerja" href="#cara-kerja" class="flex flex-col items-center gap-0.5 py-2"><span class="text-lg leading-none">🗣️</span>Cara Kerja<span class="dot w-1 h-1 rounded-full bg-pink"></span></a>
-    <a data-spy="progres" href="#progres" class="flex flex-col items-center gap-0.5 py-2"><span class="text-lg leading-none">🗺️</span>Progres<span class="dot w-1 h-1 rounded-full bg-pink"></span></a>
-    <a data-spy="donasi" href="#donasi" class="flex flex-col items-center gap-0.5 py-2"><span class="text-lg leading-none">☕</span>Donasi<span class="dot w-1 h-1 rounded-full bg-pink"></span></a>
-  </div>
-</nav>
-
 <script>
 (function(){
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -267,7 +276,100 @@ tailwind.config = {
     if(!ticking){ ticking = true; requestAnimationFrame(update); }
   }, {passive:true});
   update();
+  /* Sidebar navigasi */
+  var sidebar = document.getElementById('sidebar'), overlay = document.getElementById('sideOverlay');
+  function openSide(){ sidebar.classList.remove('-translate-x-full'); overlay.classList.remove('opacity-0','pointer-events-none'); }
+  function closeSide(){ sidebar.classList.add('-translate-x-full'); overlay.classList.add('opacity-0','pointer-events-none'); }
+  document.getElementById('btnMenu').addEventListener('click', openSide);
+  document.getElementById('btnCloseSide').addEventListener('click', closeSide);
+  overlay.addEventListener('click', closeSide);
+  sidebar.querySelectorAll('a').forEach(function(a){ a.addEventListener('click', closeSide); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeSide(); });
 })();
 </script>
+<!-- ================= CHATBOT AI ================= -->
+<button id="chatFab" class="fixed bottom-5 right-5 z-[80] w-14 h-14 rounded-full bg-gradient-to-r from-pink to-violet shadow-lg shadow-pink/40 grid place-items-center text-2xl text-white hover:scale-105 active:scale-95 transition" aria-label="Tanya Senpai AI"><i class="fa-solid fa-robot"></i></button>
+<div id="chatPanel" class="fixed z-[90] bottom-0 right-0 sm:bottom-5 sm:right-5 w-full sm:w-[384px] max-w-[100vw] h-[80svh] sm:h-[560px] bg-[#0e1424] border border-line sm:rounded-3xl rounded-t-3xl flex-col overflow-hidden shadow-2xl shadow-black/60" style="display:none">
+  <div class="flex items-center gap-3 px-4 h-16 bg-gradient-to-r from-pink/25 to-violet/25 border-b border-line shrink-0">
+    <span class="w-10 h-10 grid place-items-center rounded-full bg-gradient-to-r from-pink to-violet text-lg text-white"><i class="fa-solid fa-robot"></i></span>
+    <div class="leading-tight">
+      <div class="font-bold">Tanya Senpai</div>
+      <div class="text-xs text-mut">AI gratis · seputar pengembangan SubSenpai</div>
+    </div>
+    <button id="chatClose" class="ml-auto w-9 h-9 grid place-items-center rounded-full border border-line hover:bg-white/10 transition" aria-label="Tutup chat"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div id="chatMsgs" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm"></div>
+  <div class="px-3 pb-2 flex gap-2 flex-wrap shrink-0">
+    <button class="chip border border-line rounded-full px-3 py-1 text-xs hover:border-violet transition">Sudah sampai mana progresnya?</button>
+    <button class="chip border border-line rounded-full px-3 py-1 text-xs hover:border-violet transition">Fitur apa saja untuk pengguna?</button>
+    <button class="chip border border-line rounded-full px-3 py-1 text-xs hover:border-violet transition">Kapan aplikasinya bisa diunduh?</button>
+    <button class="chip border border-line rounded-full px-3 py-1 text-xs hover:border-violet transition">Teknologi apa yang dipakai?</button>
+  </div>
+  <form id="chatForm" class="p-3 border-t border-line flex gap-2 shrink-0">
+    <input id="chatInput" type="text" maxlength="500" placeholder="Tanya seputar SubSenpai…" class="flex-1 bg-white/5 border border-line rounded-full px-4 py-2.5 text-sm outline-none focus:border-violet transition" autocomplete="off">
+    <button type="submit" class="w-11 h-11 shrink-0 grid place-items-center rounded-full bg-gradient-to-r from-pink to-violet text-white hover:opacity-90 transition" aria-label="Kirim"><i class="fa-solid fa-paper-plane"></i></button>
+  </form>
+</div>
+<script>
+(function(){
+  var SYS = [
+    "Kamu adalah Senpai, asisten AI di situs dokumentasi SubSenpai. Jawab HANYA seputar pengembangan aplikasi SubSenpai, dalam Bahasa Indonesia yang ramah, ringkas, dan jujur.",
+    "FAKTA PROYEK: SubSenpai adalah aplikasi Android (Kotlin) untuk streaming anime, donghua & film dengan subtitle otomatis, dan membaca manga, manhua & manhwa.",
+    "STATUS: masih TAHAP RANCANGAN - aplikasinya belum dibuat dan belum bisa diunduh. Yang sudah selesai adalah dokumen rancangannya (visi, arsitektur, skema database dasar, fitur F13-F39, keamanan, optimasi O9-O27) di repo GitHub devcoderama/SubSenpai. Langkah berikutnya: sinkronisasi final skema database, lalu pembangunan bertahap (katalog & player, worker subtitle, akun, freemium & sosial, mode baca, fitur lanjutan), deployment server, dan rilis APK bertahap lewat website resmi & GitHub Releases (bukan Play Store untuk saat ini). Belum ada tanggal rilis resmi.",
+    "TEKNOLOGI: aplikasi Android Kotlin; backend Go di VPS; database PostgreSQL lokal di VPS; subtitle disiapkan worker (caption/Whisper menjadi subtitle bahasa asal) lalu diterjemahkan di perangkat pengguna; komik dari sumber ber-Cloudflare dibaca lewat WebView di perangkat pengguna (pola seperti Mihon); login Google; model freemium (tamu maksimal 1 episode/chapter, user login dengan iklan, premium tanpa iklan; pembayaran QRIS/e-wallet dan voucher).",
+    "FITUR PENGGUNA: subtitle otomatis multi-bahasa (9 bahasa antarmuka), terjemahan balon komik via OCR, Tanya Senpai (asisten rekomendasi AI di dalam aplikasi), chat global/grup/DM, nonton bareng, koleksi & permintaan judul, misi/level/Rekap Senpai, unduhan offline premium, Cast & Picture-in-Picture, notifikasi rilis, multi-profil & profil Anak, pencatatan progres otomatis ke AniList/MyAnimeList.",
+    "ATURAN: jangan mengarang tanggal rilis atau fakta di luar fakta di atas; bila ditanya hal di luar SubSenpai, alihkan dengan sopan; jangan membahas hal internal pengelolaan; bila tidak tahu, katakan terus terang dan arahkan ke PROGRES.md atau repo GitHub."
+  ].join("\n");
+  var KEY = 'subsenpai-docs-chat-v1';
+  var hist = [];
+  try { hist = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e){ hist = []; }
+  var panel = document.getElementById('chatPanel'), msgs = document.getElementById('chatMsgs'),
+      form = document.getElementById('chatForm'), input = document.getElementById('chatInput'),
+      fab = document.getElementById('chatFab'), busy = false;
+  function render(role, text){
+    var d = document.createElement('div');
+    d.className = 'max-w-[85%] px-3.5 py-2.5 rounded-2xl whitespace-pre-wrap leading-relaxed ' + (role === 'user' ? 'msg-user ml-auto' : 'msg-ai');
+    d.textContent = text;
+    msgs.appendChild(d);
+    msgs.scrollTop = msgs.scrollHeight;
+    return d;
+  }
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(hist.slice(-30))); } catch(e){} }
+  function greet(){
+    if (!hist.length && !msgs.children.length)
+      render('assistant', 'Halo! Aku Senpai, asisten AI di dokumentasi SubSenpai. Tanya apa saja seputar pengembangan aplikasinya - progres, fitur, teknologi, atau rencana rilisnya.');
+    hist.forEach(function(m){ render(m.role, m.content); });
+  }
+  function openChat(){ panel.style.display = 'flex'; fab.style.display = 'none'; greet(); setTimeout(function(){ input.focus(); }, 60); }
+  function closeChat(){ panel.style.display = 'none'; fab.style.display = 'grid'; }
+  fab.addEventListener('click', openChat);
+  document.getElementById('chatClose').addEventListener('click', closeChat);
+  document.querySelectorAll('.chip').forEach(function(c){
+    c.addEventListener('click', function(){ input.value = c.textContent.trim(); form.requestSubmit(); });
+  });
+  form.addEventListener('submit', function(ev){
+    ev.preventDefault();
+    var text = input.value.trim();
+    if (!text || busy) return;
+    input.value = '';
+    hist.push({role:'user', content:text}); render('user', text); save();
+    busy = true;
+    var wait = render('assistant', 'Senpai sedang mengetik…');
+    fetch('https://text.pollinations.ai/', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model:'openai', messages: [{role:'system', content:SYS}].concat(hist) })
+    }).then(function(r){ return r.text(); }).then(function(txt){
+      var out = txt;
+      try { var j = JSON.parse(txt); if (j.choices && j.choices[0]) out = j.choices[0].message.content; } catch(e){}
+      wait.remove();
+      hist.push({role:'assistant', content:out}); render('assistant', out); save();
+    }).catch(function(){
+      wait.remove();
+      render('assistant', 'Maaf, layanan AI gratisnya sedang sibuk. Coba lagi sebentar lagi, ya.');
+    }).finally(function(){ busy = false; });
+  });
+})();
+</script>
+
 </body>
 </html>
