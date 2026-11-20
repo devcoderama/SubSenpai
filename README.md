@@ -64,7 +64,7 @@ Pemisahan berdasarkan **jenis data**, bukan per genre:
 
 | Bagian | Teknologi | Fungsi |
 | --- | --- | --- |
-| Klien | Aplikasi Android (Kotlin) di perangkat user | Katalog, player, reader, Chat Global, panel admin — semua tampilan & interaksi; tidak ada versi web |
+| Klien | Aplikasi Android (Kotlin) di perangkat user | Katalog, player, reader, Chat Global — semua tampilan & interaksi user; tidak ada versi web untuk user (panel admin adalah website terpisah khusus admin) |
 | Backend API | **Go** di VPS (binary + systemd, di belakang Caddy) | Semua logika: katalog, gerbang akses, subtitle, chat, premium, voucher, admin + enkripsi response `xdata`/`xtime` |
 | Database + Auth | PostgreSQL **lokal di VPS** + auth oleh backend Go | Katalog multi-konten, episode/chapter, subtitle, user, langganan — penyimpanan database mengikuti disk VPS (jauh lebih besar dari batas paket gratis Supabase); login Google diverifikasi backend dan sesi memakai JWT buatan backend, tanpa Supabase |
 | File storage | Cloudflare R2 | Poster, halaman komik & file subtitle (.srt/.ass) |
@@ -72,7 +72,7 @@ Pemisahan berdasarkan **jenis data**, bukan per genre:
 | Worker subtitle | Job latar Go (antrean transkripsi + SRT bahasa asal) + API transkripsi cloud | Transkripsi dititipkan ke API Whisper (Groq/OpenAI); worker Python mandiri hanya bila perlu full offline. Worker TIDAK menerjemahkan — itu urusan aplikasi di perangkat user |
 | Penerjemahan | Google Translate **gratis** — endpoint publik `client=gtx`, dipanggil **aplikasi dari perangkat user** (bukan server) | Subtitle diterjemahkan di perangkat + fitur Terjemahkan untuk sinopsis/komentar/chat; hasil terjemahan di-cache lokal di perangkat user |
 | Pembayaran | Midtrans / Xendit + GoPay Merchant API pihak ketiga | Langganan premium & voucher (QRIS, e-wallet, transfer). Jalur GoPay: QRIS dinamis + konfirmasi polling mutasi (tanpa webhook) — [Api-Gopar-Merch](https://github.com/ZeroByte000/Api-Gopar-Merch) |
-| Panel admin | Route `/admin` (role admin) | Kelola katalog, subtitle, user, langganan + monitoring — [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) |
+| Panel admin | Website terpisah khusus admin (role `admin`) | Kelola katalog, subtitle, user, langganan + monitoring — [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) |
 
 Alur progres dari awal sampai akhir: lihat **[PROGRES.md](PROGRES.md)**. Detail folder, skema database, model akses, dan alur data: lihat **[STRUKTUR.md](STRUKTUR.md)**. Diagram ERD dan draf SQL database: lihat **[DATABASE.md](DATABASE.md)**. Panel pengelolaan & pemantauan: lihat **[STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md)**. Fitur gelombang ketiga, keempat & kelima (kontribusi terjemahan, kalender rilis, Cast, impor daftar, Tanya Senpai AI, polling & kuis, multi-profil, terjemahan balon komik, baca di perangkat untuk sumber ber-Cloudflare, dan lainnya): lihat **[FITUR.md](FITUR.md)**. Rancangan keamanan (termasuk Play Integrity & gerbang versi minimum): lihat **[KEAMANAN.md](KEAMANAN.md)**. Optimasi gelombang ketiga, keempat & kelima (failover sumber video, retensi data, cadangan WAL, halaman komik terkompresi, mode pemeliharaan, partisi tabel, pra-saring transkripsi, rilis APK bertahap, dan lainnya): lihat **[OPTIMASI.md](OPTIMASI.md)**. Catatan keputusan distribusi (aplikasi hanya diunduh dari website resmi & GitHub; Play Store ditunda) beserta pertimbangannya: lihat **[NOTE.md](NOTE.md)**.
 

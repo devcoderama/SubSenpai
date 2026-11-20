@@ -21,8 +21,7 @@ android/
         │   │   ├── player (video) & reader (komik)
         │   │   ├── chat global, dm, teman, grup, koleksi
         │   │   ├── watchlist, riwayat, pencapaian, rekap
-        │   │   ├── premium, keamanan akun, pengaturan
-        │   │   └── admin/          # Layar panel admin — hanya tampil untuk role admin
+        │   │   └── premium, keamanan akun, pengaturan
         │   ├── data/               # Lapisan data
         │   │   ├── Klien API backend Go (Retrofit/OkHttp)
         │   │   ├── Dekripsi response xdata/xtime + handshake sesi ECDH
@@ -45,7 +44,7 @@ android/
 - **Membuka enkripsi API**: semua response backend dibungkus `xdata`/`xtime`; aplikasi melakukan handshake sesi ECDH (kunci hanya di memori) dan mendekripsinya sebelum ditampilkan (rincian: [STRUKTUR.md](../STRUKTUR.md) Bagian 11).
 - **Menerjemahkan di perangkat**: subtitle dan tombol Terjemahkan diterjemahkan aplikasi dari IP user sendiri (endpoint `gtx`) dan di-cache lokal — server tidak menerjemahkan sama sekali.
 - **Mengambil sumber ber-Cloudflare di perangkat**: untuk judul `fetch_mode='device'` (F39), aplikasi membuka situs sumber di WebView, melewati verifikasi Cloudflare sekali, lalu memakai cookie `cf_clearance` yang tersimpan terenkripsi di perangkat untuk mengambil chapter & halaman — pola yang sama dengan Mihon.
-- **Panel admin di dalam aplikasi**: layar `ui/admin/` hanya muncul untuk user ber-`role='admin'`; setiap aksi tetap diperiksa ulang oleh backend (rincian: [STRUKTUR_ADMIN.md](../STRUKTUR_ADMIN.md)).
+- **Bukan tempat panel admin**: aplikasi ini tidak memiliki layar/menu admin sama sekali — panel admin adalah website terpisah khusus admin (rincian: [STRUKTUR_ADMIN.md](../STRUKTUR_ADMIN.md)).
 - Sisanya mengikuti dokumen rancangan: fitur di [FITUR.md](../FITUR.md), keamanan di [KEAMANAN.md](../KEAMANAN.md), optimasi di [OPTIMASI.md](../OPTIMASI.md).
 
 ## Yang Tidak Dilakukan Aplikasi

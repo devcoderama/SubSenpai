@@ -8,7 +8,7 @@
 ✓ [README.md](README.md) → visi, fitur ringkas, model akses, arsitektur ringkas, roadmap, dan donasi
 ✓ [STRUKTUR.md](STRUKTUR.md) → arsitektur final: aplikasi Android Kotlin + backend Go + PostgreSQL lokal di VPS + worker
 ✓ [DATABASE.md](DATABASE.md) → skema dasar 36 tabel, ERD, relasi, enum, indeks, dan draf SQL
-✓ [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) → panel admin di dalam aplikasi Android
+✓ [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) → panel admin website terpisah khusus admin
 ✓ [STRUKTUR.md](STRUKTUR.md) + [DATABASE.md](DATABASE.md) + [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) → rekomendasi putaran 1–2 terintegrasi resmi
 ✓ [FITUR.md](FITUR.md) → fitur resmi F13–F39
 ✓ [KEAMANAN.md](KEAMANAN.md) → keamanan resmi, Play Integrity O8, gerbang versi minimum O17, dan token integrasi F35

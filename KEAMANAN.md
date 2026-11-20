@@ -14,7 +14,7 @@ Dokumen keamanan **resmi** SubSenpai: merangkum lapisan keamanan yang sudah dira
 - **Rate limit** pada API dan pada handshake sesi ECDH; login & aksi sensitif dibatasi lebih ketat.
 - **Gerbang premium selalu di server** — aplikasi tidak pernah menjadi penentu akses premium, voucher, atau unduhan.
 - **Larangan tautan eksternal & promosi** di chat dan komentar (ditolak server sebelum disimpan) + filter kata; satu-satunya tautan keluar adalah mekanisme resmi aplikasi (kartu bagikan, tautan undangan grup).
-- **Panel admin**: menu hanya tampil untuk `role='admin'`, setiap aksi diperiksa ulang di backend, dan semua tindakan tercatat di `admin_logs`.
+- **Panel admin**: website terpisah khusus admin (tidak ada di aplikasi user); hanya akun `role='admin'` yang bisa masuk, setiap aksi diperiksa ulang di backend, dan semua tindakan tercatat di `admin_logs`.
 - **Enkripsi cadangan**: cadangan database di R2 hanya berguna dengan kredensial R2 yang juga server-side; uji pemulihan berkala memastikan cadangan benar-benar bisa dipakai.
 
 ## 2. O8 — Play Integrity untuk Aksi Sensitif

@@ -43,6 +43,7 @@ SubSenpai/
 │   │   └── config/                     # Baca konfigurasi dari env
 │   ├── go.mod
 │   └── .env.example                    # DATABASE_URL, kredensial gateway & API transkripsi (contoh tanpa nilai asli)
+├── admin/                  # Panel admin web (website terpisah khusus admin; rincian: STRUKTUR_ADMIN.md)
 ├── db/
 │   ├── migrations/         # Migrasi skema PostgreSQL (lokal di VPS)
 │   └── seed/               # Data awal (daftar genre, tipe, kanal chat, dsb.)
@@ -163,7 +164,7 @@ Manfaat & jalur premium tambahan:
 
 ## 5. Panel Admin
 
-Pengelolaan & pemantauan berjalan sebagai **layar admin di dalam aplikasi yang sama**, khusus user ber-`role = 'admin'` (menu admin disembunyikan untuk user biasa DAN tetap dicek di backend Go pada setiap request API admin). Modulnya: dashboard ringkasan, manajemen katalog, manajemen subtitle (antrean + retry), manajemen user, langganan & pembayaran, voucher premium, laporan user, monitoring, dan pengaturan platform. Rancangan lengkapnya: **[STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md)**.
+Pengelolaan & pemantauan berjalan lewat **panel admin berupa website terpisah khusus admin** — bukan bagian dari aplikasi Android (aplikasi user tidak memiliki layar admin sama sekali) — khusus akun ber-`role = 'admin'`, dan tetap dicek di backend Go pada setiap request API admin. Website admin di-deploy di VPS yang sama di belakang Caddy pada alamat khusus admin. Modulnya: dashboard ringkasan, manajemen katalog, manajemen subtitle (antrean + retry), manajemen user, langganan & pembayaran, voucher premium, laporan user, monitoring, dan pengaturan platform. Rancangan lengkapnya: **[STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md)**.
 
 ## 6. Alur Data
 

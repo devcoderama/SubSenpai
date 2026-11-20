@@ -1,11 +1,11 @@
 # STRUKTUR_ADMIN.md — Panel Admin SubSenpai
 
-Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) dan **memantau** (antrean worker, kesehatan layanan, aktivitas) SubSenpai. Panel ini adalah **layar admin di dalam aplikasi Android yang sama** (bukan aplikasi terpisah; menu admin hanya muncul untuk role `admin`); seluruh datanya dilayani **backend Go** lewat endpoint admin `/api/v1/admin/*` dengan cek role di backend. Skema database pendukung ada di [DATABASE.md](DATABASE.md); struktur aplikasi utama di [STRUKTUR.md](STRUKTUR.md).
+Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) dan **memantau** (antrean worker, kesehatan layanan, aktivitas) SubSenpai. Panel ini adalah **website terpisah khusus admin** (bukan bagian dari aplikasi Android — aplikasi user tidak memiliki layar maupun menu admin sama sekali). Website admin di-deploy di VPS yang sama di belakang Caddy pada alamat khusus admin; seluruh datanya dilayani **backend Go** lewat endpoint admin `/api/v1/admin/*` dengan cek role di backend. Skema database pendukung ada di [DATABASE.md](DATABASE.md); struktur aplikasi utama di [STRUKTUR.md](STRUKTUR.md).
 
 ## 1. Akses & Keamanan
 
-- **Siapa admin**: kolom `role` di tabel `profiles` (`user` / `admin`). Login tetap **wajib Google OAuth**, sama seperti user biasa — yang membedakan hanya role-nya.
-- **Cek di server, selalu**: setiap request ke `/admin` dan API admin memverifikasi sesi + `role = 'admin'` di server (middleware + cek ulang di API). Menyembunyikan menu di UI BUKAN pengaman.
+- **Siapa admin**: kolom `role` di tabel `profiles` (`user` / `admin`). Login website admin memakai **Google OAuth** yang sama seperti user; akun tanpa role `admin` ditolak masuk panel.
+- **Cek di server, selalu**: setiap request ke website admin dan API admin memverifikasi sesi + `role = 'admin'` di server (middleware + cek ulang di API). Alamat panel yang tidak dipublikasikan ke user BUKAN pengaman — pengaman sesungguhnya adalah cek role di server ini.
 - **Tulis lewat backend**: operasi admin (ubah katalog, status premium, retry subtitle) dijalankan backend Go — satu-satunya pemegang akses database (PostgreSQL lokal hanya mendengarkan localhost); aplikasi tidak pernah menyentuh database secara langsung.
 - **Jejak audit**: setiap aksi penting admin dicatat ke tabel `admin_logs` (siapa, aksi apa, target apa, kapan).
 - **Akun admin pertama**: ditetapkan manual sekali langsung di database VPS (ubah `role` user pemilik menjadi `admin` lewat SQL); setelah itu admin bisa mengangkat admin lain dari panel.
@@ -13,18 +13,18 @@ Rancangan panel admin untuk **mengelola** (katalog, subtitle, user, langganan) d
 ## 2. Struktur Folder
 
 ```
-android/.../ui/admin/      # Layar admin di aplikasi (satu layar per modul)
-├── DashboardScreen             # Ringkasan
-├── TitlesScreen                # Kelola katalog (judul, episode, chapter, permintaan judul)
-├── SubtitlesScreen             # Antrean & hasil subtitle
-├── UsersScreen                 # Kelola user, premium manual & perangkat akun
-├── SubscriptionsScreen         # Langganan & transaksi
-├── VouchersScreen              # Voucher premium (buat, bagikan, pantau klaim)
-├── ChatModerationScreen        # Moderasi Chat Global (pesan, kanal, stiker)
-├── ReportsScreen               # Laporan user (link mati, subtitle salah)
-├── MonitoringScreen            # Kesehatan sistem & metrik
-├── NotificationsScreen         # Broadcast notifikasi manual (promo/event)
-└── SettingsScreen              # Pengaturan platform
+admin/                     # Aplikasi web panel admin (website terpisah dari aplikasi Android; satu halaman per modul)
+├── DashboardPage             # Ringkasan
+├── TitlesPage                # Kelola katalog (judul, episode, chapter, permintaan judul)
+├── SubtitlesPage             # Antrean & hasil subtitle
+├── UsersPage                 # Kelola user, premium manual & perangkat akun
+├── SubscriptionsPage         # Langganan & transaksi
+├── VouchersPage              # Voucher premium (buat, bagikan, pantau klaim)
+├── ChatModerationPage        # Moderasi Chat Global (pesan, kanal, stiker)
+├── ReportsPage               # Laporan user (link mati, subtitle salah)
+├── MonitoringPage            # Kesehatan sistem & metrik
+├── NotificationsPage         # Broadcast notifikasi manual (promo/event)
+└── SettingsPage              # Pengaturan platform
 
 API admin hidup di backend Go (backend/internal/httpapi, grup /api/v1/admin/*) —
 semua cek role, penulisan privileged, audit log, dan agregasi metrik terjadi di sana.
