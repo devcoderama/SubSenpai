@@ -15,6 +15,7 @@ SubSenpai adalah aplikasi streaming & baca: anime dan donghua dari sumber asalny
 - ⚡ **Jalur cepat caption** — kalau sumbernya punya closed caption bahasa asal, caption langsung diterjemahkan (timing presisi, tanpa transkripsi)
 - 👤 **Akun pengguna** — masuk **wajib dengan Google** (anti-bot; tanpa form email/password), watchlist, dan riwayat tontonan/bacaan (Supabase Auth)
 - 🎟️ **Freemium** — tamu: 1 episode/chapter; login gratis: lanjut dengan iklan; premium: tanpa iklan, semua terbuka
+- 🎁 **Voucher premium** — admin membagikan kode promo; user juga bisa membeli voucher untuk dihadiahkan ke user lain. Kode sekali pakai, ditukar menjadi hari premium
 - 🌙 **Mode gelap** — tema bawaan untuk nonton malam
 
 ## 🗣️ Cara Kerja Subtitle Otomatis
@@ -43,7 +44,7 @@ Catatan jujur: kualitas subtitle mesin adalah "cukup untuk mengikuti cerita", bu
 | Login gratis | Semua katalog, **dengan iklan** |
 | Premium (langganan) | Semua katalog, **tanpa iklan** |
 
-Gerbang akses ditegakkan di server (API), bukan sekadar disembunyikan di tampilan. Pembayaran premium direncanakan lewat payment gateway lokal (Midtrans/Xendit — bisa QRIS). Jaringan iklan untuk konten seperti ini umumnya bukan AdSense; pilihannya diteliti di fase monetisasi.
+Gerbang akses ditegakkan di server (API), bukan sekadar disembunyikan di tampilan. Pembayaran premium direncanakan lewat payment gateway lokal (Midtrans/Xendit — bisa QRIS). Premium juga bisa diperoleh dari **voucher**: kode promo dari admin, atau voucher yang dibeli user untuk dihadiahkan ke user lain. Jaringan iklan untuk konten seperti ini umumnya bukan AdSense; pilihannya diteliti di fase monetisasi.
 
 ## 🏗️ Arsitektur
 

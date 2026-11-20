@@ -105,7 +105,8 @@ Diagram ERD, detail relasi, indeks, RLS, dan draf SQL lengkap ada di **[DATABASE
 - Akun dikelola **Supabase Auth** (`auth.users`) — tidak buat tabel kredensial sendiri.
 - **Login wajib Google (OAuth)** — hanya provider Google yang diaktifkan; pendaftaran email/password DIMATIKAN. Tujuannya menghindari bot: akun palsu harus lebih dulu memiliki akun Google yang lolos anti-abuse Google. Bukan anti-bot mutlak — lapisan cadangan bila masih kecolongan: Cloudflare Turnstile (captcha tak terlihat, gratis) di endpoint sensitif + rate limit API.
 - `profiles` — 1:1 dengan user: nama tampil, avatar, `is_premium` (cache status), `premium_until`, `role` (`user`/`admin` — penanda akses panel admin).
-- `subscriptions` — user_id, plan, status (`active`/`expired`/`cancelled`), current_period_end, provider (`midtrans`/`xendit`), provider_ref.
+- `subscriptions` — user_id, plan, status (`active`/`expired`/`cancelled`), current_period_end, provider (`midtrans`/`xendit`/`manual`/`voucher`), provider_ref.
+- `vouchers` — kode premium sekali pakai: dibuat admin (promo, bisa ditujukan ke user tertentu) atau dibeli user untuk dihadiahkan ke user lain; penukaran menambah hari premium penukar (detail di DATABASE.md).
 - `watchlist` — user_id + title_id.
 - `watch_history` — user_id + episode_id + posisi terakhir (detik) + updated_at.
 - `read_history` — user_id + chapter_id + halaman terakhir + updated_at.
@@ -126,7 +127,7 @@ Penegakan: setiap permintaan memutar episode / membuka chapter melewati cek akse
 
 ## 5. Panel Admin
 
-Pengelolaan & pemantauan berjalan di route `/admin` dalam aplikasi yang sama, khusus user ber-`role = 'admin'` (dicek di server, bukan sekadar menu disembunyikan). Modulnya: dashboard ringkasan, manajemen katalog, manajemen subtitle (antrean + retry), manajemen user, langganan & pembayaran, laporan user, monitoring, dan pengaturan platform. Rancangan lengkapnya: **[STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md)**.
+Pengelolaan & pemantauan berjalan di route `/admin` dalam aplikasi yang sama, khusus user ber-`role = 'admin'` (dicek di server, bukan sekadar menu disembunyikan). Modulnya: dashboard ringkasan, manajemen katalog, manajemen subtitle (antrean + retry), manajemen user, langganan & pembayaran, voucher premium, laporan user, monitoring, dan pengaturan platform. Rancangan lengkapnya: **[STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md)**.
 
 ## 6. Alur Data
 
@@ -137,7 +138,7 @@ Pengelolaan & pemantauan berjalan di route `/admin` dalam aplikasi yang sama, kh
    - Belum ada → buat baris `queued`; worker memprosesnya.
 4. **Worker memproses antrean** — unduh audio → (ada caption bahasa asal? terjemahkan langsung : transkripsi via API Whisper) → terjemahkan → bangun .srt → unggah ke R2 → ubah status jadi `done`.
 5. **Progres** — player/reader melaporkan posisi terakhir ke API → `watch_history` / `read_history` (user login).
-6. **Premium** — user membayar via Midtrans/Xendit → webhook memperbarui `subscriptions` + `profiles.is_premium` → iklan berhenti tampil.
+6. **Premium** — user membayar via Midtrans/Xendit → webhook memperbarui `subscriptions` + `profiles.is_premium` → iklan berhenti tampil. Premium juga bisa datang dari **voucher**: admin menerbitkan kode promo (atau user membeli voucher hadiah) → penerima login dan menukar kode → `premium_until` diperpanjang sejumlah hari voucher dan tercatat sebagai `subscriptions` berprovider `voucher`.
 
 ## 7. Batasan yang Disadari
 

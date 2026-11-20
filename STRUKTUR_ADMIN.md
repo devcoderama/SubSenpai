@@ -21,6 +21,7 @@ apps/web/
 │       ├── subtitles/          # Antrean & hasil subtitle
 │       ├── users/              # Kelola user & premium manual
 │       ├── subscriptions/      # Langganan & transaksi
+│       ├── vouchers/           # Voucher premium (buat, bagikan, pantau klaim)
 │       ├── reports/            # Laporan user (link mati, subtitle salah)
 │       ├── monitoring/         # Kesehatan sistem & metrik
 │       └── settings/           # Pengaturan platform
@@ -58,18 +59,25 @@ apps/web/
 - Daftar `subscriptions`: plan, status, masa berlaku, provider (Midtrans/Xendit) + referensi transaksi.
 - Lacak webhook pembayaran yang gagal diproses untuk direkonsiliasi manual.
 
-### 3.6 Laporan User
+### 3.6 Voucher Premium
+- **Buat voucher promo**: admin menerbitkan kode — satu kode khusus (mis. `SENPAI2026`) atau batch kode acak — dengan durasi premium (hari), batas waktu penukaran, dan kuota sesuai jumlah kode.
+- **Bagikan ke user**: voucher bisa ditujukan ke user tertentu (`assigned_to`) atau dibagikan terbuka; user menukarnya dari halaman penukaran kode setelah login.
+- **Pantau klaim**: daftar voucher per status (`active` / `redeemed` / `expired` / `revoked`), siapa menukar dan kapan; admin bisa **mencabut** (revoke) voucher yang bocor/disalahgunakan.
+- **Voucher pembelian user**: user juga bisa MEMBELI voucher dari halaman premium untuk dihadiahkan ke user lain — pembayaran lewat Midtrans/Xendit, kode terbit otomatis setelah pembayaran terkonfirmasi. Admin memantau penjualan & penukarannya di modul ini (tidak bisa mengubah kode milik user, hanya mencabut bila ada sengketa/penipuan).
+- Penukaran bersifat sekali pakai dan atomik di API: premium penerima diperpanjang sejumlah `duration_days` (menumpuk dari sisa premium bila masih aktif) dan tercatat sebagai `subscriptions` berprovider `voucher`.
+
+### 3.7 Laporan User
 - User bisa melaporkan: link video mati, subtitle salah/tidak sinkron, chapter/halaman rusak (tabel `reports`).
 - Admin menindaklanjuti: perbaiki sumbernya, lalu tandai laporan `resolved` / `dismissed`.
 
-### 3.7 Monitoring
+### 3.8 Monitoring
 - **Antrean worker**: jumlah per status + episode yang paling lama menunggu; lonjakan `failed` = tanda sumber/API transkripsi bermasalah.
 - **Aktivitas platform** (agregasi dari `watch_history`, `read_history`, `guest_access`): tontonan/bacaan per hari, judul terlaris, rasio tamu yang mentok batas 1 episode (calon user login).
 - **Kesehatan layanan luar**: tautan cepat ke status Supabase, Vercel, Cloudflare, dan API transkripsi; sisa kuota/kuota terpakai dicatat manual di halaman ini.
 - **Penyimpanan**: perkiraan pemakaian R2 (poster + halaman komik + SRT) terhadap batas gratis 10 GB.
 - Catatan: ambang sederhana (mis. subtitle `failed` > 10 dalam sehari) bisa dikembangkan menjadi notifikasi otomatis ke Telegram/email admin.
 
-### 3.8 Pengaturan
+### 3.9 Pengaturan
 - Harga & durasi paket premium.
 - Batas akses tamu (bawaan: 1 episode/chapter).
 - Saklar iklan (tampil/sembunyi untuk user gratis) & mode maintenance.
@@ -83,6 +91,7 @@ Panel admin memakai tabel yang sama dengan aplikasi utama, ditambah:
 | `profiles.role` | Penanda admin (`user` / `admin`) |
 | `reports` | Laporan user soal konten rusak — ditindaklanjuti admin |
 | `admin_logs` | Jejak audit aksi admin |
+| `vouchers` | Kode voucher premium (promo admin / dibeli user sebagai hadiah) — detail di DATABASE.md |
 
 Detail kolom, relasi, dan SQL-nya ada di [DATABASE.md](DATABASE.md).
 
@@ -93,3 +102,7 @@ Detail kolom, relasi, dan SQL-nya ada di [DATABASE.md](DATABASE.md).
 **Laporan link mati** — User melaporkan episode → laporan masuk modul Laporan → admin membuka episode-nya, mengganti `video_url` di modul Katalog → tandai laporan `resolved` (tercatat di `admin_logs`).
 
 **Memberi premium manual** — Modul User → pilih user → "Jadikan premium" + durasi → `subscriptions` dibuat berprovider `manual` dan `profiles.is_premium` diperbarui → tercatat di `admin_logs`.
+
+**Voucher promo** — Modul Voucher → admin membuat kode promo 30 hari untuk 100 penukar pertama → kode dibagikan → user login dan menukar kode di halaman penukaran → voucher berubah `redeemed`, premium user bertambah 30 hari, dan admin memantau sisa kuota dari modul yang sama.
+
+**Voucher hadiah antar-user** — User A membeli voucher 30 hari di halaman premium (bayar QRIS) → menerima kode → memberikannya ke User B → B menukar kode → premium B aktif; A bisa melihat status vouchernya (sudah ditukar/belum) dari halaman premium.

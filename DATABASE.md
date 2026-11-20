@@ -22,6 +22,8 @@ erDiagram
     titles ||--o{ guest_access : "judul diakses tamu"
     profiles ||--o{ reports : "user melaporkan"
     profiles ||--o{ admin_logs : "admin bertindak"
+    profiles ||--o{ vouchers : "membuat / membeli"
+    profiles ||--o{ vouchers : "menukar"
 
     titles {
         uuid id PK
@@ -128,6 +130,20 @@ erDiagram
         jsonb detail
         timestamptz created_at
     }
+    vouchers {
+        uuid id PK
+        text code UK "kode sekali pakai"
+        text source "admin|purchase"
+        int duration_days "hari premium"
+        text status "active|redeemed|expired|revoked"
+        uuid created_by FK "admin / pembeli"
+        uuid assigned_to FK "penerima tertentu, boleh kosong"
+        uuid redeemed_by FK "penukar, kosong sblm ditukar"
+        timestamptz redeemed_at
+        timestamptz expires_at "batas tukar kode"
+        text payment_ref "ref pembayaran pembeli"
+        timestamptz created_at
+    }
 ```
 
 Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar sebagai tabel aplikasi). `profiles.id` adalah FK 1:1 ke `auth.users.id`. Login **wajib Google OAuth**; pendaftaran email/password dimatikan.
@@ -149,6 +165,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 | `guest_access` | Jejak akses tamu untuk menegakkan batas 1 episode/chapter | Akses |
 | `reports` | Laporan user soal konten rusak (link mati, subtitle salah) | Admin |
 | `admin_logs` | Jejak audit aksi admin di panel | Admin |
+| `vouchers` | Kode voucher premium — dibuat admin (promo) atau dibeli user untuk dihadiahkan | Monetisasi |
 
 ## 3. Relasi (Foreign Key)
 
@@ -164,13 +181,15 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - `guest_access` — `title_id` selalu terisi; tepat satu dari `episode_id` / `chapter_id` terisi
 - `reports.user_id → profiles.id` (boleh kosong untuk laporan tamu; `ON DELETE SET NULL`) — target laporan bersifat polimorfik lewat (`target_kind`, `target_id`), tanpa FK keras
 - `admin_logs.admin_id → profiles.id`
+- `vouchers.created_by → profiles.id` (admin pembuat / user pembeli); `vouchers.assigned_to → profiles.id` (boleh kosong = siapa saja boleh menukar); `vouchers.redeemed_by → profiles.id` (kosong sampai ditukar)
 
 ## 4. Nilai yang Dibatasi (cek/enum)
 
 - `titles.type` ∈ `anime, donghua, film, manga, manhua, manhwa`
 - `titles.status` ∈ `ongoing, completed`
 - `subtitles.source` ∈ `caption, whisper`; `subtitles.status` ∈ `queued, processing, done, failed`
-- `subscriptions.status` ∈ `active, expired, cancelled`; `subscriptions.provider` ∈ `midtrans, xendit, manual` (`manual` = diberi admin dari panel)
+- `subscriptions.status` ∈ `active, expired, cancelled`; `subscriptions.provider` ∈ `midtrans, xendit, manual, voucher` (`manual` = diberi admin dari panel; `voucher` = hasil penukaran kode voucher)
+- `vouchers.source` ∈ `admin, purchase`; `vouchers.status` ∈ `active, redeemed, expired, revoked`
 - `profiles.role` ∈ `user, admin`
 - `reports.target_kind` ∈ `episode, chapter, subtitle`; `reports.status` ∈ `open, resolved, dismissed`
 
@@ -193,6 +212,7 @@ Catatan: akun dikelola **Supabase Auth** (tabel `auth.users`, tidak digambar seb
 - **Milik user** (`profiles`, `subscriptions`, `watchlist`, `watch_history`, `read_history`): user hanya bisa membaca/mengubah baris miliknya (`auth.uid() = id / user_id`). `subscriptions` hanya bisa diubah oleh service role (webhook pembayaran); user cukup membaca statusnya.
 - **`guest_access`**: hanya service role (ditulis/dicek oleh API).
 - **`reports`**: user login bisa MEMBUAT laporan atas namanya; membaca & mengubah status hanya admin. **`admin_logs`**: ditulis service role (dari API admin), dibaca hanya admin.
+- **`vouchers`**: user membaca voucher yang ia buat/beli atau yang ditujukan kepadanya; penukaran (redeem) dan penerbitan voucher pembelian hanya lewat API (service role) agar atomik dan tidak bisa diakali; admin membaca semua.
 
 ## 7. Draf SQL (titik awal migrasi)
 
@@ -269,7 +289,7 @@ create table subscriptions (
   plan text not null,
   status text not null default 'active' check (status in ('active','expired','cancelled')),
   current_period_end timestamptz,
-  provider text check (provider in ('midtrans','xendit','manual')),
+  provider text check (provider in ('midtrans','xendit','manual','voucher')),
   provider_ref text
 );
 
@@ -329,4 +349,20 @@ create table admin_logs (
   created_at timestamptz not null default now()
 );
 create index admin_logs_admin_idx on admin_logs (admin_id, created_at desc);
+
+create table vouchers (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique,
+  source text not null check (source in ('admin','purchase')),
+  duration_days int not null check (duration_days > 0),
+  status text not null default 'active' check (status in ('active','redeemed','expired','revoked')),
+  created_by uuid not null references profiles(id) on delete cascade,
+  assigned_to uuid references profiles(id) on delete set null,
+  redeemed_by uuid references profiles(id) on delete set null,
+  redeemed_at timestamptz,
+  expires_at timestamptz,
+  payment_ref text,
+  created_at timestamptz not null default now()
+);
+create index vouchers_status_idx on vouchers (status, created_at desc);
 ```
