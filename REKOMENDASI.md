@@ -35,6 +35,14 @@ User mengunggah tangkapan layar adegan anime; aplikasi mengirimkannya **dari per
 ### F38 — Tantangan Antar Teman · P3
 User bisa menantang teman: "siapa selesai menamatkan judul ini duluan" atau "siapa membaca lebih banyak chapter minggu ini". Progres kedua pihak terlihat di kartu tantangan (memakai data riwayat yang sudah ada), pemenang mendapat XP & lencana khusus tantangan. Gamifikasi sosial ringan di atas pertemanan & misi (F25) yang sudah ada.
 
+### F39 — Baca di Perangkat untuk Sumber Ber-Cloudflare (WebView Clearance) · P1
+Sebagian sumber komik (contoh nyata yang ditunjuk langsung: **manhuarmtl.com**) dilindungi anti-bot Cloudflare yang tidak bisa dilewati scraper dari server — IP datacenter langsung dicurigai, sidik jari TLS-nya bukan browser asli, dan tantangannya menuntut JavaScript browser sungguhan. Pola yang terbukti bekerja adalah yang dipakai **Mihon**: kontennya diambil dari perangkat user, bukan dari server.
+- Judul dari sumber seperti ini tetap terdaftar di katalog server (admin mendaftarkan judul + domain sumber + pola URL-nya), tetapi daftar chapter dan halamannya **tidak diambil worker** — melainkan diselesaikan oleh aplikasi di perangkat saat user membuka judulnya.
+- Saat pertama kali membuka sumber ber-Cloudflare, aplikasi membuka situs sumber di **WebView** aplikasi; user melewati verifikasi Cloudflare sekali (biasanya otomatis, sesekali cukup satu ketukan). Aplikasi kemudian menyimpan cookie `cf_clearance` + User-Agent WebView tersebut **per domain sumber, hanya di perangkat user**, dan memakai keduanya untuk mengambil daftar chapter & halaman-halaman berikutnya.
+- Cookie kedaluwarsa atau user berganti jaringan (Wi-Fi ↔ data seluler) → aplikasi membuka WebView lagi untuk verifikasi ulang, dengan pesan yang jelas ("sumber ini butuh verifikasi ulang") — perilaku yang sama yang dikenal user Mihon.
+- Halaman komik mengalir **langsung dari sumber ke perangkat** (seperti video HLS yang tidak lewat server kita). Konsekuensinya, pemrosesan server tidak berlaku untuk sumber model ini: tidak ada varian kompresi (O16) dan tidak ada OCR server (F31). Khusus sumber yang teksnya disajikan sebagai teks/HTML — seperti manhuarmtl yang balon komiknya bisa diterjemahkan peramban — aplikasi dapat mengambil teks itu langsung di perangkat untuk diterjemahkan dengan pola F31 sisi perangkat.
+- Aturan freemium kita tetap diterapkan berdasarkan aturan per judul yang dikirim server (chapter mana yang gratis/premium); disadari bersama bahwa sumbernya sendiri terbuka di peramban, jadi gerbang di sini adalah aturan layanan kita, bukan DRM.
+
 ## Optimasi
 
 ### O22 — Partisi Tabel Besar per Bulan · P2
@@ -57,7 +65,7 @@ Karena distribusi kita lewat website & GitHub (NOTE.md), rilis APK baru bisa dil
 
 ## Urutan penerapan yang disarankan
 
-1. **Hemat & pembeda**: O24 (pra-saring transkripsi), F31 (terjemahan balon komik).
+1. **Hemat & pembeda**: F39 (baca di perangkat untuk sumber ber-Cloudflare), O24 (pra-saring transkripsi), F31 (terjemahan balon komik).
 2. **Pertumbuhan**: F36 (kanal pengumuman otomatis), F37 (identifikasi dari screenshot), O27 (rilis APK bertahap).
 3. **Kedalaman komunitas**: F32 (ulasan), F33 (daftar bersama), F34 (kenyamanan player), O25 (digest notifikasi).
 4. **Fondasi jangka panjang**: O22 (partisi tabel), O23 (migrasi & kontrak API), O26 (load shedding), F35 (scrobbling), F38 (tantangan teman).
