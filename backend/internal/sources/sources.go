@@ -98,6 +98,26 @@ type Discoverer interface {
 	Discover(ctx context.Context, src Source, limit int) ([]DiscoveredTitle, error)
 }
 
+// SeriesMeta adalah metadata kaya dari halaman seri sumber untuk
+// memperkaya halaman detail (sinopsis, genre, studio, dsb.).
+type SeriesMeta struct {
+	TitleAlt    string
+	Synopsis    string
+	Genres      []string
+	Year        int
+	Season      string // winter | spring | summer | fall
+	Network     string
+	Studio      string
+	DurationMin int
+	Country     string
+}
+
+// SeriesInfoer adalah kemampuan opsional resolver: membaca metadata
+// seri dari halaman serinya di situs sumber.
+type SeriesInfoer interface {
+	SeriesInfo(ctx context.Context, src Source, titleURL string) (*SeriesMeta, error)
+}
+
 // PosterProvider adalah kemampuan opsional resolver: menyediakan peta
 // poster massal (kunci judul ternormalisasi → URL poster) dari halaman
 // daftar sumber, untuk melengkapi judul yang belum berposter tanpa

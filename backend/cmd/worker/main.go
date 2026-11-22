@@ -53,6 +53,9 @@ func main() {
 		if err := jobs.PurgePosterless(ctx, pool); err != nil {
 			log.Printf("purge poster: %v", err)
 		}
+		if err := jobs.EnrichTitles(ctx, pool); err != nil {
+			log.Printf("enrich judul: %v", err)
+		}
 		if err := jobs.SyncSources(ctx, pool); err != nil {
 			log.Printf("sinkron sumber: %v", err)
 		}

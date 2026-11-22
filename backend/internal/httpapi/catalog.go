@@ -199,16 +199,22 @@ func (a *API) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
 		titleCard
 		Synopsis         *string `json:"synopsis,omitempty"`
 		Season           *string `json:"season,omitempty"`
+		Network          *string `json:"network,omitempty"`
+		Studio           *string `json:"studio,omitempty"`
+		DurationMin      *int    `json:"duration_min,omitempty"`
+		Country          *string `json:"country,omitempty"`
 		FetchMode        string  `json:"fetch_mode"`
 		SourceDomain     *string `json:"source_domain,omitempty"`
 		SourceURLPattern *string `json:"source_url_template,omitempty"`
 	}
 	err := a.pool.QueryRow(ctx, `
-		select `+titleCardCols+`, synopsis, season, fetch_mode, source_domain,
+		select `+titleCardCols+`, synopsis, season, network, studio,
+		       duration_min, country, fetch_mode, source_domain,
 		       source_url_template from titles where id = $1::uuid`, id,
 	).Scan(&detail.ID, &detail.Slug, &detail.Type, &detail.Title, &detail.TitleAlt,
 		&detail.Poster, &detail.Year, &detail.Status, &detail.Genres, &detail.Rating,
-		&detail.IsAdult, &detail.Synopsis, &detail.Season, &detail.FetchMode,
+		&detail.IsAdult, &detail.Synopsis, &detail.Season, &detail.Network,
+		&detail.Studio, &detail.DurationMin, &detail.Country, &detail.FetchMode,
 		&detail.SourceDomain, &detail.SourceURLPattern)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "judul tidak ditemukan")

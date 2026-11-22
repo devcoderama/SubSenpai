@@ -155,3 +155,32 @@ func TestEpisodesAnichinMoeLive(t *testing.T) {
 		t.Fatalf("server terlalu sedikit: %d", len(res.Streams))
 	}
 }
+
+// TestSeriesInfoAnichinLive memverifikasi parser metadata seri
+// (blok info Animestream) pada "Tales of Herding Gods".
+func TestSeriesInfoAnichinLive(t *testing.T) {
+	if os.Getenv("SUBSENPAI_LIVE_TEST") != "1" {
+		t.Skip("uji langsung dilewati (SUBSENPAI_LIVE_TEST != 1)")
+	}
+	r, ok := ByKey("anichin")
+	if !ok {
+		t.Fatal("resolver anichin tidak terdaftar")
+	}
+	infoer, ok := r.(SeriesInfoer)
+	if !ok {
+		t.Fatal("anichin tidak mendukung SeriesInfo")
+	}
+	src := Source{Name: "Anichin", ContentType: "donghua", Lang: "id", BaseURL: "https://anichin.my", Resolver: "anichin", FetchMode: "server"}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	meta, err := infoer.SeriesInfo(ctx, src, "https://anichin.moe/tales-of-herding-god/")
+	if err != nil {
+		t.Fatalf("SeriesInfo: %v", err)
+	}
+	t.Logf("meta: %+v | sinopsis %.80q", *meta, meta.Synopsis)
+	if meta.Network != "Bilibili" || meta.Studio != "Sparkly Key Animation Studio" ||
+		meta.Country != "China" || meta.DurationMin != 20 || meta.Year != 2024 ||
+		meta.Season != "fall" || len(meta.Genres) != 3 || meta.Synopsis == "" {
+		t.Fatalf("metadata tidak sesuai halaman sumber: %+v", *meta)
+	}
+}

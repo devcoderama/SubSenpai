@@ -285,15 +285,23 @@ func parseEplister(html, pageURL string) []EpisodeRef {
 	return out
 }
 
-// episodesHTML mencoba halaman series apa adanya, lalu mirror
-// anichin.moe dengan path yang sama.
-func (a *animestreamResolver) episodesHTML(ctx context.Context, titleURL string) ([]EpisodeRef, error) {
+// mirrorCandidates mengembalikan URL halaman apa adanya plus
+// mirror anichin.moe dengan path yang sama (mirror menyajikan HTML
+// statis lengkap; domain utama kerap membatasi akses server).
+func mirrorCandidates(titleURL string) []string {
 	candidates := []string{titleURL}
 	if u, err := url.Parse(titleURL); err == nil && u.Host != "anichin.moe" {
 		u.Host = "anichin.moe"
 		u.Scheme = "https"
 		candidates = append(candidates, u.String())
 	}
+	return candidates
+}
+
+// episodesHTML mencoba halaman series apa adanya, lalu mirror
+// anichin.moe dengan path yang sama.
+func (a *animestreamResolver) episodesHTML(ctx context.Context, titleURL string) ([]EpisodeRef, error) {
+	candidates := mirrorCandidates(titleURL)
 	var lastErr error
 	for _, cand := range candidates {
 		page, err := Fetch(ctx, cand)
@@ -303,6 +311,105 @@ func (a *animestreamResolver) episodesHTML(ctx context.Context, titleURL string)
 		}
 		if eps := parseEplister(page, cand); len(eps) > 0 {
 			return eps, nil
+		}
+	}
+	return nil, lastErr
+}
+
+var (
+	alterRe   = regexp.MustCompile(`(?is)<span class="alter">(.*?)</span>`)
+	speSpanRe = regexp.MustCompile(`(?is)<span[^>]*><b>([^<]+):</b>(.*?)</span>`)
+	genxedRe  = regexp.MustCompile(`(?is)<div class="genxed">(.*?)</div>`)
+	genreARe  = regexp.MustCompile(`(?is)<a[^>]*>([^<]+)</a>`)
+	entryRe   = regexp.MustCompile(`(?is)<div class="entry-content"[^>]*>(.*?)</div>`)
+	firstH4Re = regexp.MustCompile(`(?is)^\s*<h4>(.*?)</h4>`)
+	yearRe    = regexp.MustCompile(`(19|20)\d{2}`)
+	durRe     = regexp.MustCompile(`(\d+)\s*min`)
+)
+
+// parseSeriesPage mengurai metadata seri dari HTML halaman seri
+// Animestream: judul alternatif (span.alter), blok info (div.spe:
+// Status/Network/Studio/Tanggal rilis/Durasi/Season/Negara), genre
+// (div.genxed), dan sinopsis (div.entry-content — h4 pembuka berisi
+// judul berkurung dibuang; teks sesudahnya adalah sinopsis asli,
+// sedangkan blok .desc terpisah adalah boilerplate SEO situs).
+func parseSeriesPage(html string) *SeriesMeta {
+	meta := &SeriesMeta{}
+	if m := alterRe.FindStringSubmatch(html); m != nil {
+		meta.TitleAlt = cleanText(m[1])
+	}
+	for _, m := range speSpanRe.FindAllStringSubmatch(html, -1) {
+		label := strings.ToLower(strings.TrimSpace(m[1]))
+		val := cleanText(m[2])
+		switch label {
+		case "network":
+			meta.Network = val
+		case "studio":
+			meta.Studio = val
+		case "negara":
+			meta.Country = val
+		case "durasi":
+			if dm := durRe.FindStringSubmatch(val); dm != nil {
+				meta.DurationMin, _ = strconv.Atoi(dm[1])
+			}
+		case "tanggal rilis":
+			if ym := yearRe.FindString(val); ym != "" {
+				meta.Year, _ = strconv.Atoi(ym)
+			}
+		case "season":
+			fields := strings.Fields(val)
+			if len(fields) > 0 {
+				switch s := strings.ToLower(fields[0]); s {
+				case "winter", "spring", "summer", "fall":
+					meta.Season = s
+				}
+			}
+			if meta.Year == 0 {
+				if ym := yearRe.FindString(val); ym != "" {
+					meta.Year, _ = strconv.Atoi(ym)
+				}
+			}
+		}
+	}
+	if m := genxedRe.FindStringSubmatch(html); m != nil {
+		for _, g := range genreARe.FindAllStringSubmatch(m[1], -1) {
+			if t := cleanText(g[1]); t != "" {
+				meta.Genres = append(meta.Genres, t)
+			}
+		}
+	}
+	if m := entryRe.FindStringSubmatch(html); m != nil {
+		body := m[1]
+		// Buang HANYA h4 pertama bila isinya judul berkurung
+		// ("[Tales of Herding Gods]") — sinopsisnya sendiri dibungkus
+		// h4 berikutnya oleh tema ini, jadi membuang semua h4 akan
+		// menghapus sinopsisnya.
+		if fm := firstH4Re.FindStringSubmatch(body); fm != nil && strings.Contains(fm[1], "[") {
+			body = firstH4Re.ReplaceAllString(body, " ")
+		}
+		if syn := cleanText(body); len(syn) > 80 {
+			if len(syn) > 2000 {
+				syn = syn[:2000]
+			}
+			meta.Synopsis = syn
+		}
+	}
+	return meta
+}
+
+// SeriesInfo membaca metadata seri dari halaman serinya (mirror
+// HTML statis dipakai sebagai cadangan seperti daftar episode).
+func (a *animestreamResolver) SeriesInfo(ctx context.Context, src Source, titleURL string) (*SeriesMeta, error) {
+	var lastErr error
+	for _, cand := range mirrorCandidates(titleURL) {
+		page, err := Fetch(ctx, cand)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		meta := parseSeriesPage(page)
+		if meta.Synopsis != "" || meta.Studio != "" || len(meta.Genres) > 0 {
+			return meta, nil
 		}
 	}
 	return nil, lastErr

@@ -132,6 +132,112 @@ func PurgePosterless(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
+// EnrichTitles memperkaya metadata judul yang masih kosong
+// (sinopsis/judul alternatif/genre/tahun/season/network/studio/
+// durasi/negara) dari halaman seri sumbernya, agar halaman detail
+// aplikasi tampil lengkap ala Netflix. Hanya kolom yang masih
+// kosong yang diisi (coalesce), maksimal 30 judul per putaran;
+// judul yang sudah bersinopsis keluar dari antrean dengan
+// sendirinya.
+func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
+	rows, err := pool.Query(ctx, `
+		select t.id, ts.source_url,
+		       cs.id, cs.name, cs.content_type, cs.lang, coalesce(cs.base_url,''),
+		       cs.resolver, cs.fetch_mode, cs.subtitle_kind, cs.priority
+		from titles t
+		join title_sources ts on ts.title_id = t.id
+		join content_sources cs on cs.id = ts.source_id
+		where t.synopsis is null and cs.is_active
+		order by t.created_at
+		limit 90`)
+	if err != nil {
+		return err
+	}
+	type job struct {
+		titleID, url string
+		src          sources.Source
+	}
+	jobs := []job{}
+	seen := map[string]bool{}
+	for rows.Next() {
+		var j job
+		if err := rows.Scan(&j.titleID, &j.url, &j.src.ID, &j.src.Name,
+			&j.src.ContentType, &j.src.Lang, &j.src.BaseURL, &j.src.Resolver,
+			&j.src.FetchMode, &j.src.SubtitleKind, &j.src.Priority); err != nil {
+			continue
+		}
+		if seen[j.titleID] {
+			continue
+		}
+		seen[j.titleID] = true
+		jobs = append(jobs, j)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	done := 0
+	for _, j := range jobs {
+		if done >= 30 {
+			break
+		}
+		resolver, ok := sources.ByKey(j.src.Resolver)
+		if !ok {
+			continue
+		}
+		infoer, ok := resolver.(sources.SeriesInfoer)
+		if !ok {
+			continue
+		}
+		meta, err := infoer.SeriesInfo(ctx, j.src, j.url)
+		if err != nil || meta == nil {
+			continue
+		}
+		if meta.Synopsis == "" && meta.Studio == "" && len(meta.Genres) == 0 {
+			continue
+		}
+		genres := meta.Genres
+		if genres == nil {
+			genres = []string{}
+		}
+		var year, dur any
+		if meta.Year > 0 {
+			year = meta.Year
+		}
+		if meta.DurationMin > 0 {
+			dur = meta.DurationMin
+		}
+		var season any
+		if meta.Season != "" {
+			season = meta.Season
+		}
+		if _, err := pool.Exec(ctx, `
+			update titles set
+				synopsis = coalesce(synopsis, $2),
+				title_alt = coalesce(title_alt, $3),
+				genres = case when coalesce(cardinality(genres), 0) = 0 then $4 else genres end,
+				year = coalesce(year, $5),
+				season = coalesce(season, $6),
+				network = coalesce(network, $7),
+				studio = coalesce(studio, $8),
+				duration_min = coalesce(duration_min, $9),
+				country = coalesce(country, $10),
+				updated_at = now()
+			where id = $1::uuid`,
+			j.titleID, nullIfEmpty(meta.Synopsis), nullIfEmpty(meta.TitleAlt),
+			genres, year, season, nullIfEmpty(meta.Network),
+			nullIfEmpty(meta.Studio), dur, nullIfEmpty(meta.Country)); err != nil {
+			log.Printf("enrich %s: %v", j.titleID, err)
+			continue
+		}
+		done++
+	}
+	if done > 0 {
+		log.Printf("enrich: %d judul diperkaya metadata serinya", done)
+	}
+	return nil
+}
+
 func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
 	posters := 0
 	seen := map[string]bool{} // resolver+base yang sudah ditemukan putaran ini
