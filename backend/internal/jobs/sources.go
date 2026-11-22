@@ -89,6 +89,14 @@ func loadSourcesMode(ctx context.Context, pool *pgxpool.Pool, contentType string
 // (tidak menambah permintaan per judul).
 const maxPosterPerRun = 40
 
+// maxDevicePosterPerRun adalah anggaran PERCOBAAN HTTP og:image
+// tersendiri untuk backfill poster judul mode perangkat (mis.
+// Kuronime) per putaran. Dihitung per percobaan, bukan per keberhasilan:
+// Fetch bisa menggantung sampai timeout 30 dtk, jadi 40 percobaan
+// adalah batas atas yang aman agar satu putaran worker tidak
+// menggantung. Kecocokan dari peta poster tidak dihitung (tanpa HTTP).
+const maxDevicePosterPerRun = 40
+
 // DiscoverTitles mengisi katalog dari indeks judul situs sumber (F40):
 // untuk tiap sumber aktif yang resolvernya mendukung penemuan, judul
 // yang belum ada dimasukkan ke titles. Sumber server: judul langsung
@@ -246,6 +254,7 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 
 func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
 	posters := 0
+	devicePosters := 0        // percobaan HTTP backfill poster judul perangkat
 	seen := map[string]bool{} // resolver+base yang sudah ditemukan putaran ini
 	for _, ct := range []string{"anime", "donghua", "film", "manga", "manhua", "manhwa"} {
 		srcs, err := loadDiscoverySources(ctx, pool, ct)
@@ -339,7 +348,21 @@ func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
 				}
 				baru++
 				if device {
-					continue // judul perangkat tidak memakai title_sources
+					// Judul perangkat tidak memakai title_sources, tapi
+					// tetap dapat percobaan poster og:image halaman
+					// serinya (poster dari peta sumber sudah dicoba
+					// sebelum insert di atas). Tanpa ini judul anime
+					// Kuronime tidak pernah berposter: penemuan WP
+					// hanya memberi nama+slug+URL.
+					if poster == "" && posters < maxPosterPerRun {
+						if p := sources.FetchPoster(ctx, d.URL); p != "" {
+							_, _ = pool.Exec(ctx, `
+								update titles set poster_url = $2, updated_at = now()
+								where id = $1::uuid`, id, p)
+							posters++
+						}
+					}
+					continue
 				}
 				if _, err := pool.Exec(ctx, `
 					insert into title_sources (title_id, source_id, source_url)
@@ -360,6 +383,12 @@ func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
 			}
 			if !device {
 				backfillPosters(ctx, pool, src, pmap, &posters)
+			} else if ct == "anime" || ct == "donghua" {
+				// Judul perangkat video (Kuronime) tidak punya
+				// title_sources, jadi backfill server di atas tidak
+				// pernah menyentuhnya — lengkapi lewat template URL
+				// sumbernya. Jenis komik tidak diubah perilakunya.
+				backfillDevicePosters(ctx, pool, src, pmap, &devicePosters)
 			}
 			log.Printf("penemuan %s: %d judul ditemukan, %d baru masuk katalog", src.Name, len(found), baru)
 		}
@@ -405,6 +434,57 @@ func backfillPosters(ctx context.Context, pool *pgxpool.Pool, src sources.Source
 				update titles set poster_url = $2, updated_at = now()
 				where id = $1::uuid`, p.id, poster)
 		}
+	}
+}
+
+// backfillDevicePosters melengkapi poster judul mode perangkat lama
+// yang belum berposter (mis. 600 judul anime Kuronime hasil penemuan
+// sebelum poster perangkat didukung). Judul perangkat tidak punya
+// baris title_sources, jadi kaitannya ke sumber adalah source_domain
+// (= host base sumber) dan URL halamannya ada di source_url_template.
+// Urutan percobaan: peta poster sumber dulu (tanpa HTTP, berdasarkan
+// nama ternormalisasi), lalu og:image halaman seri — dibatasi
+// anggaran percobaan HTTP maxDevicePosterPerRun per putaran agar
+// putaran worker tidak menggantung pada fetch yang timeout.
+func backfillDevicePosters(ctx context.Context, pool *pgxpool.Pool, src sources.Source, pmap map[string]string, attempts *int) {
+	rows, err := pool.Query(ctx, `
+		select id, title, source_url_template from titles
+		where fetch_mode = 'device' and poster_url is null
+		  and source_url_template is not null and source_url_template <> ''
+		  and source_domain = $1
+		order by created_at
+		limit 200`, hostOf(src.BaseURL))
+	if err != nil {
+		return
+	}
+	type pend struct{ id, title, url string }
+	list := []pend{}
+	for rows.Next() {
+		var p pend
+		if err := rows.Scan(&p.id, &p.title, &p.url); err == nil {
+			list = append(list, p)
+		}
+	}
+	rows.Close()
+	filled := 0
+	for _, p := range list {
+		poster := ""
+		if pmap != nil {
+			poster = pmap[sources.NormalizeTitleKey(p.title)]
+		}
+		if poster == "" && *attempts < maxDevicePosterPerRun {
+			*attempts++
+			poster = sources.FetchPoster(ctx, p.url)
+		}
+		if poster != "" {
+			_, _ = pool.Exec(ctx, `
+				update titles set poster_url = $2, updated_at = now()
+				where id = $1::uuid`, p.id, poster)
+			filled++
+		}
+	}
+	if filled > 0 {
+		log.Printf("backfill poster perangkat %s: %d judul dilengkapi", src.Name, filled)
 	}
 }
 

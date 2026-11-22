@@ -167,15 +167,34 @@ func parsePosterMap(page, mirrorBase string) map[string]string {
 	return out
 }
 
-// Posters menyediakan peta poster massal khusus Anichin: halaman HTML
-// anichin.my tidak bisa diandalkan dari server (WAF), tetapi mirror
-// resminya anichin.moe menyajikan kartu episode lengkap dengan poster
-// seri — tiga halaman daftar terbaru cukup untuk judul-judul aktif.
-func (a *animestreamResolver) Posters(ctx context.Context, src Source) (map[string]string, error) {
-	if a.key != "anichin" {
-		return nil, fmt.Errorf("peta poster hanya tersedia untuk anichin")
+// posterMapBase menentukan basis halaman daftar untuk peta poster
+// per resolver: Anichin memakai mirror resminya anichin.moe (halaman
+// HTML anichin.my tidak bisa diandalkan dari server — WAF), sedangkan
+// Kuronime memakai base URL sumbernya sendiri (tema Animestream yang
+// sama, kartu episodenya membawa poster seri dengan pola yang sama).
+func posterMapBase(key string, src Source) (string, bool) {
+	switch key {
+	case "anichin":
+		return "https://anichin.moe", true
+	case "kuronime":
+		base := strings.TrimRight(src.BaseURL, "/")
+		if base == "" {
+			return "", false
+		}
+		return base, true
 	}
-	const mirror = "https://anichin.moe"
+	return "", false
+}
+
+// Posters menyediakan peta poster massal dari halaman daftar tema
+// Animestream: kartu episode di halaman daftar membawa poster serinya
+// (parsePosterMap) — halaman beranda + /page/2..10 cukup untuk
+// judul-judul aktif.
+func (a *animestreamResolver) Posters(ctx context.Context, src Source) (map[string]string, error) {
+	mirror, ok := posterMapBase(a.key, src)
+	if !ok {
+		return nil, fmt.Errorf("peta poster tidak tersedia untuk %s", a.key)
+	}
 	out := map[string]string{}
 	pages := []string{mirror + "/"}
 	for p := 2; p <= 10; p++ {

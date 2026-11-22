@@ -51,6 +51,43 @@ func TestParsePosterMap(t *testing.T) {
 	}
 }
 
+func TestParsePosterMapKuronime(t *testing.T) {
+	// Halaman daftar Kuronime memakai tema Animestream yang sama
+	// dengan Anichin — kartu episode membawa poster serinya.
+	page := `<div class="listupd">
+		<img src="/wp-content/uploads/2024/01/Baka-to-Test.webp" class="ts-post-image wp-post-image" title="Baka to Test to Shoukanjuu Episode 3 Subtitle Indonesia" alt="Baka to Test to Shoukanjuu Episode 3"/>
+		<img data-src="https://kuronime.sbs/wp-content/uploads/Jitsu-wa.webp" src="data:image/gif;base64,xxx" class="ts-post-image" title="Jitsu wa Watashi wa Episode 5 Subtitle Indonesia"/>
+		<img src="/logo.png" class="lain" title="Bukan Kartu"/>
+	</div>`
+	m := parsePosterMap(page, "https://kuronime.sbs")
+	if len(m) != 2 {
+		t.Fatalf("peta poster kuronime = %d entri, mau 2: %v", len(m), m)
+	}
+	if got := m["baka to test to shoukanjuu"]; got != "https://kuronime.sbs/wp-content/uploads/2024/01/Baka-to-Test.webp" {
+		t.Errorf("baka to test poster = %q (URL relatif harus dibuat absolut ke base kuronime)", got)
+	}
+	if got := m["jitsu wa watashi wa"]; got != "https://kuronime.sbs/wp-content/uploads/Jitsu-wa.webp" {
+		t.Errorf("jitsu wa poster = %q (data-src harus dipakai)", got)
+	}
+}
+
+func TestPosterMapBase(t *testing.T) {
+	anichin := Source{BaseURL: "https://anichin.my"}
+	if base, ok := posterMapBase("anichin", anichin); !ok || base != "https://anichin.moe" {
+		t.Errorf("anichin base = %q, %v — mau mirror anichin.moe", base, ok)
+	}
+	kuro := Source{BaseURL: "https://kuronime.sbs/"}
+	if base, ok := posterMapBase("kuronime", kuro); !ok || base != "https://kuronime.sbs" {
+		t.Errorf("kuronime base = %q, %v — mau base sumbernya sendiri tanpa garis miring akhir", base, ok)
+	}
+	if _, ok := posterMapBase("kuronime", Source{}); ok {
+		t.Errorf("kuronime tanpa base URL harus tidak tersedia")
+	}
+	if _, ok := posterMapBase("hianime", anichin); ok {
+		t.Errorf("resolver lain harus tidak tersedia")
+	}
+}
+
 func TestParseHiCards(t *testing.T) {
 	page := `<div class="flw-item"><div class="film-poster"><a href="/watch/one-piece-100"><img data-src="https://cdn.example/op.jpg" class="film-poster-img"></a></div><div class="film-detail"><h3 class="film-name"><a href="/watch/one-piece-100">One Piece</a></h3></div></div>
 	<div class="flw-item"><div class="film-poster"><a href="/watch/jujutsu-kaisen-200"><img data-src="https://cdn.example/jjk.jpg" class="film-poster-img"></a></div><div class="film-detail"><h3 class="film-name"><a href="/watch/jujutsu-kaisen-200">Jujutsu Kaisen</a></h3></div></div>`
