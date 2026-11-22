@@ -69,6 +69,7 @@ func (a *API) handleHome(w http.ResponseWriter, r *http.Request) {
 			select `+titleCardCols+` from titles t
 			join trending_cache tc on tc.title_id = t.id
 			where tc."window" = 'day' and not t.is_adult
+			and t.type not in ('manga', 'manhua', 'manhwa')
 			order by tc.score desc limit 10`)
 		if err != nil {
 			return nil, err
@@ -78,6 +79,7 @@ func (a *API) handleHome(w http.ResponseWriter, r *http.Request) {
 			trending, err = a.queryCards(ctx, `
 				select `+titleCardCols+` from titles
 				where not is_adult
+				and type not in ('manga', 'manhua', 'manhwa')
 				order by rating desc nulls last, created_at desc limit 10`)
 			if err != nil {
 				return nil, err
@@ -86,6 +88,7 @@ func (a *API) handleHome(w http.ResponseWriter, r *http.Request) {
 		terbaru, err := a.queryCards(ctx, `
 			select `+titleCardCols+` from titles
 			where not is_adult
+			and type not in ('manga', 'manhua', 'manhwa')
 			order by created_at desc, id desc limit 10`)
 		if err != nil {
 			return nil, err
@@ -119,7 +122,10 @@ func decodeCursor(s string) (cursor, error) {
 // limit, untuk keputusan pencarian live).
 func (a *API) titlesPage(ctx context.Context, typ, genre, search string, cur *cursor, limit int) (map[string]any, int, error) {
 	args := []any{}
-	where := "where not t.is_adult"
+	// Komik dicabut dari katalog (keputusan 2026-11-22): jenis
+	// manga/manhua/manhwa tidak pernah ditampilkan, apa pun
+	// parameter jenis yang diminta klien.
+	where := "where not t.is_adult and t.type not in ('manga', 'manhua', 'manhwa')"
 	if typ != "" {
 		args = append(args, typ)
 		where += " and t.type = $" + strconv.Itoa(len(args))

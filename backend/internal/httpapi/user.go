@@ -43,6 +43,7 @@ func (a *API) handleWatchlistList(w http.ResponseWriter, r *http.Request) {
 		select `+titleCardCols+` from titles t
 		join watchlist wl on wl.title_id = t.id
 		where wl.user_id = $1::uuid and wl.viewing_profile_id = $2::uuid
+		and t.type not in ('manga', 'manhua', 'manhwa')
 		order by wl.created_at desc`, p.ID, vp)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "kesalahan server")
