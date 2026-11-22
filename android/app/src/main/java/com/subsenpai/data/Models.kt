@@ -570,6 +570,9 @@ class CatalogRepository(
     suspend fun feedUploadVideoDirect(bytes: ByteArray): String? =
         api.uploadImage2UrlDirect(bytes)
 
+    /** Urai tautan pendek (vt.tiktok.com dsb.) ke URL akhirnya. */
+    suspend fun resolveUrl(url: String): String? = api.resolveRedirect(url)
+
     suspend fun feedNotifications(): Pair<List<FeedNotification>, Int> {
         val o = api.get("/api/v1/feed/notifications")
         val items = buildList {

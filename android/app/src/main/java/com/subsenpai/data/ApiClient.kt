@@ -171,6 +171,24 @@ class ApiClient(
         }
     }
 
+    /** Ikuti pengalihan HTTP sebuah URL dan kembalikan URL akhirnya. */
+    suspend fun resolveRedirect(url: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder().url(url)
+                .header(
+                    "User-Agent",
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36",
+                )
+                .get()
+                .build()
+            http.newCall(req).execute().use { resp ->
+                resp.request.url.toString()
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     suspend fun uploadImage(path: String, bytes: ByteArray, filename: String): JSONObject {
         val media = when {
             filename.endsWith(".png", true) -> "image/png"

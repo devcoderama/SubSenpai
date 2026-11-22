@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -225,6 +224,9 @@ fun MediaEmbed(embedUrl: String) {
             android.webkit.WebView(ctx).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                settings.mediaPlaybackRequiresUserGesture = false
+                settings.userAgentString =
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
                 webViewClient = android.webkit.WebViewClient()
                 loadUrl(embedUrl)
             }
@@ -232,6 +234,31 @@ fun MediaEmbed(embedUrl: String) {
         modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
             .aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)),
     )
+}
+
+/** Tautan pendek yang harus diurai dulu sebelum bisa di-embed. */
+private fun isShortSocialLink(url: String): Boolean =
+    url.contains("vt.tiktok.com", true) || url.contains("vm.tiktok.com", true) ||
+        url.contains("fb.watch", true)
+
+/**
+ * Embed sosial dari URL mentah postingan. Tautan pendek
+ * (vt.tiktok.com dsb.) tidak memuat ID video, jadi diurai dulu
+ * lewat pengalihan HTTP — temuan lapangan 2026-11-22: postingan
+ * berisi tautan vt.tiktok.com tampil polos tanpa pemutar.
+ */
+@Composable
+fun SocialEmbed(rawUrl: String, resolve: suspend (String) -> String?) {
+    var embedUrl by remember(rawUrl) { mutableStateOf(socialEmbedUrl(rawUrl)) }
+    if (embedUrl == null && isShortSocialLink(rawUrl)) {
+        LaunchedEffect(rawUrl) {
+            val resolved = resolve(rawUrl)
+            if (resolved != null) {
+                embedUrl = socialEmbedUrl(resolved)
+            }
+        }
+    }
+    embedUrl?.let { MediaEmbed(it) }
 }
 
 /** Baca gambar dari galeri → kompres JPEG maks 1600px agar unggahan ringan. */
@@ -295,11 +322,22 @@ fun FeedScreen(
     var posting by remember { mutableStateOf(false) }
     var postError by remember { mutableStateOf<String?>(null) }
 
+    // OpenDocument (bukan Photo Picker): di beberapa perangkat
+    // (HyperOS) Photo Picker hanya menampilkan gambar walau diminta
+    // ImageAndVideo — temuan lapangan Rams 2026-11-22.
     val picker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
+        ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            val mime = context.contentResolver.getType(uri) ?: ""
+            val mime = context.contentResolver.getType(uri)
+                ?: if (uri.toString().contains(".mp4", true) ||
+                    uri.toString().contains(".webm", true) ||
+                    uri.toString().contains("video", true)
+                ) {
+                    "video/mp4"
+                } else {
+                    "image/jpeg"
+                }
             mediaUri = uri
             postError = null
             if (mime.startsWith("video")) {
@@ -626,7 +664,7 @@ fun FeedScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         IconButton(onClick = {
-                            picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                            picker.launch(arrayOf("image/*", "video/*"))
                         }) {
                             Icon(painterResource(R.drawable.ic_image), contentDescription = "Tambah gambar/video", tint = FeedPurple)
                         }
@@ -789,6 +827,7 @@ fun FeedScreen(
                     }
                 },
                 onHide = { hiddenIds = hiddenIds + post.id },
+                onResolveUrl = { repo.resolveUrl(it) },
             )
         }
         if (loadingMore) {
@@ -920,6 +959,7 @@ fun FeedPostCard(
     onInlineComment: (String) -> Unit,
     onDelete: () -> Unit,
     onHide: () -> Unit,
+    onResolveUrl: suspend (String) -> String?,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var inlineText by remember(post.id) { mutableStateOf("") }
@@ -1007,11 +1047,8 @@ fun FeedPostCard(
                     modifier = Modifier.padding(top = 10.dp),
                 )
             }
-            val embedUrl = post.body?.let { b ->
-                urlRegex.find(b)?.value?.let { socialEmbedUrl(it) }
-            }
-            if (embedUrl != null) {
-                MediaEmbed(embedUrl)
+            post.body?.let { b -> urlRegex.find(b)?.value }?.let { firstUrl ->
+                SocialEmbed(firstUrl, onResolveUrl)
             }
             if (post.imageUrl != null) {
                 if (post.isVideo) {
@@ -1333,11 +1370,8 @@ fun CommentsScreen(
                                 modifier = Modifier.padding(top = 8.dp),
                             )
                         }
-                        val headerEmbed = p.body?.let { b ->
-                            urlRegex.find(b)?.value?.let { socialEmbedUrl(it) }
-                        }
-                        if (headerEmbed != null) {
-                            MediaEmbed(headerEmbed)
+                        p.body?.let { b -> urlRegex.find(b)?.value }?.let { firstUrl ->
+                            SocialEmbed(firstUrl) { repo.resolveUrl(it) }
                         }
                         if (p.imageUrl != null) {
                             if (p.isVideo) {
