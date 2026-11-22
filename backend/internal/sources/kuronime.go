@@ -505,20 +505,38 @@ var kuroIframeRe = regexp.MustCompile(`(?is)<iframe[^>]*id="iframedc"[^>]*>`)
 // parseKuroEmbed mengambil URL pemutar dari HTML halaman episode
 // Kuronime: iframe#iframedc, URL embed di data-src (src kosong).
 // String kosong bila iframe itu tidak ada.
+var kuroAnimekuRe = regexp.MustCompile(`https?://player\.animeku\.org/[^"'\s<>\\]+`)
+
+// parseKuroEmbed mengekstrak URL embed player.animeku.org dari
+// HTML halaman episode Kuronime. Pelajaran produksi 2026-11-22:
+// tag mentahnya adalah <iframe id="iframedc" src="about:blank"
+// …> — src hanya placeholder lazy-load dan atribut pembawa URL
+// aslinya tidak selalu "data-src", jadi pola lama (data-src lalu
+// src) menyimpan "about:blank" sebagai aliran. Pola baru:
+//  1. cari URL player.animeku.org di SELURUH halaman (atribut
+//     data-src/data-lazy-src, string JS, noscript — di mana pun
+//     ia tertulis);
+//  2. cadangan: tag iframe#iframedc, coba data-src, data-lazy-src,
+//     lalu src — nilai kosong/"about:blank"/non-http selalu
+//     ditolak.
 func parseKuroEmbed(html string) string {
+	if m := kuroAnimekuRe.FindString(html); m != "" {
+		return strings.TrimSpace(m)
+	}
 	tag := kuroIframeRe.FindString(html)
 	if tag == "" {
 		return ""
 	}
-	u := attrAny(tag, "data-src")
-	if u == "" {
-		u = attrAny(tag, "src")
+	for _, name := range []string{"data-src", "data-lazy-src", "src"} {
+		u := strings.TrimSpace(attrAny(tag, name))
+		if strings.HasPrefix(u, "//") {
+			u = "https:" + u
+		}
+		if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+			return u
+		}
 	}
-	u = strings.TrimSpace(u)
-	if strings.HasPrefix(u, "//") {
-		u = "https:" + u
-	}
-	return u
+	return ""
 }
 
 // resolveKuro adalah Resolve Kuronime: pemutar tunggal

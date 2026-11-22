@@ -204,6 +204,30 @@ func TestParseKuroEmbed(t *testing.T) {
 	}
 }
 
+func TestParseKuroEmbedAboutBlank(t *testing.T) {
+	// Tag nyata produksi: src hanya placeholder "about:blank",
+	// URL asli di data-lazy-src (tema ini memakai lazy-load).
+	page := `<article class="hentry">
+		<button class="gp">playads</button>
+		<iframe id="iframedc" class="lazyload" src="about:blank" data-lazy-src="https://player.animeku.org/?data=eyJhbGciOiJIUzI1NiJ9" frameborder="0" allowfullscreen></iframe>
+		<iframe src="https://www5.cbox.ws/box/?boxid=941701&boxtag=z8VCJl"></iframe>
+	</article>`
+	if got := parseKuroEmbed(page); got != "https://player.animeku.org/?data=eyJhbGciOiJIUzI1NiJ9" {
+		t.Errorf("embed = %q, mau URL animeku dari data-lazy-src (bukan about:blank)", got)
+	}
+	// URL hanya tertulis di string JS halaman.
+	page2 := `<article class="hentry"><iframe id="iframedc" src="about:blank"></iframe>
+	<script>var ply = "https://player.animeku.org/?data=dG9rZW4tdGVzdA";</script></article>`
+	if got := parseKuroEmbed(page2); got != "https://player.animeku.org/?data=dG9rZW4tdGVzdA" {
+		t.Errorf("embed dari JS = %q, mau URL animeku", got)
+	}
+	// Hanya placeholder, tanpa URL di mana pun → kosong.
+	page3 := `<article class="hentry"><iframe id="iframedc" src="about:blank"></iframe></article>`
+	if got := parseKuroEmbed(page3); got != "" {
+		t.Errorf("about:blank tidak boleh jadi embed, dapat %q", got)
+	}
+}
+
 func TestParseKuroPosterMap(t *testing.T) {
 	page := `<article class="bs"><div class="bsx"><a href="https://kuronime.sbs/anime/demons-crest/" title="Demons Crest"><div class="limit"><img itemprop="image" src=https://i0.wp.com/kuronime.sbs/wp-content/uploads/2026/11/158889l.jpg?resize= 145,207></div><div class="tt"><h2 itemprop="headline">Demons Crest</h2></div></a></div></article>
 	<article class="bsu"><div class="bsux"><a href="https://kuronime.sbs/nonton-dreamland-episode-6/"><div class="bsuxtt"><h2>Dreamland</h2></div><div class="limit"><img itemprop="image" src="https://i2.wp.com/kuronime.sbs/wp-content/uploads/2026/10/112232I.webp"></div></a></div></article>`

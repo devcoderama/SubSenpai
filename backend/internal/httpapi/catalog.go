@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -375,18 +376,36 @@ func (a *API) handlePlayback(w http.ResponseWriter, r *http.Request) {
 		Label *string `json:"label,omitempty"`
 		Lang  *string `json:"lang,omitempty"` // bahasa hardsub aliran ini (F40); kosong = softsub
 	}
-	sources := []source{}
-	srows, err := a.pool.Query(ctx, `
-		select url, label, lang from episode_sources
-		where episode_id = $1::uuid and is_alive order by created_at`, id)
-	if err == nil {
+	readSources := func() []source {
+		out := []source{}
+		srows, err := a.pool.Query(ctx, `
+			select url, label, lang from episode_sources
+			where episode_id = $1::uuid and is_alive order by created_at`, id)
+		if err != nil {
+			return out
+		}
 		defer srows.Close()
 		for srows.Next() {
 			var s source
 			if err := srows.Scan(&s.URL, &s.Label, &s.Lang); err == nil {
-				sources = append(sources, s)
+				out = append(out, s)
 			}
 		}
+		return out
+	}
+	sources := readSources()
+	// Sumber sehat = ada URL http(s). Bila belum ada (atau hanya
+	// placeholder "about:blank" dari penyelesaian lama yang
+	// rusak), selesaikan on-demand lalu baca ulang.
+	healthy := false
+	for _, s := range sources {
+		if strings.HasPrefix(s.URL, "http://") || strings.HasPrefix(s.URL, "https://") {
+			healthy = true
+			break
+		}
+	}
+	if !healthy && a.fillEpisodeOnDemand(r, id) {
+		sources = readSources()
 	}
 	if len(sources) == 0 {
 		utama := "utama"

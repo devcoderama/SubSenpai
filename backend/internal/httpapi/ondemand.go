@@ -197,6 +197,35 @@ func (a *API) fillOnDemand(r *http.Request, titleID string, needMeta, needEps bo
 	return true
 }
 
+// fillEpisodeOnDemand menyelesaikan aliran satu episode yang
+// belum punya sumber sehat (kosong, atau hanya placeholder
+// seperti "about:blank") selagi user menunggu, mengikuti pola
+// fillOnDemand: percobaan depan dengan timeout pendek; bila
+// gagal/timeout, penyelesaian dilanjutkan di goroutine latar di
+// bawah klaim guard yang sama (kunci "ep|<id episode>") dan
+// cooldown dipasang bila itu pun gagal. Mengembalikan true bila
+// pemanggil sebaiknya membaca ulang sumber episode dari DB.
+func (a *API) fillEpisodeOnDemand(r *http.Request, episodeID string) bool {
+	key := "ep|" + episodeID
+	if !a.guard.tryStart(key) {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), onDemandTimeout)
+	err := jobs.ResolveOneEpisode(ctx, a.pool, episodeID)
+	cancel()
+	if err == nil {
+		a.guard.finish(key, false)
+		return true
+	}
+	go func() {
+		bctx, bcancel := context.WithTimeout(context.Background(), onDemandBackgroundTimeout)
+		defer bcancel()
+		berr := jobs.ResolveOneEpisode(bctx, a.pool, episodeID)
+		a.guard.finish(key, berr != nil)
+	}()
+	return true
+}
+
 // discoverOnDemand mencoba mengisi katalog satu tipe yang masih
 // kosong lewat jobs.DiscoverType selagi user menunggu (timeout
 // pendek). Mengembalikan true bila pemanggil sebaiknya mengueri

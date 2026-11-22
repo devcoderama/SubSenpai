@@ -933,6 +933,11 @@ func resolveMirrorPage(page string, src Source, epURL string) (Resolved, error) 
 		if raw == "" || seen[raw] {
 			return
 		}
+		// Placeholder lazy-load dan skema non-putar bukan aliran.
+		if raw == "about:blank" || strings.HasPrefix(raw, "javascript:") ||
+			strings.HasPrefix(raw, "data:") {
+			return
+		}
 		if strings.HasPrefix(raw, "//") {
 			raw = "https:" + raw
 		}

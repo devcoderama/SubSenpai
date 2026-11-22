@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/url"
 
@@ -612,36 +613,106 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 			log.Printf("resolve %s ep %d dari %s: %v", titleName, ep.Number, src.Name, err)
 			continue
 		}
-		for _, st := range res.Streams {
-			if _, err := pool.Exec(ctx, `
-				insert into episode_sources (episode_id, url, label, lang)
-				values ($1::uuid, $2, $3, $4)`,
-				epID, st.URL, nullIfEmpty(st.Label), nullIfEmpty(st.Lang)); err != nil {
-				return err
-			}
-		}
-		for _, tr := range res.Tracks {
-			if _, err := pool.Exec(ctx, `
-				insert into subtitles (episode_id, lang, source, format, file_url, status)
-				values ($1::uuid, $2, 'sumber', $3, $4, 'done')
-				on conflict (episode_id, lang)
-				do update set file_url = excluded.file_url, status = 'done',
-				              source = excluded.source, format = excluded.format`,
-				epID, tr.Lang, tr.Format, tr.URL); err != nil {
-				return err
-			}
-		}
-		if len(res.Streams) > 0 {
-			// video_url utama mengikuti aliran pertama yang sehat.
-			if _, err := pool.Exec(ctx, `
-				update episodes set video_url = $2 where id = $1::uuid`,
-				epID, res.Streams[0].URL); err != nil {
-				return err
-			}
+		if err := storeResolved(ctx, pool, epID, res); err != nil {
+			return err
 		}
 		*resolved++
 	}
 	return nil
+}
+
+// storeResolved menyimpan hasil Resolve satu episode: aliran ke
+// episode_sources, trek subtitle ke subtitles, dan video_url
+// utama mengikuti aliran pertama. Dipakai sinkronisasi worker
+// dan penyelesaian on-demand per episode.
+func storeResolved(ctx context.Context, pool *pgxpool.Pool, epID string, res sources.Resolved) error {
+	for _, st := range res.Streams {
+		if _, err := pool.Exec(ctx, `
+			insert into episode_sources (episode_id, url, label, lang)
+			values ($1::uuid, $2, $3, $4)`,
+			epID, st.URL, nullIfEmpty(st.Label), nullIfEmpty(st.Lang)); err != nil {
+			return err
+		}
+	}
+	for _, tr := range res.Tracks {
+		if _, err := pool.Exec(ctx, `
+			insert into subtitles (episode_id, lang, source, format, file_url, status)
+			values ($1::uuid, $2, 'sumber', $3, $4, 'done')
+			on conflict (episode_id, lang)
+			do update set file_url = excluded.file_url, status = 'done',
+			              source = excluded.source, format = excluded.format`,
+			epID, tr.Lang, tr.Format, tr.URL); err != nil {
+			return err
+		}
+	}
+	if len(res.Streams) > 0 {
+		// video_url utama mengikuti aliran pertama yang sehat.
+		if _, err := pool.Exec(ctx, `
+			update episodes set video_url = $2 where id = $1::uuid`,
+			epID, res.Streams[0].URL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ResolveOneEpisode menyelesaikan aliran satu episode untuk
+// jalur on-demand playback: daftar episode diambil segar dari
+// halaman seri sumber (URL halaman episode TIDAK dibaca dari
+// episodes.video_url — kolom itu ditimpa aliran utama sesudah
+// penyelesaian pertama), nomor yang cocok diselesaikan, lalu
+// hasilnya disimpan lewat storeResolved. Error bila tidak ada
+// sumber terpeta yang berhasil.
+func ResolveOneEpisode(ctx context.Context, pool *pgxpool.Pool, episodeID string) error {
+	var titleID, typ string
+	var epNo int
+	if err := pool.QueryRow(ctx, `
+		select e.title_id, e.episode_no, t.type
+		from episodes e join titles t on t.id = e.title_id
+		where e.id = $1::uuid`, episodeID).Scan(&titleID, &epNo, &typ); err != nil {
+		return err
+	}
+	srcs, err := loadSources(ctx, pool, typ)
+	if err != nil {
+		return err
+	}
+	var lastErr error
+	for _, src := range srcs {
+		resolver, ok := sources.ByKey(src.Resolver)
+		if !ok {
+			continue
+		}
+		var seriesURL string
+		if err := pool.QueryRow(ctx, `
+			select source_url from title_sources
+			where title_id = $1::uuid and source_id = $2::uuid`,
+			titleID, src.ID).Scan(&seriesURL); err != nil {
+			continue // judul tidak dipetakan ke sumber ini
+		}
+		eps, err := resolver.Episodes(ctx, src, seriesURL)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		for _, ep := range eps {
+			if ep.Number != epNo {
+				continue
+			}
+			res, err := resolver.Resolve(ctx, src, ep)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			if err := storeResolved(ctx, pool, episodeID, res); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("episode %d tidak ditemukan di sumber mana pun", epNo)
 }
 
 func nullIfEmpty(s string) any {
