@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"subsenpai/backend/internal/jobs"
+	"subsenpai/backend/internal/sources"
 )
 
 const (
@@ -87,8 +88,10 @@ func (g *fillGuard) finish(key string, failed bool) {
 // needsOnDemand menentukan aspek detail judul yang masih kosong
 // dan layak diisi on-demand. Hanya judul video mode server: judul
 // device tidak punya pemetaan sumber server, dan jenis komik
-// dibaca di perangkat (F39).
-func needsOnDemand(fetchMode, typ string, hasSynopsis bool, episodeCount int) (needMeta, needEps bool) {
+// dibaca di perangkat (F39). Sinopsis boilerplate iklan unduhan
+// (data lama dari halaman salah alamat) dianggap kosong agar
+// detail yang dibuka user langsung disembuhkan on-demand.
+func needsOnDemand(fetchMode, typ, synopsis string, episodeCount int) (needMeta, needEps bool) {
 	if fetchMode != "server" {
 		return false, false
 	}
@@ -97,7 +100,7 @@ func needsOnDemand(fetchMode, typ string, hasSynopsis bool, episodeCount int) (n
 	default:
 		return false, false
 	}
-	needMeta = !hasSynopsis
+	needMeta = synopsis == "" || sources.IsBoilerplateSynopsis(synopsis)
 	needEps = episodeCount == 0
 	return needMeta, needEps
 }

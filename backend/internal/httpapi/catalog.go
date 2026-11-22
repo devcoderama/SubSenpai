@@ -306,8 +306,11 @@ func (a *API) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "judul tidak ditemukan")
 		return
 	}
-	hasSynopsis := detail.Synopsis != nil && *detail.Synopsis != ""
-	if needMeta, needEps := needsOnDemand(detail.FetchMode, detail.Type, hasSynopsis, len(episodes)); needMeta || needEps {
+	synopsis := ""
+	if detail.Synopsis != nil {
+		synopsis = *detail.Synopsis
+	}
+	if needMeta, needEps := needsOnDemand(detail.FetchMode, detail.Type, synopsis, len(episodes)); needMeta || needEps {
 		if a.fillOnDemand(r, id, needMeta, needEps) {
 			if d2, e2, c2, err := a.loadTitleDetail(ctx, id); err == nil {
 				detail, episodes, chapters = d2, e2, c2

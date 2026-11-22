@@ -51,13 +51,31 @@ func loadTitleMappings(ctx context.Context, pool *pgxpool.Pool, titleID string) 
 	return out, rows.Err()
 }
 
+// boilerplatePatterns membangun pola LIKE SQL dari daftar penanda
+// boilerplate paket sources (satu-satunya sumber daftar itu).
+func boilerplatePatterns() []string {
+	markers := sources.BoilerplateSynopsisMarkers()
+	patterns := make([]string, 0, len(markers))
+	for _, m := range markers {
+		patterns = append(patterns, "%"+m+"%")
+	}
+	return patterns
+}
+
 // applySeriesMeta menulis metadata seri ke judul, hanya mengisi kolom
 // yang masih kosong (coalesce) — dipakai EnrichTitles (worker) dan
-// EnrichOneTitle (on-demand) agar perilakunya identik.
+// EnrichOneTitle (on-demand) agar perilakunya identik. Satu
+// pengecualian penyembuhan: sinopsis lama yang boilerplate iklan
+// unduhan (tersimpan dari halaman salah alamat) DITIMPA oleh sinopsis
+// baru yang sah.
 func applySeriesMeta(ctx context.Context, pool *pgxpool.Pool, titleID string, meta *sources.SeriesMeta) error {
 	genres := meta.Genres
 	if genres == nil {
 		genres = []string{}
+	}
+	synopsis := meta.Synopsis
+	if sources.IsBoilerplateSynopsis(synopsis) {
+		synopsis = "" // jangan pernah menulis boilerplate sebagai sinopsis
 	}
 	var year, dur any
 	if meta.Year > 0 {
@@ -72,7 +90,9 @@ func applySeriesMeta(ctx context.Context, pool *pgxpool.Pool, titleID string, me
 	}
 	_, err := pool.Exec(ctx, `
 		update titles set
-			synopsis = coalesce(synopsis, $2),
+			synopsis = case
+				when $2 is not null and (synopsis is null or lower(synopsis) like any ($11))
+				then $2 else synopsis end,
 			title_alt = coalesce(title_alt, $3),
 			genres = case when coalesce(cardinality(genres), 0) = 0 then $4 else genres end,
 			year = coalesce(year, $5),
@@ -83,9 +103,10 @@ func applySeriesMeta(ctx context.Context, pool *pgxpool.Pool, titleID string, me
 			country = coalesce(country, $10),
 			updated_at = now()
 		where id = $1::uuid`,
-		titleID, nullIfEmpty(meta.Synopsis), nullIfEmpty(meta.TitleAlt),
+		titleID, nullIfEmpty(synopsis), nullIfEmpty(meta.TitleAlt),
 		genres, year, season, nullIfEmpty(meta.Network),
-		nullIfEmpty(meta.Studio), dur, nullIfEmpty(meta.Country))
+		nullIfEmpty(meta.Studio), dur, nullIfEmpty(meta.Country),
+		boilerplatePatterns())
 	return err
 }
 

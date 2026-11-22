@@ -314,17 +314,52 @@ func parseEplister(html, pageURL string) []EpisodeRef {
 	return out
 }
 
-// mirrorCandidates mengembalikan URL halaman apa adanya plus
-// mirror anichin.moe dengan path yang sama (mirror menyajikan HTML
-// statis lengkap; domain utama kerap membatasi akses server).
+// seriesPathForHost menyesuaikan format path halaman seri Animestream
+// dengan host tujuan: anichin.my memakai /series/<slug>/ sedangkan
+// mirror anichin.moe memakai path level akar /<slug>/. Memakai format
+// host lain berbahaya: /series/<slug>/ di .moe membalas 301 ke BERANDA
+// (yang halamannya lalu terurai sebagai metadata sampah), dan path
+// level akar di .my tidak ditemukan.
+func seriesPathForHost(path, host string) string {
+	switch host {
+	case "anichin.moe":
+		if strings.HasPrefix(path, "/series/") {
+			return "/" + strings.TrimPrefix(path, "/series/")
+		}
+	case "anichin.my":
+		trimmed := strings.Trim(path, "/")
+		if trimmed != "" && !strings.Contains(trimmed, "/") {
+			return "/series/" + trimmed + "/"
+		}
+	}
+	return path
+}
+
+// mirrorCandidates mengembalikan URL halaman apa adanya plus pasangan
+// host anichin.my ↔ anichin.moe dengan format path seri yang
+// disesuaikan untuk host tujuan (mirror menyajikan HTML statis
+// lengkap; domain utama kerap membatasi akses server). Host selain
+// pasangan Anichin tidak diberi kandidat silang: kandidat lama ke
+// anichin.moe dengan path asing selalu berakhir redirect ke beranda.
 func mirrorCandidates(titleURL string) []string {
 	candidates := []string{titleURL}
-	if u, err := url.Parse(titleURL); err == nil && u.Host != "anichin.moe" {
-		u.Host = "anichin.moe"
-		u.Scheme = "https"
-		candidates = append(candidates, u.String())
+	u, err := url.Parse(titleURL)
+	if err != nil {
+		return candidates
 	}
-	return candidates
+	var other string
+	switch u.Host {
+	case "anichin.my":
+		other = "anichin.moe"
+	case "anichin.moe":
+		other = "anichin.my"
+	default:
+		return candidates
+	}
+	u.Host = other
+	u.Scheme = "https"
+	u.Path = seriesPathForHost(u.Path, other)
+	return append(candidates, u.String())
 }
 
 // moeFirstCandidates mendahulukan mirror anichin.moe (domain utama
@@ -364,17 +399,65 @@ var (
 	genxedRe  = regexp.MustCompile(`(?is)<div class="genxed">(.*?)</div>`)
 	genreARe  = regexp.MustCompile(`(?is)<a[^>]*>([^<]+)</a>`)
 	entryRe   = regexp.MustCompile(`(?is)<div class="entry-content"[^>]*>(.*?)</div>`)
-	firstH4Re = regexp.MustCompile(`(?is)^\s*<h4>(.*?)</h4>`)
+	firstH4Re = regexp.MustCompile(`(?is)^\s*<h4[^>]*>(.*?)</h4>`)
 	yearRe    = regexp.MustCompile(`(19|20)\d{2}`)
 	durRe     = regexp.MustCompile(`(\d+)\s*min`)
+	durHourRe = regexp.MustCompile(`(\d+)\s*h`)
 )
+
+// boilerplateSynopsisMarkers adalah frasa khas teks boilerplate iklan
+// unduhan yang muncul di blok teks situs sumber (mis. entry-content
+// BERANDA anichin.moe) dan bukan sinopsis seri. Halaman yang salah
+// alamat (redirect ke beranda) pernah menghasilkan "sinopsis" sampah
+// ini dan tersimpan ke katalog (kasus Soul Land Movie, 2026-11-22).
+var boilerplateSynopsisMarkers = []string{
+	"adtival", "shortlink", "langkah singkat", "filehosting",
+	"click here to continue",
+}
+
+// IsBoilerplateSynopsis melaporkan apakah teks tampak seperti
+// boilerplate iklan unduhan, bukan sinopsis seri.
+func IsBoilerplateSynopsis(s string) bool {
+	low := strings.ToLower(s)
+	for _, m := range boilerplateSynopsisMarkers {
+		if strings.Contains(low, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// BoilerplateSynopsisMarkers mengembalikan salinan daftar penanda
+// boilerplate (dipakai kueri penyembuhan data lama di paket jobs agar
+// daftarnya tidak berduplikasi).
+func BoilerplateSynopsisMarkers() []string {
+	out := make([]string, len(boilerplateSynopsisMarkers))
+	copy(out, boilerplateSynopsisMarkers)
+	return out
+}
+
+// parseDurationMin mengubah teks Durasi blok spe menjadi menit:
+// "1h 30min" → 90, "2h" → 120, "20 min"/"20min" → 20.
+func parseDurationMin(val string) int {
+	total := 0
+	if hm := durHourRe.FindStringSubmatch(val); hm != nil {
+		h, _ := strconv.Atoi(hm[1])
+		total += h * 60
+	}
+	if mm := durRe.FindStringSubmatch(val); mm != nil {
+		m, _ := strconv.Atoi(mm[1])
+		total += m
+	}
+	return total
+}
 
 // parseSeriesPage mengurai metadata seri dari HTML halaman seri
 // Animestream: judul alternatif (span.alter), blok info (div.spe:
 // Status/Network/Studio/Tanggal rilis/Durasi/Season/Negara), genre
 // (div.genxed), dan sinopsis (div.entry-content — h4 pembuka berisi
 // judul berkurung dibuang; teks sesudahnya adalah sinopsis asli,
-// sedangkan blok .desc terpisah adalah boilerplate SEO situs).
+// sedangkan blok .desc terpisah adalah boilerplate SEO situs;
+// sinopsis yang cocok penanda boilerplate iklan unduhan ditolak).
 func parseSeriesPage(html string) *SeriesMeta {
 	meta := &SeriesMeta{}
 	if m := alterRe.FindStringSubmatch(html); m != nil {
@@ -391,9 +474,7 @@ func parseSeriesPage(html string) *SeriesMeta {
 		case "negara":
 			meta.Country = val
 		case "durasi":
-			if dm := durRe.FindStringSubmatch(val); dm != nil {
-				meta.DurationMin, _ = strconv.Atoi(dm[1])
-			}
+			meta.DurationMin = parseDurationMin(val)
 		case "tanggal rilis":
 			if ym := yearRe.FindString(val); ym != "" {
 				meta.Year, _ = strconv.Atoi(ym)
@@ -422,14 +503,27 @@ func parseSeriesPage(html string) *SeriesMeta {
 	}
 	if m := entryRe.FindStringSubmatch(html); m != nil {
 		body := m[1]
-		// Buang HANYA h4 pertama bila isinya judul berkurung
-		// ("[Tales of Herding Gods]") — sinopsisnya sendiri dibungkus
-		// h4 berikutnya oleh tema ini, jadi membuang semua h4 akan
-		// menghapus sinopsisnya.
-		if fm := firstH4Re.FindStringSubmatch(body); fm != nil && strings.Contains(fm[1], "[") {
-			body = firstH4Re.ReplaceAllString(body, " ")
+		// Buang h4 pertama HANYA bila isinya murni judul berkurung
+		// ("[Tales of Herding Gods]") — tema ini kadang membungkus
+		// judul + sinopsis dalam h4 yang sama (kasus Soul Land Movie:
+		// satu <h4 data-…> berisi "[Judul]" lalu sinopsisnya), jadi
+		// membuang h4 yang berisi teks lain akan menghapus sinopsis.
+		if fm := firstH4Re.FindStringSubmatch(body); fm != nil {
+			if inner := cleanText(fm[1]); strings.HasPrefix(inner, "[") && strings.HasSuffix(inner, "]") {
+				body = firstH4Re.ReplaceAllString(body, " ")
+			}
 		}
-		if syn := cleanText(body); len(syn) > 80 {
+		syn := cleanText(body)
+		// Judul berkurung yang menyatu dengan sinopsis dalam satu
+		// blok ("[Judul] Sinopsis…") dibuang awalannya saja.
+		if strings.HasPrefix(syn, "[") {
+			if i := strings.Index(syn, "]"); i >= 0 {
+				syn = strings.TrimSpace(syn[i+1:])
+			}
+		}
+		// Sinopsis boilerplate iklan unduhan (dari halaman yang
+		// bukan halaman seri, mis. beranda hasil redirect) ditolak.
+		if len(syn) > 80 && !IsBoilerplateSynopsis(syn) {
 			if len(syn) > 2000 {
 				syn = syn[:2000]
 			}
@@ -439,26 +533,55 @@ func parseSeriesPage(html string) *SeriesMeta {
 	return meta
 }
 
+// seriesMetaScore menilai kelengkapan satu hasil urai halaman seri:
+// jumlah aspek metadata yang terisi. Dipakai SeriesInfo untuk memilih
+// kandidat terbaik — kandidat yang halamannya salah alamat (mis.
+// redirect ke beranda) menghasilkan skor rendah/kosong dan tidak
+// boleh mengalahkan kandidat yang halamannya benar.
+func seriesMetaScore(m *SeriesMeta) int {
+	if m == nil {
+		return 0
+	}
+	score := 0
+	for _, filled := range []bool{
+		m.Synopsis != "", m.TitleAlt != "", len(m.Genres) > 0,
+		m.Year > 0, m.Season != "", m.Network != "", m.Studio != "",
+		m.DurationMin > 0, m.Country != "",
+	} {
+		if filled {
+			score++
+		}
+	}
+	return score
+}
+
 // SeriesInfo membaca metadata seri dari halaman serinya (mirror
 // HTML statis dipakai sebagai cadangan seperti daftar episode).
+// SEMUA kandidat dinilai dan hasil urai terlengkap yang dikembalikan
+// — bukan kandidat pertama yang sekadar punya sinopsis, karena
+// halaman salah alamat bisa memberi sinopsis boilerplate saja.
 func (a *animestreamResolver) SeriesInfo(ctx context.Context, src Source, titleURL string) (*SeriesMeta, error) {
 	candidates := mirrorCandidates(titleURL)
 	if a.key == "anichin" {
 		candidates = moeFirstCandidates(titleURL)
 	}
 	var lastErr error
+	var best *SeriesMeta
+	bestScore := 0
 	for _, cand := range candidates {
 		page, err := Fetch(ctx, cand)
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		meta := parseSeriesPage(page)
-		if meta.Synopsis != "" || meta.Studio != "" || len(meta.Genres) > 0 {
-			return meta, nil
+		if meta := parseSeriesPage(page); seriesMetaScore(meta) > bestScore {
+			best, bestScore = meta, seriesMetaScore(meta)
 		}
 	}
-	return nil, lastErr
+	if best == nil {
+		return nil, lastErr
+	}
+	return best, nil
 }
 
 func (a *animestreamResolver) episodesWP(ctx context.Context, src Source, titleURL string) ([]EpisodeRef, error) {

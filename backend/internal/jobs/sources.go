@@ -146,7 +146,9 @@ func PurgePosterless(ctx context.Context, pool *pgxpool.Pool) error {
 // aplikasi tampil lengkap ala Netflix. Hanya kolom yang masih
 // kosong yang diisi (coalesce), maksimal 30 judul per putaran;
 // judul yang sudah bersinopsis keluar dari antrean dengan
-// sendirinya.
+// sendirinya. Judul yang sinopsisnya boilerplate iklan unduhan
+// (data lama dari halaman salah alamat) ikut dipilih agar sembuh:
+// applySeriesMeta menimpa sinopsis boilerplate dengan yang sah.
 func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 	rows, err := pool.Query(ctx, `
 		select t.id, ts.source_url,
@@ -155,9 +157,9 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 		from titles t
 		join title_sources ts on ts.title_id = t.id
 		join content_sources cs on cs.id = ts.source_id
-		where t.synopsis is null and cs.is_active
+		where (t.synopsis is null or lower(t.synopsis) like any ($1)) and cs.is_active
 		order by t.created_at
-		limit 90`)
+		limit 90`, boilerplatePatterns())
 	if err != nil {
 		return err
 	}

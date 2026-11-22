@@ -55,19 +55,20 @@ func TestNeedsOnDemand(t *testing.T) {
 	cases := []struct {
 		name              string
 		fetchMode, typ    string
-		hasSynopsis       bool
+		synopsis          string
 		episodeCount      int
 		wantMeta, wantEps bool
 	}{
-		{"server donghua kosong semua", "server", "donghua", false, 0, true, true},
-		{"server anime sinopsis ada episode kosong", "server", "anime", true, 0, false, true},
-		{"server film lengkap", "server", "film", true, 12, false, false},
-		{"device anime tidak disentuh", "device", "anime", false, 0, false, false},
-		{"server komik tidak disentuh", "server", "manhwa", false, 0, false, false},
-		{"mode kosong tidak disentuh", "", "donghua", false, 0, false, false},
+		{"server donghua kosong semua", "server", "donghua", "", 0, true, true},
+		{"server anime sinopsis ada episode kosong", "server", "anime", "Sinopsis asli seri ini.", 0, false, true},
+		{"server film lengkap", "server", "film", "Sinopsis asli film ini.", 12, false, false},
+		{"server donghua sinopsis boilerplate", "server", "donghua", "Adtival Network (Main Shortlink) LANGKAH SINGKAT: Pilih Server Filehosting (ex. Mirrored)", 1, true, false},
+		{"device anime tidak disentuh", "device", "anime", "", 0, false, false},
+		{"server komik tidak disentuh", "server", "manhwa", "", 0, false, false},
+		{"mode kosong tidak disentuh", "", "donghua", "", 0, false, false},
 	}
 	for _, c := range cases {
-		m, e := needsOnDemand(c.fetchMode, c.typ, c.hasSynopsis, c.episodeCount)
+		m, e := needsOnDemand(c.fetchMode, c.typ, c.synopsis, c.episodeCount)
 		if m != c.wantMeta || e != c.wantEps {
 			t.Errorf("%s: needsOnDemand = (%v,%v), mau (%v,%v)", c.name, m, e, c.wantMeta, c.wantEps)
 		}
