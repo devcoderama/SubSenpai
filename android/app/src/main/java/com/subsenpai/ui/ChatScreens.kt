@@ -33,59 +33,6 @@ import com.subsenpai.data.ChatMsg
 import com.subsenpai.data.ChatSocket
 import org.json.JSONObject
 
-/** Daftar kanal chat: topik global, grup, dan DM. */
-@Composable
-fun ChatListScreen(
-    repo: CatalogRepository,
-    onOpenRoom: (String, String) -> Unit,
-    onOpenFriends: () -> Unit,
-    onOpenGroups: () -> Unit,
-    onBack: () -> Unit,
-) {
-    var channels by remember { mutableStateOf<List<ChatChannelItem>>(emptyList()) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        try {
-            channels = repo.chatChannels()
-        } catch (e: Exception) {
-            error = e.message
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item { TextButton(onClick = onBack) { Text("← Kembali") } }
-        item { Text("Chat", style = MaterialTheme.typography.headlineSmall) }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onOpenFriends) { Text("Teman") }
-                Button(onClick = onOpenGroups) { Text("Grup") }
-            }
-        }
-        if (error != null) {
-            item { Text("Gagal memuat: $error", color = MaterialTheme.colorScheme.error) }
-        }
-        items(channels) { c ->
-            Card(modifier = Modifier.fillMaxWidth().clickable { onOpenRoom(c.id, c.name) }) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(c.name, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        when (c.kind) {
-                            "global" -> "Kanal topik"
-                            "group" -> "Grup"
-                            else -> "Pesan langsung"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-        }
-    }
-}
-
 /** Ruang chat: riwayat REST + pesan langsung WebSocket, dukung balasan. */
 @Composable
 fun ChatRoomScreen(

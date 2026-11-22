@@ -35,6 +35,9 @@ type Config struct {
 	TokopayMerchantID string
 	TokopaySecret     string
 	TokopayAPIURL     string // bawaan https://api.tokopay.id
+	// FeedUploadDir: folder penyimpanan gambar postingan feed
+	// komunitas (dilayani publik lewat /uploads/feed/{nama}).
+	FeedUploadDir string
 }
 
 func Load() Config {
@@ -65,6 +68,7 @@ func Load() Config {
 		TokopayMerchantID: os.Getenv("TOKOPAY_MERCHANT_ID"),
 		TokopaySecret:     os.Getenv("TOKOPAY_SECRET_KEY"),
 		TokopayAPIURL:     os.Getenv("TOKOPAY_API_URL"),
+		FeedUploadDir:     getenv("FEED_UPLOAD_DIR", "/opt/subsenpai/uploads/feed"),
 	}
 }
 

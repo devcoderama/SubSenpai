@@ -119,4 +119,49 @@ class ApiClient(
     suspend fun post(path: String, body: JSONObject? = null): JSONObject = request("POST", path, body)
 
     suspend fun delete(path: String): JSONObject = request("DELETE", path)
+
+    /**
+     * Unggah gambar multipart (feed komunitas). Respons tetap berupa
+     * envelope xdata seperti panggilan lain dan dibuka di sini.
+     */
+    suspend fun uploadImage(path: String, bytes: ByteArray, filename: String): JSONObject {
+        val media = when {
+            filename.endsWith(".png", true) -> "image/png"
+            filename.endsWith(".webp", true) -> "image/webp"
+            else -> "image/jpeg"
+        }.toMediaType()
+        suspend fun attempt(snap: XdataSession.Snapshot): Pair<Int, String> {
+            val body = okhttp3.MultipartBody.Builder()
+                .setType(okhttp3.MultipartBody.FORM)
+                .addFormDataPart("image", filename, bytes.toRequestBody(media))
+                .build()
+            val builder = Request.Builder()
+                .url("$baseUrl$path")
+                .header("X-Session-Id", snap.id)
+                .post(body)
+            tokenProvider?.invoke()?.let { builder.header("Authorization", "Bearer $it") }
+            val resp = withContext(Dispatchers.IO) { http.newCall(builder.build()).execute() }
+            return resp.code to resp.body?.string().orEmpty()
+        }
+        var snap = ensureSession()
+        var (code, text) = attempt(snap)
+        if (code == 401 && !isEnvelope(text)) {
+            session.resetIfCurrent(snap)
+            snap = ensureSession()
+            val retry = attempt(snap)
+            code = retry.first
+            text = retry.second
+        }
+        if (isEnvelope(text)) {
+            val env = JSONObject(text)
+            val plain = session.open(snap, env.getString("xdata"), env.getLong("xtime"))
+            val json = JSONObject(plain)
+            if (code !in 200..299) {
+                throw ApiException(code, json.optString("error").ifBlank { "HTTP $code" })
+            }
+            return json
+        }
+        if (code !in 200..299) throw ApiException(code, text.ifBlank { "HTTP $code" })
+        return JSONObject(text.ifBlank { "{}" })
+    }
 }

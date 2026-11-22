@@ -29,8 +29,10 @@ import androidx.navigation.navArgument
 import com.subsenpai.data.AuthStore
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.player.PlayerScreen
-import com.subsenpai.ui.ChatListScreen
 import com.subsenpai.ui.ChatRoomScreen
+import com.subsenpai.ui.CommentsScreen
+import com.subsenpai.ui.FeedNotificationsScreen
+import com.subsenpai.ui.FeedScreen
 import com.subsenpai.ui.DetailScreen
 import com.subsenpai.ui.FriendsScreen
 import com.subsenpai.ui.GroupsScreen
@@ -136,12 +138,28 @@ class MainActivity : ComponentActivity() {
                             PremiumScreen(repo, onBack = { nav.popBackStack() })
                         }
                         composable("chat") {
-                            ChatListScreen(
+                            FeedScreen(
                                 repo,
-                                onOpenRoom = { id, name -> nav.navigate("room/$id/$name") },
-                                onOpenFriends = { nav.navigate("friends") },
-                                onOpenGroups = { nav.navigate("groups") },
+                                onNeedLogin = { nav.navigate("login") },
+                                onOpenComments = { postId -> nav.navigate("comments/$postId") },
+                                onOpenNotifications = { nav.navigate("feednotif") },
+                            )
+                        }
+                        composable(
+                            "comments/{postId}",
+                            arguments = listOf(navArgument("postId") { type = NavType.StringType }),
+                        ) { backStack ->
+                            CommentsScreen(
+                                repo,
+                                postId = backStack.arguments?.getString("postId") ?: "",
                                 onBack = { nav.popBackStack() },
+                            )
+                        }
+                        composable("feednotif") {
+                            FeedNotificationsScreen(
+                                repo,
+                                onBack = { nav.popBackStack() },
+                                onOpenPost = { postId -> nav.navigate("comments/$postId") },
                             )
                         }
                         composable(

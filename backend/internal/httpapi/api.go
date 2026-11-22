@@ -74,6 +74,9 @@ func (a *API) Router() http.Handler {
 	r.Post("/api/v1/payments/webhook/tokopay", a.handleTokopayWebhook)
 	// WebSocket chat & watch party (Fase 4): auth via header Authorization.
 	r.Get("/ws", a.handleWS)
+	// Gambar feed komunitas: publik, tanpa envelope — nama berkas
+	// acak 128-bit; dimuat langsung oleh Coil/peramban.
+	r.Get("/uploads/feed/{name}", a.handleFeedFile)
 	r.Group(func(r chi.Router) {
 		r.Use(func(next http.Handler) http.Handler {
 			return middleware.Envelope(a.sessions, next)
@@ -120,6 +123,21 @@ func (a *API) Router() http.Handler {
 			r.Post("/api/v1/groups", a.handleGroupCreate)
 			r.Post("/api/v1/groups/join", a.handleGroupJoinByCode)
 			r.Post("/api/v1/groups/{id}/join", a.handleGroupJoin)
+			// Feed komunitas (redesain Chat 2026-11-22).
+			r.Get("/api/v1/feed", a.handleFeedList)
+			r.Post("/api/v1/feed/posts", a.handleFeedCreate)
+			r.Get("/api/v1/feed/posts/{id}", a.handleFeedGetPost)
+			r.Delete("/api/v1/feed/posts/{id}", a.handleFeedDelete)
+			r.Post("/api/v1/feed/posts/{id}/like", a.handleFeedLike)
+			r.Post("/api/v1/feed/posts/{id}/bookmark", a.handleFeedBookmark)
+			r.Post("/api/v1/feed/posts/{id}/share", a.handleFeedShare)
+			r.Get("/api/v1/feed/posts/{id}/comments", a.handleFeedComments)
+			r.Post("/api/v1/feed/posts/{id}/comments", a.handleFeedCommentCreate)
+			r.Post("/api/v1/feed/comments/{id}/like", a.handleFeedCommentLike)
+			r.Delete("/api/v1/feed/comments/{id}", a.handleFeedCommentDelete)
+			r.Post("/api/v1/feed/upload", a.handleFeedUpload)
+			r.Get("/api/v1/feed/notifications", a.handleFeedNotifications)
+			r.Post("/api/v1/feed/notifications/read", a.handleFeedNotificationsRead)
 		})
 	})
 	return r

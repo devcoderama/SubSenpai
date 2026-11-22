@@ -475,4 +475,100 @@ class CatalogRepository(
     suspend fun titleDetail(id: String): TitleDetail = TitleDetail.fromJson(api.get("/api/v1/titles/$id"))
 
     suspend fun playback(episodeId: String): Playback = Playback.fromJson(api.get("/api/v1/episodes/$episodeId/playback"))
+
+    // ---------- Feed komunitas (redesain Chat 2026-11-22) ----------
+
+    suspend fun feedList(
+        tab: String,
+        category: String?,
+        query: String?,
+        groupId: String?,
+        cursor: String?,
+    ): Pair<List<FeedPost>, String> {
+        val params = StringBuilder("/api/v1/feed?tab=").append(tab)
+        if (!category.isNullOrBlank()) params.append("&category=").append(category)
+        if (!query.isNullOrBlank()) {
+            params.append("&q=").append(java.net.URLEncoder.encode(query, "UTF-8"))
+        }
+        if (!groupId.isNullOrBlank()) params.append("&group_id=").append(groupId)
+        if (!cursor.isNullOrBlank()) {
+            params.append("&cursor=").append(java.net.URLEncoder.encode(cursor, "UTF-8"))
+        }
+        val o = api.get(params.toString())
+        val items = buildList {
+            val arr = o.optJSONArray("items")
+            if (arr != null) for (i in 0 until arr.length()) add(FeedPost.fromJson(arr.getJSONObject(i)))
+        }
+        return items to o.optString("next_cursor")
+    }
+
+    suspend fun feedPost(id: String): FeedPost =
+        FeedPost.fromJson(api.get("/api/v1/feed/posts/$id").getJSONObject("post"))
+
+    suspend fun feedCreate(body: String, imageUrl: String?, category: String, groupId: String?): FeedPost {
+        val req = org.json.JSONObject()
+            .put("body", body)
+            .put("category", category)
+        if (imageUrl != null) req.put("image_url", imageUrl)
+        if (groupId != null) req.put("group_id", groupId)
+        return FeedPost.fromJson(api.post("/api/v1/feed/posts", req).getJSONObject("post"))
+    }
+
+    suspend fun feedDeletePost(id: String) {
+        api.delete("/api/v1/feed/posts/$id")
+    }
+
+    /** Mengembalikan (liked, jumlah like) sesudah toggle. */
+    suspend fun feedLike(id: String): Pair<Boolean, Int> {
+        val o = api.post("/api/v1/feed/posts/$id/like")
+        return o.optBoolean("liked") to o.optInt("like_count")
+    }
+
+    suspend fun feedBookmark(id: String): Boolean =
+        api.post("/api/v1/feed/posts/$id/bookmark").optBoolean("bookmarked")
+
+    suspend fun feedShare(id: String): Int =
+        api.post("/api/v1/feed/posts/$id/share").optInt("share_count")
+
+    suspend fun feedComments(postId: String): List<FeedComment> {
+        val o = api.get("/api/v1/feed/posts/$postId/comments")
+        return buildList {
+            val arr = o.optJSONArray("items")
+            if (arr != null) for (i in 0 until arr.length()) add(FeedComment.fromJson(arr.getJSONObject(i)))
+        }
+    }
+
+    suspend fun feedCommentCreate(postId: String, body: String, parentId: String?): FeedComment {
+        val req = org.json.JSONObject().put("body", body)
+        if (parentId != null) req.put("parent_id", parentId)
+        return FeedComment.fromJson(
+            api.post("/api/v1/feed/posts/$postId/comments", req).getJSONObject("comment")
+        )
+    }
+
+    suspend fun feedCommentLike(id: String): Pair<Boolean, Int> {
+        val o = api.post("/api/v1/feed/comments/$id/like")
+        return o.optBoolean("liked") to o.optInt("like_count")
+    }
+
+    suspend fun feedCommentDelete(id: String) {
+        api.delete("/api/v1/feed/comments/$id")
+    }
+
+    /** Unggah gambar postingan; mengembalikan URL publiknya. */
+    suspend fun feedUpload(bytes: ByteArray, filename: String): String =
+        api.uploadImage("/api/v1/feed/upload", bytes, filename).getString("url")
+
+    suspend fun feedNotifications(): Pair<List<FeedNotification>, Int> {
+        val o = api.get("/api/v1/feed/notifications")
+        val items = buildList {
+            val arr = o.optJSONArray("items")
+            if (arr != null) for (i in 0 until arr.length()) add(FeedNotification.fromJson(arr.getJSONObject(i)))
+        }
+        return items to o.optInt("unread")
+    }
+
+    suspend fun feedNotificationsRead() {
+        api.post("/api/v1/feed/notifications/read")
+    }
 }
