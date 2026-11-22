@@ -59,6 +59,13 @@ class GtxTranslator(private val http: OkHttpClient = OkHttpClient()) {
             gtx(text.take(1200), targetLang)
         }
 
+    /** Terjemahkan banyak teks sekaligus per batch; urutan hasil = urutan masukan. */
+    suspend fun translateTexts(texts: List<String>, targetLang: String): List<String>? =
+        withContext(Dispatchers.IO) {
+            if (texts.isEmpty()) return@withContext emptyList()
+            translateCues(texts.map { it.replace("\n", " ") }, targetLang)
+        }
+
     private fun get(url: String): String? {
         val req = Request.Builder().url(url)
             .header("User-Agent", "Mozilla/5.0 (Android) SubSenpai")

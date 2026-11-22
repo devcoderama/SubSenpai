@@ -6,6 +6,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -44,14 +45,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import androidx.compose.foundation.Image
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.graphics.asImageBitmap
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.ComicChapter
 import com.subsenpai.data.ComicNav
 import com.subsenpai.data.ComicSeries
 import com.subsenpai.data.DeviceSourceParser
+import com.subsenpai.data.GtxTranslator
+import com.subsenpai.data.ManhuarmPage
+import com.subsenpai.data.ManhuarmReader
+import com.subsenpai.data.ManhuarmSession
 import com.subsenpai.data.ManhuarmtlApi
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
+import java.util.Locale
 
 /**
  * Komik langsung dari perangkat (pola ekstensi sumber ala Mihon):
@@ -111,6 +122,15 @@ fun ComicDetailScreen(
                     if (meta.isNotBlank()) {
                         Text(meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    s.author?.let {
+                        Text("Penulis: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    s.artist?.let {
+                        Text("Ilustrator: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    s.rating?.let {
+                        Text("Rating sumber: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     s.synopsis?.let {
                         Spacer(Modifier.height(8.dp))
                         Text(it, style = MaterialTheme.typography.bodyMedium)
@@ -149,6 +169,7 @@ fun ComicReaderScreen(
     val series = ComicNav.series
     val chapters = ComicNav.chapters
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var webView by remember { mutableStateOf<WebView?>(null) }
     var pendingExtract by remember { mutableStateOf<((String) -> Unit)?>(null) }
     var reading by remember { mutableStateOf<ComicChapter?>(null) }
@@ -160,6 +181,28 @@ fun ComicReaderScreen(
     val opened = remember { mutableSetOf<String>() }
     val listState = rememberLazyListState()
 
+    // --- Sesi baca v9 (pola ekstensi Manhuarm di Mihon) ---
+    var session by remember { mutableStateOf<ManhuarmSession?>(null) }
+    val rawPages = remember { mutableStateMapOf<Int, ByteArray>() }
+    val bitmaps = remember { mutableStateMapOf<Int, android.graphics.Bitmap>() }
+    var translated by remember { mutableStateOf(false) }
+    var translating by remember { mutableStateOf(false) }
+    var translations by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val deviceLang = remember {
+        when (val l = Locale.getDefault().language) {
+            "in" -> "id"
+            else -> l.ifBlank { "id" }
+        }
+    }
+    val translator = remember { GtxTranslator() }
+
+    fun composeFor(sess: ManhuarmSession, page: ManhuarmPage, bytes: ByteArray, useTr: Boolean): android.graphics.Bitmap? {
+        val boxes = sess.dialogsOf(page).map { d ->
+            d to (if (useTr) translations[d.text] ?: d.text else d.text)
+        }
+        return ManhuarmReader.composePage(bytes, boxes)
+    }
+
     fun unescape(raw: String?): String {
         if (raw == null || raw == "null") return ""
         return try {
@@ -169,13 +212,8 @@ fun ComicReaderScreen(
         }
     }
 
-    fun openChapter(ch: ComicChapter) {
-        if (!repo.isLoggedIn && opened.isNotEmpty() && ch.url !in opened) {
-            status = "Tamu hanya boleh membuka 1 chapter per judul — masuk untuk melanjutkan."
-            return
-        }
-        busy = true
-        status = "Memuat ${ch.label}…"
+    /** Jalur cadangan lama: ekstrak URL gambar dari HTML di WebView. */
+    fun openChapterLegacy(ch: ComicChapter) {
         pendingExtract = { html ->
             val found = DeviceSourceParser.parsePages(html)
             busy = false
@@ -190,6 +228,91 @@ fun ComicReaderScreen(
             }
         }
         webView?.loadUrl(ch.url)
+    }
+
+    fun openChapter(ch: ComicChapter) {
+        if (!repo.isLoggedIn && opened.isNotEmpty() && ch.url !in opened) {
+            status = "Tamu hanya boleh membuka 1 chapter per judul — masuk untuk melanjutkan."
+            return
+        }
+        busy = true
+        status = "Menyiapkan ${ch.label}…"
+        session = null
+        rawPages.clear()
+        bitmaps.clear()
+        translations = emptyMap()
+        translated = false
+        scope.launch {
+            val ua = webView?.settings?.userAgentString ?: ""
+            try {
+                val html = ManhuarmReader.fetchChapterHtml(ch.url, ua)
+                val sess = ManhuarmReader.openChapter(html, ch.url, ua)
+                session = sess
+                opened.add(ch.url)
+                reading = ch
+                busy = false
+                status = ""
+                val sem = Semaphore(3)
+                sess.pages.forEach { page ->
+                    launch {
+                        sem.withPermit {
+                            try {
+                                val bytes = ManhuarmReader.fetchImage(sess, page, ua)
+                                rawPages[page.index] = bytes
+                                composeFor(sess, page, bytes, false)?.let { bitmaps[page.index] = it }
+                            } catch (e: Exception) {
+                                // Halaman gagal: biarkan penampung kosong.
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Sesi v9 gagal (mis. verifikasi Cloudflare belum lewat) —
+                // kembali ke jalur WebView lama.
+                session = null
+                openChapterLegacy(ch)
+            }
+        }
+    }
+
+    fun toggleTranslate() {
+        val sess = session ?: return
+        if (translated) {
+            translated = false
+            sess.pages.forEach { page ->
+                rawPages[page.index]?.let { bytes ->
+                    composeFor(sess, page, bytes, false)?.let { bitmaps[page.index] = it }
+                }
+            }
+            return
+        }
+        if (translations.isNotEmpty()) {
+            translated = true
+            sess.pages.forEach { page ->
+                rawPages[page.index]?.let { bytes ->
+                    composeFor(sess, page, bytes, true)?.let { bitmaps[page.index] = it }
+                }
+            }
+            return
+        }
+        translating = true
+        scope.launch {
+            val texts = sess.dialogues.values.flatten().map { it.text }
+                .filter { it.isNotBlank() }.distinct()
+            val hasil = translator.translateTexts(texts, deviceLang)
+            translating = false
+            if (hasil == null || hasil.size != texts.size) {
+                status = "Terjemahan gagal — menampilkan teks asli."
+                return@launch
+            }
+            translations = texts.zip(hasil).toMap()
+            translated = true
+            sess.pages.forEach { page ->
+                rawPages[page.index]?.let { bytes ->
+                    composeFor(sess, page, bytes, true)?.let { bitmaps[page.index] = it }
+                }
+            }
+        }
     }
 
     if (series == null) {
@@ -247,6 +370,7 @@ fun ComicReaderScreen(
             modifier = Modifier.fillMaxWidth().height(if (reading == null) 280.dp else 1.dp),
         )
         val ch = reading
+        val sess = session
         if (ch == null) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -258,6 +382,67 @@ fun ComicReaderScreen(
                 ) { Text("Coba Lagi") }
                 if (!repo.isLoggedIn) {
                     OutlinedButton(onClick = onNeedLogin) { Text("Masuk") }
+                }
+            }
+        } else if (sess != null) {
+            val idx = chapters.indexOfFirst { it.url == ch.url }
+            val prev = chapters.getOrNull(idx - 1)
+            val next = chapters.getOrNull(idx + 1)
+            val currentPage = (listState.firstVisibleItemIndex).coerceAtLeast(0)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "${ch.label} · Hal. ${(currentPage + 1).coerceAtMost(sess.pages.size)}/${sess.pages.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+                Row {
+                    TextButton(enabled = !translating, onClick = { toggleTranslate() }) {
+                        Text(
+                            when {
+                                translating -> "Menerjemahkan…"
+                                translated -> "Teks Asli (EN)"
+                                else -> "Terjemahkan (${deviceLang.uppercase()})"
+                            },
+                        )
+                    }
+                    if (prev != null) TextButton(onClick = { openChapter(prev) }) { Text("← Prev") }
+                    if (next != null) TextButton(onClick = { openChapter(next) }) { Text("Next →") }
+                }
+            }
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                items(sess.pages, key = { it.index }) { page ->
+                    val bmp = bitmaps[page.index]
+                    if (bmp != null) {
+                        Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = "Halaman ${page.index + 1}",
+                            contentScale = ContentScale.FillWidth,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(240.dp),
+                            contentAlignment = androidx.compose.ui.Alignment.Center,
+                        ) {
+                            BrandLoading(compact = true)
+                        }
+                    }
+                }
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        if (prev != null) {
+                            OutlinedButton(onClick = { openChapter(prev) }) { Text("← Chapter sebelumnya") }
+                        }
+                        if (next != null) {
+                            Button(onClick = { openChapter(next) }) { Text("Chapter berikutnya →") }
+                        }
+                    }
                 }
             }
         } else {

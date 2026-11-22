@@ -18,6 +18,9 @@ data class ComicSeries(
     val year: Int?,
     val genres: List<String>,
     val synopsis: String?,
+    val author: String? = null,
+    val artist: String? = null,
+    val rating: String? = null,
 )
 
 /** Satu chapter komik (URL halaman chapter di situs sumber). */
@@ -92,6 +95,9 @@ object ManhuarmtlApi {
             } else {
                 null
             },
+            author = o.optString("author").takeIf { it.isNotBlank() },
+            artist = o.optString("artist").takeIf { it.isNotBlank() },
+            rating = o.optString("rating").takeIf { it.isNotBlank() },
         )
     }
 
