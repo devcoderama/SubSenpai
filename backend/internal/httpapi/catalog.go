@@ -113,6 +113,63 @@ func decodeCursor(s string) (cursor, error) {
 	return c, err
 }
 
+// titlesPage menjalankan query katalog satu halaman dan mengembalikan
+// payload respons + jumlah item di halaman ini (sebelum dipotong
+// limit, untuk keputusan pencarian live).
+func (a *API) titlesPage(ctx context.Context, typ, genre, search string, cur *cursor, limit int) (map[string]any, int, error) {
+	args := []any{}
+	where := "where not t.is_adult"
+	if typ != "" {
+		args = append(args, typ)
+		where += " and t.type = $" + strconv.Itoa(len(args))
+	}
+	if genre != "" {
+		args = append(args, []string{genre})
+		where += " and t.genres @> $" + strconv.Itoa(len(args))
+	}
+	if search != "" {
+		args = append(args, search)
+		where += " and t.search_tsv @@ plainto_tsquery('simple', $" + strconv.Itoa(len(args)) + ")"
+	}
+	if cur != nil {
+		args = append(args, cur.C, cur.I)
+		where += " and (t.created_at, t.id) < ($" + strconv.Itoa(len(args)-1) + ", $" + strconv.Itoa(len(args)) + "::uuid)"
+	}
+	args = append(args, limit+1)
+	sql := "select " + titleCardCols + ", t.created_at from titles t " + where +
+		" order by t.created_at desc, t.id desc limit $" + strconv.Itoa(len(args))
+	rows, err := a.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	items := []titleCard{}
+	createds := []time.Time{}
+	for rows.Next() {
+		var c titleCard
+		var created time.Time
+		if err := rows.Scan(&c.ID, &c.Slug, &c.Type, &c.Title, &c.TitleAlt, &c.Poster,
+			&c.Year, &c.Status, &c.Genres, &c.Rating, &c.IsAdult, &created); err != nil {
+			return nil, 0, err
+		}
+		if c.Genres == nil {
+			c.Genres = []string{}
+		}
+		items = append(items, c)
+		createds = append(createds, created)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	next := ""
+	if len(items) > limit {
+		last := items[limit-1]
+		next = encodeCursor(cursor{C: createds[limit-1], I: last.ID})
+		items = items[:limit]
+	}
+	return map[string]any{"items": items, "next_cursor": next}, len(items), nil
+}
+
 // handleTitles: telusur katalog dengan pagination kursor (bukan OFFSET).
 func (a *API) handleTitles(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -134,79 +191,64 @@ func (a *API) handleTitles(w http.ResponseWriter, r *http.Request) {
 		}
 		cur = &c
 	}
+	search := q.Get("q")
+	if search != "" && cur == nil {
+		// Halaman pertama pencarian TIDAK lewat cache: hasil kosong
+		// harus bisa langsung jatuh ke pencarian live on-demand, dan
+		// hasilnya harus langsung terlihat (bukan menunggu TTL cache).
+		payload, n, err := a.titlesPage(r.Context(), typ, q.Get("genre"), search, nil, limit)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "kesalahan server")
+			return
+		}
+		if n == 0 {
+			lctx, cancel := context.WithTimeout(r.Context(), onDemandTimeout)
+			a.liveSearch(lctx, typ, search)
+			cancel()
+			if p2, _, err := a.titlesPage(r.Context(), typ, q.Get("genre"), search, nil, limit); err == nil {
+				payload = p2
+			}
+		}
+		writeJSON(w, http.StatusOK, payload)
+		return
+	}
 	key := "titles?" + r.URL.RawQuery
 	a.serveCached(w, key, func() (any, error) {
-		ctx := r.Context()
-		args := []any{}
-		where := "where not t.is_adult"
-		if typ != "" {
-			args = append(args, typ)
-			where += " and t.type = $" + strconv.Itoa(len(args))
-		}
-		if g := q.Get("genre"); g != "" {
-			args = append(args, []string{g})
-			where += " and t.genres @> $" + strconv.Itoa(len(args))
-		}
-		if s := q.Get("q"); s != "" {
-			args = append(args, s)
-			where += " and t.search_tsv @@ plainto_tsquery('simple', $" + strconv.Itoa(len(args)) + ")"
-		}
-		if cur != nil {
-			args = append(args, cur.C, cur.I)
-			where += " and (t.created_at, t.id) < ($" + strconv.Itoa(len(args)-1) + ", $" + strconv.Itoa(len(args)) + "::uuid)"
-		}
-		args = append(args, limit+1)
-		sql := "select " + titleCardCols + ", t.created_at from titles t " + where +
-			" order by t.created_at desc, t.id desc limit $" + strconv.Itoa(len(args))
-		rows, err := a.pool.Query(ctx, sql, args...)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		items := []titleCard{}
-		createds := []time.Time{}
-		for rows.Next() {
-			var c titleCard
-			var created time.Time
-			if err := rows.Scan(&c.ID, &c.Slug, &c.Type, &c.Title, &c.TitleAlt, &c.Poster,
-				&c.Year, &c.Status, &c.Genres, &c.Rating, &c.IsAdult, &created); err != nil {
-				return nil, err
-			}
-			if c.Genres == nil {
-				c.Genres = []string{}
-			}
-			items = append(items, c)
-			createds = append(createds, created)
-		}
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
-		next := ""
-		if len(items) > limit {
-			last := items[limit-1]
-			next = encodeCursor(cursor{C: createds[limit-1], I: last.ID})
-			items = items[:limit]
-		}
-		return map[string]any{"items": items, "next_cursor": next}, nil
+		payload, _, err := a.titlesPage(r.Context(), typ, q.Get("genre"), search, cur, limit)
+		return payload, err
 	})
 }
 
-// handleTitleDetail: detail judul + daftar episode/chapter.
-func (a *API) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	ctx := r.Context()
-	var detail struct {
-		titleCard
-		Synopsis         *string `json:"synopsis,omitempty"`
-		Season           *string `json:"season,omitempty"`
-		Network          *string `json:"network,omitempty"`
-		Studio           *string `json:"studio,omitempty"`
-		DurationMin      *int    `json:"duration_min,omitempty"`
-		Country          *string `json:"country,omitempty"`
-		FetchMode        string  `json:"fetch_mode"`
-		SourceDomain     *string `json:"source_domain,omitempty"`
-		SourceURLPattern *string `json:"source_url_template,omitempty"`
-	}
+type titleDetail struct {
+	titleCard
+	Synopsis         *string `json:"synopsis,omitempty"`
+	Season           *string `json:"season,omitempty"`
+	Network          *string `json:"network,omitempty"`
+	Studio           *string `json:"studio,omitempty"`
+	DurationMin      *int    `json:"duration_min,omitempty"`
+	Country          *string `json:"country,omitempty"`
+	FetchMode        string  `json:"fetch_mode"`
+	SourceDomain     *string `json:"source_domain,omitempty"`
+	SourceURLPattern *string `json:"source_url_template,omitempty"`
+}
+
+type episodeItem struct {
+	ID          string  `json:"id"`
+	EpisodeNo   int     `json:"episode_no"`
+	Title       *string `json:"title,omitempty"`
+	DurationSec *int    `json:"duration_sec,omitempty"`
+}
+
+type chapterItem struct {
+	ID        string  `json:"id"`
+	ChapterNo float64 `json:"chapter_no"`
+	Title     *string `json:"title,omitempty"`
+	PageCount int     `json:"page_count"`
+}
+
+// loadTitleDetail membaca detail judul + episode + chapter dari DB.
+func (a *API) loadTitleDetail(ctx context.Context, id string) (titleDetail, []episodeItem, []chapterItem, error) {
+	var detail titleDetail
 	err := a.pool.QueryRow(ctx, `
 		select `+titleCardCols+`, synopsis, season, network, studio,
 		       duration_min, country, fetch_mode, source_domain,
@@ -217,47 +259,58 @@ func (a *API) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
 		&detail.Studio, &detail.DurationMin, &detail.Country, &detail.FetchMode,
 		&detail.SourceDomain, &detail.SourceURLPattern)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "judul tidak ditemukan")
-		return
+		return detail, nil, nil, err
 	}
 	if detail.Genres == nil {
 		detail.Genres = []string{}
 	}
-	type episode struct {
-		ID          string  `json:"id"`
-		EpisodeNo   int     `json:"episode_no"`
-		Title       *string `json:"title,omitempty"`
-		DurationSec *int    `json:"duration_sec,omitempty"`
-	}
-	episodes := []episode{}
+	episodes := []episodeItem{}
 	erows, err := a.pool.Query(ctx, `
 		select id, episode_no, title, duration_sec from episodes
 		where title_id = $1::uuid order by episode_no`, id)
 	if err == nil {
 		defer erows.Close()
 		for erows.Next() {
-			var e episode
+			var e episodeItem
 			if err := erows.Scan(&e.ID, &e.EpisodeNo, &e.Title, &e.DurationSec); err == nil {
 				episodes = append(episodes, e)
 			}
 		}
 	}
-	type chapter struct {
-		ID        string  `json:"id"`
-		ChapterNo float64 `json:"chapter_no"`
-		Title     *string `json:"title,omitempty"`
-		PageCount int     `json:"page_count"`
-	}
-	chapters := []chapter{}
+	chapters := []chapterItem{}
 	crows, err := a.pool.Query(ctx, `
 		select id, chapter_no::float8, title, page_count from chapters
 		where title_id = $1::uuid order by chapter_no`, id)
 	if err == nil {
 		defer crows.Close()
 		for crows.Next() {
-			var c chapter
+			var c chapterItem
 			if err := crows.Scan(&c.ID, &c.ChapterNo, &c.Title, &c.PageCount); err == nil {
 				chapters = append(chapters, c)
+			}
+		}
+	}
+	return detail, episodes, chapters, nil
+}
+
+// handleTitleDetail: detail judul + daftar episode/chapter. Bila
+// detail judul server masih kosong (sinopsis belum ada / episode
+// masih 0), jalur on-demand mencoba mengisinya langsung dari
+// sumber sebelum menjawab (ondemand.go); kegagalannya tidak pernah
+// menjadi error ke user — data DB apa adanya yang dikembalikan.
+func (a *API) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+	detail, episodes, chapters, err := a.loadTitleDetail(ctx, id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "judul tidak ditemukan")
+		return
+	}
+	hasSynopsis := detail.Synopsis != nil && *detail.Synopsis != ""
+	if needMeta, needEps := needsOnDemand(detail.FetchMode, detail.Type, hasSynopsis, len(episodes)); needMeta || needEps {
+		if a.fillOnDemand(r, id, needMeta, needEps) {
+			if d2, e2, c2, err := a.loadTitleDetail(ctx, id); err == nil {
+				detail, episodes, chapters = d2, e2, c2
 			}
 		}
 	}
@@ -271,14 +324,14 @@ func (a *API) handlePlayback(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	ctx := r.Context()
 	var ep struct {
-		ID        string  `json:"id"`
-		TitleID   string  `json:"title_id"`
-		EpisodeNo int     `json:"episode_no"`
-		VideoURL  string  `json:"-"`
-		IntroS    *int    `json:"intro_start_sec,omitempty"`
-		IntroE    *int    `json:"intro_end_sec,omitempty"`
-		OutroS    *int    `json:"outro_start_sec,omitempty"`
-		OutroE    *int    `json:"outro_end_sec,omitempty"`
+		ID        string `json:"id"`
+		TitleID   string `json:"title_id"`
+		EpisodeNo int    `json:"episode_no"`
+		VideoURL  string `json:"-"`
+		IntroS    *int   `json:"intro_start_sec,omitempty"`
+		IntroE    *int   `json:"intro_end_sec,omitempty"`
+		OutroS    *int   `json:"outro_start_sec,omitempty"`
+		OutroE    *int   `json:"outro_end_sec,omitempty"`
 	}
 	err := a.pool.QueryRow(ctx, `
 		select id, title_id, episode_no, video_url, intro_start_sec, intro_end_sec,

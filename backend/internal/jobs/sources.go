@@ -210,37 +210,7 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 		if meta.Synopsis == "" && meta.Studio == "" && len(meta.Genres) == 0 {
 			continue
 		}
-		genres := meta.Genres
-		if genres == nil {
-			genres = []string{}
-		}
-		var year, dur any
-		if meta.Year > 0 {
-			year = meta.Year
-		}
-		if meta.DurationMin > 0 {
-			dur = meta.DurationMin
-		}
-		var season any
-		if meta.Season != "" {
-			season = meta.Season
-		}
-		if _, err := pool.Exec(ctx, `
-			update titles set
-				synopsis = coalesce(synopsis, $2),
-				title_alt = coalesce(title_alt, $3),
-				genres = case when coalesce(cardinality(genres), 0) = 0 then $4 else genres end,
-				year = coalesce(year, $5),
-				season = coalesce(season, $6),
-				network = coalesce(network, $7),
-				studio = coalesce(studio, $8),
-				duration_min = coalesce(duration_min, $9),
-				country = coalesce(country, $10),
-				updated_at = now()
-			where id = $1::uuid`,
-			j.titleID, nullIfEmpty(meta.Synopsis), nullIfEmpty(meta.TitleAlt),
-			genres, year, season, nullIfEmpty(meta.Network),
-			nullIfEmpty(meta.Studio), dur, nullIfEmpty(meta.Country)); err != nil {
+		if err := applySeriesMeta(ctx, pool, j.titleID, meta); err != nil {
 			log.Printf("enrich %s: %v", j.titleID, err)
 			continue
 		}

@@ -34,6 +34,7 @@ type API struct {
 	gopay     *payments.GoPayClient
 	tokopay   *payments.TokopayClient
 	hub       *chat.Hub
+	guard     *fillGuard // kunci + cooldown jalur on-demand (ondemand.go)
 }
 
 func New(pool *pgxpool.Pool, sessions *middleware.Sessions, cfg config.Config) *API {
@@ -46,6 +47,7 @@ func New(pool *pgxpool.Pool, sessions *middleware.Sessions, cfg config.Config) *
 		authn:     &auth.Authenticator{Pool: pool, JWTSecret: cfg.JWTSecret},
 		cfg:       cfg,
 		hub:       chat.NewHub(pool),
+		guard:     newFillGuard(onDemandCooldown),
 	}
 	if cfg.GoogleClientID != "" {
 		a.verifier = auth.NewGoogleVerifier(cfg.GoogleClientID, cfg.GoogleCertsURL)
