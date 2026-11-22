@@ -16,7 +16,10 @@ android {
         versionName = "0.5.0"
         // Alamat backend bawaan untuk pengembangan (emulator → host).
         // Rilis memakai alamat resmi dari pengaturan aplikasi.
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"")
+        // Alamat API: bawaan emulator; build produksi menimpa lewat
+        // -PapiBaseUrl=https://api.contoh.com (tanpa garis miring akhir).
+        val apiBaseUrl = providers.gradleProperty("apiBaseUrl").orElse("http://10.0.2.2:8080").get()
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         // OAuth client ID (tipe web) untuk Google Sign-In; diisi saat
         // proyek Google Cloud dibuat. Kosong = tombol masuk nonaktif.
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"\"")
