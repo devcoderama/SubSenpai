@@ -477,8 +477,13 @@ fun PlayerScreen(
                             episodes = episodes,
                             currentId = epId,
                             onSelect = { epId = it },
-                            onPrev = episodes.getOrNull(curEpIdx - 1)?.let { prev -> { epId = prev.id } },
-                            onNext = episodes.getOrNull(curEpIdx + 1)?.let { next -> { epId = next.id } },
+                            onPrev = episodes.getOrNull(curEpIdx - 1)?.let { prev ->
+                                { if (prev.locked) onOpenPremium() else epId = prev.id }
+                            },
+                            onNext = episodes.getOrNull(curEpIdx + 1)?.let { next ->
+                                { if (next.locked) onOpenPremium() else epId = next.id }
+                            },
+                            onOpenPremium = onOpenPremium,
                         )
                     }
                 }
@@ -935,6 +940,7 @@ private fun EpisodeSelector(
     onSelect: (String) -> Unit,
     onPrev: (() -> Unit)?,
     onNext: (() -> Unit)?,
+    onOpenPremium: () -> Unit = {},
 ) {
     Column(modifier = Modifier.padding(top = 10.dp)) {
         Row(
@@ -967,7 +973,11 @@ private fun EpisodeSelector(
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = if (active) WatchAccent else WatchSurface,
-                    modifier = Modifier.clickable { onSelect(ep.id) },
+                    modifier = Modifier.clickable {
+                        // Gembok diketuk → langsung ke halaman Premium
+                        // (permintaan Rams 2026-11-22, seperti di detail).
+                        if (ep.locked) onOpenPremium() else onSelect(ep.id)
+                    },
                 ) {
                     Text(
                         (if (active) "▶ " else "") + (if (ep.locked) "🔒 " else "") + "Ep ${ep.episodeNo}",
