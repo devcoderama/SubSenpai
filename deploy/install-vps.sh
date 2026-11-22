@@ -101,8 +101,8 @@ else
   git clone --depth 50 "$REPO_URL" "$SRC_DIR"
 fi
 say "Membangun binary (server + worker)…"
-(cd "$SRC_DIR/backend" && CGO_ENABLED=0 go build -trimpath -o "$APP_DIR/subsenpai-server" ./cmd/server \
-  && CGO_ENABLED=0 go build -trimpath -o "$APP_DIR/subsenpai-worker" ./cmd/worker)
+(cd "$SRC_DIR/backend" && CGO_ENABLED=0 go build -buildvcs=false -trimpath -o "$APP_DIR/subsenpai-server" ./cmd/server \
+  && CGO_ENABLED=0 go build -buildvcs=false -trimpath -o "$APP_DIR/subsenpai-worker" ./cmd/worker)
 chown -R subsenpai:subsenpai "$APP_DIR"
 
 # --- 6. systemd -----------------------------------------------------------
