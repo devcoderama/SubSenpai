@@ -89,10 +89,9 @@ fun DetailScreen(
         if (d != null) {
             item {
                 Box(modifier = Modifier.fillMaxWidth().height(360.dp)) {
-                    AsyncImage(
-                        model = d.card.posterUrl,
-                        contentDescription = d.card.title,
-                        contentScale = ContentScale.Crop,
+                    PosterImage(
+                        url = d.card.posterUrl,
+                        title = d.card.title,
                         modifier = Modifier.fillMaxSize(),
                     )
                     Box(

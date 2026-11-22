@@ -69,6 +69,59 @@ func (a *animestreamResolver) Search(ctx context.Context, src Source, query stri
 	return out, nil
 }
 
+type wpCategoryFull struct {
+	Name  string `json:"name"`
+	Slug  string `json:"slug"`
+	Count int    `json:"count"`
+}
+
+// Discover menemukan seri dari indeks kategori WordPress: di tema
+// Animestream tiap seri adalah satu kategori (slug kategori = slug seri,
+// terbukti di anichin.my: 573 kategori seri) dan semua post episodenya
+// berkategori itu — jadi daftar kategori terurut jumlah post terbanyak
+// adalah indeks seri situs ini. URL seri dibangun sebagai
+// <base>/series/<slug>/ sesuai pola permalink tema.
+func (a *animestreamResolver) Discover(ctx context.Context, src Source, limit int) ([]DiscoveredTitle, error) {
+	base := strings.TrimRight(src.BaseURL, "/")
+	out := []DiscoveredTitle{}
+	for page := 1; page <= 20 && len(out) < limit; page++ {
+		u := fmt.Sprintf("%s/wp-json/wp/v2/categories?per_page=100&page=%d&orderby=count&order=desc&_fields=name,slug,count",
+			base, page)
+		raw, err := Fetch(ctx, u)
+		if err != nil {
+			if page == 1 {
+				return nil, err
+			}
+			break
+		}
+		var cats []wpCategoryFull
+		if err := json.Unmarshal([]byte(raw), &cats); err != nil {
+			return nil, fmt.Errorf("daftar kategori WP tidak terbaca: %w", err)
+		}
+		for _, c := range cats {
+			if c.Count <= 0 || c.Slug == "" {
+				continue
+			}
+			name := strings.TrimSuffix(cleanText(c.Name), " Subtitle Indonesia")
+			if name == "" {
+				continue
+			}
+			out = append(out, DiscoveredTitle{
+				Title: name,
+				Slug:  c.Slug,
+				URL:   base + "/series/" + c.Slug + "/",
+			})
+			if len(out) >= limit {
+				break
+			}
+		}
+		if len(cats) < 100 {
+			break
+		}
+	}
+	return out, nil
+}
+
 var epSlugRe = regexp.MustCompile(`(?i)-episode-(\d+)`)
 
 type wpCategory struct {

@@ -32,33 +32,40 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.subsenpai.BuildConfig
 import com.subsenpai.data.CatalogRepository
 import kotlinx.coroutines.launch
 
 /**
- * Mengambil ID token Google lewat Credential Manager.
- * Jalur utama: bottom sheet GetGoogleIdOption. Bila tidak ada kredensial
- * yang tersedia (mis. client OAuth baru dibuat & belum tersebar, atau akun
- * belum pernah mengizinkan aplikasi), jatuh ke alur GetSignInWithGoogleOption
- * (layar masuk Google penuh) yang lebih toleran untuk izin pertama.
+ * Mengambil ID token Google lewat Credential Manager dengan dua jalur
+ * berantai dalam satu ketukan — satu jalur gagal/batal tidak langsung
+ * menyerah, jalur lain dicoba:
+ *  1) GetSignInWithGoogleOption — alur masuk Google layar penuh; paling
+ *     toleran untuk izin pertama & perangkat yang bottom sheet-nya rewel.
+ *  2) GetGoogleIdOption — bottom sheet pemilih akun.
+ * Pengecualian dari jalur terakhir dilempar ke pemanggil untuk dipetakan
+ * menjadi pesan pengguna.
  */
 private suspend fun fetchGoogleIdToken(context: Context): String {
     val manager = CredentialManager.create(context)
+    val webId = BuildConfig.GOOGLE_WEB_CLIENT_ID
     try {
-        val option = GetGoogleIdOption.Builder()
-            .setServerClientId(BuildConfig.GOOGLE_WEB_CLIENT_ID)
-            .setFilterByAuthorizedAccounts(false)
-            .build()
+        val option = GetSignInWithGoogleOption.Builder(webId).build()
         val result = manager.getCredential(
             context,
             GetCredentialRequest.Builder().addCredentialOption(option).build(),
         )
         return extractIdToken(result.credential)
-    } catch (e: NoCredentialException) {
-        val option = GetSignInWithGoogleOption.Builder(BuildConfig.GOOGLE_WEB_CLIENT_ID).build()
+    } catch (first: Exception) {
+        // Jalur pertama gagal/batal (termasuk pembatalan semu yang di
+        // sebagian perangkat muncul dari alur pertama) — beri jalur
+        // kedua kesempatan sebelum menyerah.
+        val option = GetGoogleIdOption.Builder()
+            .setServerClientId(webId)
+            .setFilterByAuthorizedAccounts(false)
+            .build()
         val result = manager.getCredential(
             context,
             GetCredentialRequest.Builder().addCredentialOption(option).build(),
@@ -142,7 +149,10 @@ fun LoginScreen(
                             loggedIn = true
                             onAuthChanged()
                         } catch (e: GetCredentialCancellationException) {
-                            error = "Login dibatalkan."
+                            error = "Login dibatalkan. Bila kamu tidak membatalkan, " +
+                                "kemungkinan akun yang dipilih belum terdaftar sebagai " +
+                                "test user di Google Cloud, atau pengaturan client masih " +
+                                "menyebar — coba lagi beberapa saat lagi."
                         } catch (e: NoCredentialException) {
                             error = "Tidak ada akun Google yang tersedia untuk aplikasi ini. " +
                                 "Pastikan ada akun Google yang masuk di HP ini. Bila client Google " +

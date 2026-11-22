@@ -47,7 +47,9 @@ id subsenpai >/dev/null 2>&1 || useradd --system --home "$APP_DIR" --shell /usr/
 mkdir -p "$APP_DIR" "$ENV_DIR"
 
 # --- 3. Database + env (hanya sekali; rahasia dibuat DI VPS ini) -------
+FRESH_INSTALL=0
 if [ ! -f "$ENV_FILE" ]; then
+  FRESH_INSTALL=1
   DBPASS="$(openssl rand -hex 24)"
   JWTSECRET="$(openssl rand -hex 32)"
   sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
@@ -113,10 +115,14 @@ systemctl daemon-reload
 systemctl enable --now subsenpai-api subsenpai-worker >/dev/null 2>&1 || true
 systemctl restart subsenpai-api subsenpai-worker
 
-# --- 7. Seed contoh (hanya bila katalog masih kosong) ---------------------
+# --- 7. Seed contoh (HANYA pemasangan baru & katalog masih kosong) -------
+# Pemasangan ulang tidak pernah menanam ulang data contoh: katalog yang
+# sudah dikosongkan/diisi konten asli tidak ditimpa dummy lagi.
 set -a; . "$ENV_FILE"; set +a
 COUNT="$(psql "$DATABASE_URL" -tA -c 'select count(*) from titles' 2>/dev/null || echo x)"
-if [ "$COUNT" = "0" ]; then
+if [ "$FRESH_INSTALL" != "1" ]; then
+  say "Bukan pemasangan baru — seed contoh dilewati (katalog berisi $COUNT judul)."
+elif [ "$COUNT" = "0" ]; then
   say "Mengisi data contoh…"
   psql "$DATABASE_URL" -q -f "$SRC_DIR/db/seed/dev_seed.sql" >/dev/null
 elif [ "$COUNT" = "x" ]; then

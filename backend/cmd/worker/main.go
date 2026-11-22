@@ -47,6 +47,9 @@ func main() {
 		if err := jobs.CheckSources(ctx, pool); err != nil {
 			log.Printf("cek sumber: %v", err)
 		}
+		if err := jobs.DiscoverTitles(ctx, pool); err != nil {
+			log.Printf("penemuan judul: %v", err)
+		}
 		if err := jobs.SyncSources(ctx, pool); err != nil {
 			log.Printf("sinkron sumber: %v", err)
 		}

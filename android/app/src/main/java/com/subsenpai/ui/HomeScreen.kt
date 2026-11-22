@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -198,10 +199,9 @@ fun HomeScreen(
                     ) {
                         items(lanjut) { h ->
                             Column(modifier = Modifier.width(120.dp).clickable { onOpenEpisode(h.episodeId) }) {
-                                AsyncImage(
-                                    model = h.posterUrl,
-                                    contentDescription = h.title,
-                                    contentScale = ContentScale.Crop,
+                                PosterImage(
+                                    url = h.posterUrl,
+                                    title = h.title,
                                     modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
                                         .clip(RoundedCornerShape(8.dp)),
                                 )
@@ -312,13 +312,45 @@ private fun PosterRow(list: List<TitleCard>, onOpen: (String) -> Unit) {
     }
 }
 
+/**
+ * Gambar poster; bila URL kosong (judul hasil penemuan yang sumbernya
+ * tidak menyediakan poster yang bisa dijangkau), tampilkan plakat judul
+ * bergaya Netflix agar kisi tetap terlihat utuh.
+ */
+@Composable
+fun PosterImage(url: String?, title: String, modifier: Modifier = Modifier) {
+    if (url.isNullOrBlank()) {
+        Box(
+            modifier = modifier.background(
+                Brush.verticalGradient(listOf(Color(0xFF4A0E12), Color(0xFF1B1B1B)))
+            ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                title.take(30),
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(10.dp),
+            )
+        }
+    } else {
+        AsyncImage(
+            model = url,
+            contentDescription = title,
+            contentScale = ContentScale.Crop,
+            modifier = modifier,
+        )
+    }
+}
+
 @Composable
 private fun PosterCard(t: TitleCard, onOpen: (String) -> Unit, modifier: Modifier = Modifier) {
     Column(modifier = modifier.clickable { onOpen(t.id) }) {
-        AsyncImage(
-            model = t.posterUrl,
-            contentDescription = t.title,
-            contentScale = ContentScale.Crop,
+        PosterImage(
+            url = t.posterUrl,
+            title = t.title,
             modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)),
         )
         Text(
@@ -336,10 +368,9 @@ private fun PosterCard(t: TitleCard, onOpen: (String) -> Unit, modifier: Modifie
 fun TitleRow(t: TitleCard, onOpen: (String) -> Unit) {
     Card(modifier = Modifier.fillMaxWidth().clickable { onOpen(t.id) }) {
         Row(modifier = Modifier.padding(12.dp)) {
-            AsyncImage(
-                model = t.posterUrl,
-                contentDescription = t.title,
-                contentScale = ContentScale.Crop,
+            PosterImage(
+                url = t.posterUrl,
+                title = t.title,
                 modifier = Modifier.width(56.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)),
             )
             Spacer(Modifier.width(12.dp))

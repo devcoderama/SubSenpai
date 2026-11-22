@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -73,6 +74,40 @@ type Resolver interface {
 	Search(ctx context.Context, src Source, query string) ([]Candidate, error)
 	Episodes(ctx context.Context, src Source, titleURL string) ([]EpisodeRef, error)
 	Resolve(ctx context.Context, src Source, ep EpisodeRef) (Resolved, error)
+}
+
+// DiscoveredTitle adalah satu judul hasil penemuan katalog dari situs
+// sumber: nama + slug + URL halaman judulnya.
+type DiscoveredTitle struct {
+	Title string
+	Slug  string
+	URL   string
+}
+
+// Discoverer adalah kemampuan opsional resolver: menemukan judul-judul
+// yang tersedia di situs sumber untuk mengisi katalog — berbeda dengan
+// Search yang mencari satu judul tertentu yang sudah dikenal namanya.
+type Discoverer interface {
+	Discover(ctx context.Context, src Source, limit int) ([]DiscoveredTitle, error)
+}
+
+var ogImageRe = regexp.MustCompile(`(?is)<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']|<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']`)
+
+// FetchPoster mengambil URL poster (meta og:image) dari halaman judul
+// sumber; string kosong bila tidak ditemukan/gagal.
+func FetchPoster(ctx context.Context, pageURL string) string {
+	page, err := Fetch(ctx, pageURL)
+	if err != nil {
+		return ""
+	}
+	m := ogImageRe.FindStringSubmatch(page)
+	if m == nil {
+		return ""
+	}
+	if m[1] != "" {
+		return m[1]
+	}
+	return m[2]
 }
 
 // ByKey mengembalikan resolver terdaftar untuk kunci registri.

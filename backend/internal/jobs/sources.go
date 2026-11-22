@@ -67,6 +67,100 @@ func loadSources(ctx context.Context, pool *pgxpool.Pool, contentType string) ([
 	return out, rows.Err()
 }
 
+// maxPosterPerRun membatasi pengambilan poster (satu permintaan HTTP per
+// judul) per putaran penemuan agar worker tidak membanjiri situs sumber.
+const maxPosterPerRun = 40
+
+// DiscoverTitles mengisi katalog dari indeks judul situs sumber (F40):
+// untuk tiap sumber server yang resolvernya mendukung penemuan, judul
+// yang belum ada dimasukkan ke titles + langsung dipetakan di
+// title_sources (episode & aliran menyusul lewat SyncSources). Poster
+// diambil dari og:image halaman seri, dibatasi per putaran, dan
+// dilengkapi bertahap untuk judul lama yang belum berposter.
+func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
+	posters := 0
+	for _, ct := range []string{"anime", "donghua", "film"} {
+		srcs, err := loadSources(ctx, pool, ct)
+		if err != nil {
+			return err
+		}
+		for _, src := range srcs {
+			resolver, ok := sources.ByKey(src.Resolver)
+			if !ok {
+				continue
+			}
+			disc, ok := resolver.(sources.Discoverer)
+			if !ok {
+				continue
+			}
+			found, err := disc.Discover(ctx, src, 600)
+			if err != nil {
+				log.Printf("penemuan dari %s: %v", src.Name, err)
+				continue
+			}
+			baru := 0
+			for _, d := range found {
+				var id string
+				err := pool.QueryRow(ctx, `
+					insert into titles (slug, type, title)
+					values ($1, $2, $3)
+					on conflict (slug) do nothing
+					returning id`, d.Slug, ct, d.Title).Scan(&id)
+				if err != nil {
+					continue // sudah ada di katalog — lewati
+				}
+				baru++
+				if _, err := pool.Exec(ctx, `
+					insert into title_sources (title_id, source_id, source_url)
+					values ($1::uuid, $2::uuid, $3)
+					on conflict (title_id, source_id) do nothing`,
+					id, src.ID, d.URL); err != nil {
+					log.Printf("petakan judul %s: %v", d.Title, err)
+					continue
+				}
+				if posters < maxPosterPerRun {
+					if p := sources.FetchPoster(ctx, d.URL); p != "" {
+						_, _ = pool.Exec(ctx, `
+							update titles set poster_url = $2, updated_at = now()
+							where id = $1::uuid`, id, p)
+						posters++
+					}
+				}
+			}
+			// Lengkapi poster judul dari sumber ini yang belum berposter.
+			if posters < maxPosterPerRun {
+				rows, err := pool.Query(ctx, `
+					select t.id, ts.source_url from titles t
+					join title_sources ts
+					  on ts.title_id = t.id and ts.source_id = $1::uuid
+					where t.poster_url is null
+					limit $2`, src.ID, maxPosterPerRun-posters)
+				if err == nil {
+					type pend struct{ id, url string }
+					list := []pend{}
+					for rows.Next() {
+						var p pend
+						if err := rows.Scan(&p.id, &p.url); err == nil {
+							list = append(list, p)
+						}
+					}
+					rows.Close()
+					for _, p := range list {
+						if poster := sources.FetchPoster(ctx, p.url); poster != "" {
+							_, _ = pool.Exec(ctx, `
+								update titles set poster_url = $2, updated_at = now()
+								where id = $1::uuid`, p.id, poster)
+							posters++
+						}
+					}
+				}
+			}
+			log.Printf("penemuan %s: %d judul ditemukan, %d baru masuk katalog", src.Name, len(found), baru)
+		}
+	}
+	return nil
+}
+
 // maxResolvePerRun membatasi episode yang diselesaikan per putaran sinkron
 // agar satu putaran worker tidak berjalan tanpa batas.
 const maxResolvePerRun = 20
