@@ -67,3 +67,39 @@ func FromContext(ctx context.Context) *Profile {
 	p, _ := ctx.Value(ctxKey{}).(*Profile)
 	return p
 }
+
+// Optional: bila header Authorization berisi JWT yang valid, profil
+// dimuat ke context; tanpa header, request lanjut sebagai tamu. Header
+// ada tapi tidak valid → 401 (jangan diam-diam turun jadi tamu).
+func (a *Authenticator) Optional(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := r.Header.Get("Authorization")
+		if h == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !strings.HasPrefix(h, "Bearer ") {
+			writeAuthErr(w, http.StatusUnauthorized, "format Authorization tidak valid")
+			return
+		}
+		profileID, _, err := ParseJWT(a.JWTSecret, strings.TrimPrefix(h, "Bearer "))
+		if err != nil {
+			writeAuthErr(w, http.StatusUnauthorized, err.Error())
+			return
+		}
+		var p Profile
+		err = a.Pool.QueryRow(r.Context(), `
+			select id, coalesce(email,''), role, is_banned
+			from profiles where id = $1::uuid`, profileID,
+		).Scan(&p.ID, &p.Email, &p.Role, &p.Banned)
+		if err != nil {
+			writeAuthErr(w, http.StatusUnauthorized, "profil tidak ditemukan")
+			return
+		}
+		if p.Banned {
+			writeAuthErr(w, http.StatusForbidden, "akun diblokir")
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, &p)))
+	})
+}

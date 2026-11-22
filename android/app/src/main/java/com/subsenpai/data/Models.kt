@@ -240,6 +240,145 @@ class CatalogRepository(
         }
     }
 
+    // ---------- Premium & pembayaran (Fase 4) ----------
+
+    suspend fun plans(): List<PlanItem> {
+        val o = api.get("/api/v1/plans")
+        return buildList {
+            val arr = o.optJSONArray("plans")
+            if (arr != null) for (i in 0 until arr.length()) {
+                val p = arr.getJSONObject(i)
+                add(PlanItem(p.getString("id"), p.getInt("days"), p.getInt("price"), p.optString("label")))
+            }
+        }
+    }
+
+    suspend fun premiumStatus(): PremiumStatus {
+        val o = api.get("/api/v1/premium/status")
+        return PremiumStatus(
+            tier = o.optString("tier", "free"),
+            isPremium = o.optBoolean("is_premium"),
+            premiumUntil = o.optString("premium_until").ifBlank { null },
+            trialAvailable = o.optBoolean("trial_available"),
+        )
+    }
+
+    suspend fun claimTrial(): String? {
+        val o = api.post("/api/v1/premium/trial")
+        return o.optString("premium_until").ifBlank { null }
+    }
+
+    suspend fun checkout(planId: String, provider: String, purpose: String, recipientCode: String? = null): JSONObject {
+        val body = JSONObject()
+            .put("plan_id", planId)
+            .put("provider", provider)
+            .put("purpose", purpose)
+        if (recipientCode != null) body.put("recipient_code", recipientCode)
+        return api.post("/api/v1/payments/checkout", body)
+    }
+
+    suspend fun redeemVoucher(code: String): JSONObject =
+        api.post("/api/v1/vouchers/redeem", JSONObject().put("code", code))
+
+    suspend fun myVouchers(): List<VoucherItem> {
+        val o = api.get("/api/v1/vouchers/mine")
+        return buildList {
+            val arr = o.optJSONArray("vouchers")
+            if (arr != null) for (i in 0 until arr.length()) {
+                val v = arr.getJSONObject(i)
+                add(VoucherItem(v.getString("code"), v.getInt("duration_days"), v.optString("source")))
+            }
+        }
+    }
+
+    // ---------- Sosial: chat, teman, grup (Fase 4) ----------
+
+    suspend fun chatChannels(): List<ChatChannelItem> {
+        val o = api.get("/api/v1/chat/channels")
+        return buildList {
+            val arr = o.optJSONArray("channels")
+            if (arr != null) for (i in 0 until arr.length()) {
+                val c = arr.getJSONObject(i)
+                add(
+                    ChatChannelItem(
+                        id = c.getString("id"),
+                        name = c.getString("name"),
+                        kind = c.optString("kind", "global"),
+                    )
+                )
+            }
+        }
+    }
+
+    suspend fun chatHistory(channelId: String): List<ChatMsg> {
+        val o = api.get("/api/v1/chat/channels/$channelId/messages")
+        return buildList {
+            val arr = o.optJSONArray("messages")
+            if (arr != null) for (i in 0 until arr.length()) {
+                add(ChatMsg.fromJson(arr.getJSONObject(i)))
+            }
+        }
+    }
+
+    suspend fun friends(): List<FriendItem> {
+        val o = api.get("/api/v1/friends")
+        return buildList {
+            val arr = o.optJSONArray("friends")
+            if (arr != null) for (i in 0 until arr.length()) {
+                val f = arr.getJSONObject(i)
+                add(
+                    FriendItem(
+                        userId = f.getString("user_id"),
+                        email = f.optString("email"),
+                        displayName = f.optString("display_name").ifBlank { null },
+                        status = f.optString("status"),
+                    )
+                )
+            }
+        }
+    }
+
+    suspend fun friendRequest(code: String): JSONObject =
+        api.post("/api/v1/friends/request", JSONObject().put("friend_code", code))
+
+    suspend fun friendAccept(userId: String): JSONObject =
+        api.post("/api/v1/friends/accept", JSONObject().put("user_id", userId))
+
+    suspend fun friendBlock(userId: String): JSONObject =
+        api.post("/api/v1/friends/block", JSONObject().put("user_id", userId))
+
+    suspend fun dmOpen(userId: String): String =
+        api.post("/api/v1/dm/$userId").getString("channel_id")
+
+    suspend fun groups(): List<GroupItem> {
+        val o = api.get("/api/v1/groups")
+        return buildList {
+            val arr = o.optJSONArray("groups")
+            if (arr != null) for (i in 0 until arr.length()) {
+                val g = arr.getJSONObject(i)
+                add(
+                    GroupItem(
+                        id = g.getString("id"),
+                        name = g.getString("name"),
+                        isPublic = g.optBoolean("is_public"),
+                        isMember = g.optBoolean("is_member"),
+                        inviteCode = g.optString("invite_code").ifBlank { null },
+                        channelId = g.optString("channel_id").ifBlank { null },
+                    )
+                )
+            }
+        }
+    }
+
+    suspend fun groupCreate(name: String, isPublic: Boolean): JSONObject =
+        api.post("/api/v1/groups", JSONObject().put("name", name).put("is_public", isPublic))
+
+    suspend fun groupJoin(groupId: String): JSONObject =
+        api.post("/api/v1/groups/$groupId/join")
+
+    suspend fun groupJoinByCode(code: String): JSONObject =
+        api.post("/api/v1/groups/join", JSONObject().put("invite_code", code))
+
     suspend fun watchHistory(): List<WatchHistoryItem> {
         val o = api.get("/api/v1/history/watch?limit=10")
         return buildList {

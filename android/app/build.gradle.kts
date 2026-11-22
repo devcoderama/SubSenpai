@@ -12,8 +12,8 @@ android {
         applicationId = "com.subsenpai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
         // Alamat backend bawaan untuk pengembangan (emulator → host).
         // Rilis memakai alamat resmi dari pengaturan aplikasi.
         buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"")

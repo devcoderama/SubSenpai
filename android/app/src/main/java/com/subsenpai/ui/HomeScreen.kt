@@ -47,6 +47,8 @@ fun HomeScreen(
     onOpenEpisode: (String) -> Unit,
     onLogin: () -> Unit,
     onOpenWatchlist: () -> Unit,
+    onOpenPremium: () -> Unit = {},
+    onOpenChat: () -> Unit = {},
 ) {
     var trending by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var terbaru by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
@@ -95,7 +97,9 @@ fun HomeScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("SubSenpai", style = MaterialTheme.typography.headlineMedium)
                 Row {
+                    TextButton(onClick = onOpenPremium) { Text("Premium") }
                     if (loggedIn) {
+                        TextButton(onClick = onOpenChat) { Text("Chat") }
                         TextButton(onClick = onOpenWatchlist) { Text("Watchlist") }
                     }
                     TextButton(onClick = onLogin) { Text(if (loggedIn) "Akun" else "Masuk") }

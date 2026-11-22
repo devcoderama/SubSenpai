@@ -16,8 +16,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"subsenpai/backend/internal/auth"
+	"subsenpai/backend/internal/chat"
 	"subsenpai/backend/internal/config"
 	"subsenpai/backend/internal/middleware"
+	"subsenpai/backend/internal/payments"
 )
 
 type API struct {
@@ -28,6 +30,9 @@ type API struct {
 	jwtSecret string
 	jwtTTL    time.Duration
 	authn     *auth.Authenticator
+	cfg       config.Config
+	gopay     *payments.GoPayClient
+	hub       *chat.Hub
 }
 
 func New(pool *pgxpool.Pool, sessions *middleware.Sessions, cfg config.Config) *API {
@@ -38,9 +43,14 @@ func New(pool *pgxpool.Pool, sessions *middleware.Sessions, cfg config.Config) *
 		jwtSecret: cfg.JWTSecret,
 		jwtTTL:    time.Duration(cfg.JWTTTLHours) * time.Hour,
 		authn:     &auth.Authenticator{Pool: pool, JWTSecret: cfg.JWTSecret},
+		cfg:       cfg,
+		hub:       chat.NewHub(pool),
 	}
 	if cfg.GoogleClientID != "" {
 		a.verifier = auth.NewGoogleVerifier(cfg.GoogleClientID, cfg.GoogleCertsURL)
+	}
+	if cfg.GoPayBaseURL != "" {
+		a.gopay = payments.NewGoPayClient(cfg.GoPayBaseURL, cfg.GoPayUsername, cfg.GoPayPassword)
 	}
 	return a
 }
@@ -51,6 +61,12 @@ func (a *API) Router() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	r.With(middleware.RateLimit(30)).Post("/api/v1/session", a.handleSession)
+	// Webhook gateway pembayaran: polos, tanpa envelope & tanpa JWT —
+	// keasliannya dari tanda tangan/token callback gateway (Fase 4).
+	r.Post("/api/v1/payments/webhook/midtrans", a.handleMidtransWebhook)
+	r.Post("/api/v1/payments/webhook/xendit", a.handleXenditWebhook)
+	// WebSocket chat & watch party (Fase 4): auth via header Authorization.
+	r.Get("/ws", a.handleWS)
 	r.Group(func(r chi.Router) {
 		r.Use(func(next http.Handler) http.Handler {
 			return middleware.Envelope(a.sessions, next)
@@ -58,10 +74,13 @@ func (a *API) Router() http.Handler {
 		r.Get("/api/v1/home", a.handleHome)
 		r.Get("/api/v1/titles", a.handleTitles)
 		r.Get("/api/v1/titles/{id}", a.handleTitleDetail)
-		r.Get("/api/v1/episodes/{id}/playback", a.handlePlayback)
-		r.Get("/api/v1/chapters/{id}", a.handleChapter)
+		// Playback & chapter melewati gerbang freemium (Fase 4): JWT
+		// opsional membedakan tamu / user gratis / premium.
+		r.With(a.authn.Optional).Get("/api/v1/episodes/{id}/playback", a.handlePlayback)
+		r.With(a.authn.Optional).Get("/api/v1/chapters/{id}", a.handleChapter)
 		r.With(middleware.RateLimit(30)).Post("/api/v1/auth/google", a.handleGoogleLogin)
-		// Endpoint khusus user login (Fase 3).
+		r.Get("/api/v1/plans", a.handlePlans)
+		// Endpoint khusus user login (Fase 3–4).
 		r.Group(func(r chi.Router) {
 			r.Use(a.authn.Require)
 			r.Get("/api/v1/me", a.handleMe)
@@ -73,6 +92,26 @@ func (a *API) Router() http.Handler {
 			r.Get("/api/v1/history/watch", a.handleHistoryWatchList)
 			r.Post("/api/v1/history/read", a.handleHistoryReadReport)
 			r.Get("/api/v1/history/read", a.handleHistoryReadList)
+			// Premium & pembayaran (Fase 4).
+			r.Get("/api/v1/premium/status", a.handlePremiumStatus)
+			r.Post("/api/v1/premium/trial", a.handleTrial)
+			r.Post("/api/v1/payments/checkout", a.handleCheckout)
+			r.Post("/api/v1/vouchers/redeem", a.handleVoucherRedeem)
+			r.Get("/api/v1/vouchers/mine", a.handleVouchersMine)
+			r.Get("/api/v1/devices", a.handleDevicesList)
+			r.Post("/api/v1/devices/revoke", a.handleDeviceRevoke)
+			// Sosial: chat, teman, grup (Fase 4).
+			r.Get("/api/v1/chat/channels", a.handleChatChannels)
+			r.Get("/api/v1/chat/channels/{id}/messages", a.handleChatHistory)
+			r.Get("/api/v1/friends", a.handleFriendsList)
+			r.Post("/api/v1/friends/request", a.handleFriendRequest)
+			r.Post("/api/v1/friends/accept", a.handleFriendAccept)
+			r.Post("/api/v1/friends/block", a.handleFriendBlock)
+			r.Post("/api/v1/dm/{userId}", a.handleDMOpen)
+			r.Get("/api/v1/groups", a.handleGroupsList)
+			r.Post("/api/v1/groups", a.handleGroupCreate)
+			r.Post("/api/v1/groups/join", a.handleGroupJoinByCode)
+			r.Post("/api/v1/groups/{id}/join", a.handleGroupJoin)
 		})
 	})
 	return r

@@ -50,3 +50,60 @@ data class WatchHistoryItem(
     val episodeNo: Int,
     val positionSec: Int,
 )
+
+// ---------- Fase 4: premium, sosial ----------
+
+data class PlanItem(val id: String, val days: Int, val price: Int, val label: String)
+
+data class PremiumStatus(
+    val tier: String,
+    val isPremium: Boolean,
+    val premiumUntil: String?,
+    val trialAvailable: Boolean,
+)
+
+data class VoucherItem(val code: String, val days: Int, val source: String)
+
+data class ChatChannelItem(val id: String, val name: String, val kind: String)
+
+data class ChatMsg(
+    val id: String,
+    val userId: String,
+    val displayName: String,
+    val nameColor: String?,
+    val nameEmoji: String?,
+    val body: String?,
+    val replyToId: String?,
+    val replyPreview: String?,
+    val deleted: Boolean,
+) {
+    companion object {
+        fun fromJson(o: org.json.JSONObject): ChatMsg = ChatMsg(
+            id = o.getString("id"),
+            userId = o.optString("user_id"),
+            displayName = o.optString("display_name", "Pengguna"),
+            nameColor = o.optString("name_color").ifBlank { null },
+            nameEmoji = o.optString("name_emoji").ifBlank { null },
+            body = if (o.isNull("body")) null else o.optString("body"),
+            replyToId = o.optString("reply_to_id").ifBlank { null },
+            replyPreview = o.optString("reply_preview").ifBlank { null },
+            deleted = o.optBoolean("deleted"),
+        )
+    }
+}
+
+data class FriendItem(
+    val userId: String,
+    val email: String,
+    val displayName: String?,
+    val status: String, // accepted | pending_in | pending_out
+)
+
+data class GroupItem(
+    val id: String,
+    val name: String,
+    val isPublic: Boolean,
+    val isMember: Boolean,
+    val inviteCode: String?,
+    val channelId: String?,
+)

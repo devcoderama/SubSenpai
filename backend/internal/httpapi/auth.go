@@ -42,7 +42,10 @@ func (a *API) handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		IDToken string `json:"id_token"`
+		IDToken      string `json:"id_token"`
+		ReferralCode string `json:"referral_code"`
+		DeviceID     string `json:"device_id"`
+		DeviceName   string `json:"device_name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.IDToken == "" {
 		writeErr(w, http.StatusBadRequest, "id_token wajib diisi")
@@ -56,6 +59,7 @@ func (a *API) handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var prof profileOut
 	var banned bool
+	var isNew bool
 	upsert := func(code string) error {
 		return a.pool.QueryRow(ctx, `
 			insert into profiles (email, google_sub, display_name, avatar_url, friend_code)
@@ -65,10 +69,10 @@ func (a *API) handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 			      display_name = excluded.display_name,
 			      avatar_url = excluded.avatar_url
 			returning id, email, display_name, avatar_url, role, is_premium,
-			          premium_until, app_language, friend_code, is_banned`,
+			          premium_until, app_language, friend_code, is_banned, (xmax = 0)`,
 			claims.Email, claims.Sub, nullStr(claims.Name), nullStr(claims.Picture), code,
 		).Scan(&prof.ID, &prof.Email, &prof.DisplayName, &prof.AvatarURL, &prof.Role,
-			&prof.IsPremium, &prof.PremiumUntil, &prof.AppLanguage, &prof.FriendCode, &banned)
+			&prof.IsPremium, &prof.PremiumUntil, &prof.AppLanguage, &prof.FriendCode, &banned, &isNew)
 	}
 	// Kode teman acak bisa bertabrakan (unik) — coba ulang beberapa kali.
 	err = upsert(newFriendCode())
@@ -82,6 +86,25 @@ func (a *API) handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	if banned {
 		writeErr(w, http.StatusForbidden, "akun diblokir")
 		return
+	}
+	// Perangkat dicatat saat login; akun premium dibatasi 2 perangkat.
+	if !a.registerDevice(w, r, prof.ID, req.DeviceID, req.DeviceName) {
+		return
+	}
+	// Referral: pendaftar baru yang membawa kode teman memicu voucher
+	// 3 hari untuk pengundang DAN pendaftar (STRUKTUR Bagian 4).
+	if isNew && req.ReferralCode != "" {
+		var inviterID string
+		if err := a.pool.QueryRow(ctx, `
+			select id from profiles where friend_code = $1 and id <> $2::uuid`,
+			req.ReferralCode, prof.ID).Scan(&inviterID); err == nil {
+			for _, target := range []string{inviterID, prof.ID} {
+				_, _ = a.pool.Exec(ctx, `
+					insert into vouchers (code, source, duration_days, created_by, assigned_to)
+					values ($1, 'referral', 3, $2::uuid, $3::uuid)`,
+					"REF-"+giftCode()[3:], prof.ID, target)
+			}
+		}
 	}
 	// Profil tontonan bawaan "Utama" dibuat sekali untuk tiap akun (F26).
 	var vpID string

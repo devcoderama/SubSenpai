@@ -3,8 +3,8 @@
 // Fase 1: menghitung ulang skor tren (O10) secara berkala.
 // Fase 2: cek kesehatan registri sumber (F40/O9) + sinkronisasi resolver
 // sumber (mengambil episode, aliran & trek subtitle siap pakai).
-// Fase berikutnya menambah: polling pembayaran GoPay, pembersihan
-// retensi, dan pengiriman notifikasi.
+// Fase 4: polling pembayaran GoPay (pencocokan nominal unik sesi).
+// Fase berikutnya menambah: pembersihan retensi dan pengiriman notifikasi.
 package main
 
 import (
@@ -18,6 +18,7 @@ import (
 	"subsenpai/backend/internal/config"
 	"subsenpai/backend/internal/db"
 	"subsenpai/backend/internal/jobs"
+	"subsenpai/backend/internal/payments"
 )
 
 func main() {
@@ -51,10 +52,17 @@ func main() {
 		}
 	}
 	runSources()
+	var gopayClient *payments.GoPayClient
+	if cfg.GoPayBaseURL != "" {
+		gopayClient = payments.NewGoPayClient(cfg.GoPayBaseURL, cfg.GoPayUsername, cfg.GoPayPassword)
+	}
+	jobs.PollGoPay(ctx, pool, gopayClient)
 	trendTicker := time.NewTicker(time.Hour)
 	defer trendTicker.Stop()
 	sourceTicker := time.NewTicker(30 * time.Minute)
 	defer sourceTicker.Stop()
+	payTicker := time.NewTicker(time.Minute)
+	defer payTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -66,6 +74,8 @@ func main() {
 			}
 		case <-sourceTicker.C:
 			runSources()
+		case <-payTicker.C:
+			jobs.PollGoPay(ctx, pool, gopayClient)
 		}
 	}
 }

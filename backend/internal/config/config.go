@@ -18,6 +18,17 @@ type Config struct {
 	GoogleCertsURL string
 	// JWTTTLHours adalah masa berlaku JWT sesi backend (bawaan 30 hari).
 	JWTTTLHours int
+	// Pembayaran (Fase 4). Kosong = provider bersangkutan nonaktif.
+	MidtransServerKey  string
+	MidtransProduction bool
+	XenditSecretKey    string
+	XenditCallbackTok  string
+	// GoPay Merchant (API pihak ketiga Api-Gopar-Merch): alamat layanan
+	// + kredensial akun merchant. Kosong = QRIS otomatis & polling mati;
+	// sesi nominal unik tetap dibuat.
+	GoPayBaseURL  string
+	GoPayUsername string
+	GoPayPassword string
 }
 
 func Load() Config {
@@ -37,6 +48,13 @@ func Load() Config {
 		GoogleClientID:  os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleCertsURL:  getenv("GOOGLE_CERTS_URL", "https://www.googleapis.com/oauth2/v3/certs"),
 		JWTTTLHours:     jwtTTL,
+		MidtransServerKey:  os.Getenv("MIDTRANS_SERVER_KEY"),
+		MidtransProduction: os.Getenv("MIDTRANS_PRODUCTION") == "true",
+		XenditSecretKey:    os.Getenv("XENDIT_SECRET_KEY"),
+		XenditCallbackTok:  os.Getenv("XENDIT_CALLBACK_TOKEN"),
+		GoPayBaseURL:       os.Getenv("GOPAY_MERCHANT_URL"),
+		GoPayUsername:      os.Getenv("GOPAY_USERNAME"),
+		GoPayPassword:      os.Getenv("GOPAY_PASSWORD"),
 	}
 }
 

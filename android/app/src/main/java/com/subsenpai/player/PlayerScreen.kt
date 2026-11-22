@@ -64,7 +64,12 @@ private fun mimeOf(format: String): String = when (format) {
  * - Kegagalan putar berpindah otomatis ke sumber berikutnya (failover O9).
  */
 @Composable
-fun PlayerScreen(repo: CatalogRepository, episodeId: String, onBack: () -> Unit) {
+fun PlayerScreen(
+    repo: CatalogRepository,
+    episodeId: String,
+    onBack: () -> Unit,
+    onNeedLogin: () -> Unit = {},
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val translator = remember { GtxTranslator() }
@@ -72,6 +77,7 @@ fun PlayerScreen(repo: CatalogRepository, episodeId: String, onBack: () -> Unit)
 
     var playback by remember { mutableStateOf<Playback?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var locked by remember { mutableStateOf<String?>(null) }
     var sourceIdx by remember { mutableStateOf(0) }
     var subChoice by remember { mutableStateOf<SubChoice>(SubChoice.None) }
     var translating by remember { mutableStateOf(false) }
@@ -87,6 +93,12 @@ fun PlayerScreen(repo: CatalogRepository, episodeId: String, onBack: () -> Unit)
             playback = pb
             pb.subtitles.firstOrNull { it.status == "done" && it.fileUrl != null }?.let {
                 subChoice = SubChoice.Remote(it)
+            }
+        } catch (e: com.subsenpai.data.ApiException) {
+            if (e.code == 403) {
+                locked = e.message // gerbang freemium: batas tamu tercapai
+            } else {
+                error = e.message
             }
         } catch (e: Exception) {
             error = e.message
@@ -160,9 +172,121 @@ fun PlayerScreen(repo: CatalogRepository, episodeId: String, onBack: () -> Unit)
         onDispose { player.release() }
     }
 
+    // ---------- Nonton bareng (Fase 4) ----------
+    var partyCode by remember { mutableStateOf<String?>(null) }
+    var partyJoinCode by remember { mutableStateOf("") }
+    val partySocket = remember { mutableStateOf<com.subsenpai.data.ChatSocket?>(null) }
+    DisposableEffect(repo.auth?.token) {
+        val token = repo.auth?.token
+        val s = if (token != null) com.subsenpai.data.ChatSocket(token) else null
+        partySocket.value = s
+        if (s != null) {
+            s.onEvent = { ev ->
+                when (ev.optString("type")) {
+                    "party_created", "party_joined" -> partyCode = ev.optString("code")
+                    "party_sync" -> {
+                        val pos = ev.optInt("position_sec") * 1000L
+                        when (ev.optString("action")) {
+                            "play" -> {
+                                if (kotlin.math.abs(player.currentPosition - pos) > 2000) {
+                                    player.seekTo(pos)
+                                }
+                                player.play()
+                            }
+                            "pause" -> player.pause()
+                            "seek" -> player.seekTo(pos)
+                        }
+                    }
+                }
+            }
+            s.connect()
+        }
+        onDispose { s?.close() }
+    }
+    // Teruskan aksi putar lokal ke ruang party.
+    DisposableEffect(player, partyCode) {
+        val code = partyCode
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (code != null) {
+                    partySocket.value?.partySync(
+                        code,
+                        if (isPlaying) "play" else "pause",
+                        (player.currentPosition / 1000).toInt(),
+                    )
+                }
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                if (code != null && reason == Player.DISCONTINUITY_REASON_SEEK) {
+                    partySocket.value?.partySync(code, "seek", (player.currentPosition / 1000).toInt())
+                }
+            }
+        }
+        if (code != null) player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+
     val pb = playback
     Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         TextButton(onClick = onBack) { Text("← Kembali", color = Color.White) }
+        if (locked != null) {
+            Text(
+                "🔒 $locked",
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+            Text(
+                "Masuk gratis untuk membuka semua episode — atau Premium untuk tanpa iklan.",
+                color = Color.LightGray,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+            androidx.compose.material3.Button(
+                onClick = onNeedLogin,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            ) { Text("Masuk") }
+        }
+        if (repo.isLoggedIn && pb != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                if (partyCode == null) {
+                    FilterChip(
+                        selected = false,
+                        onClick = { partySocket.value?.partyCreate(episodeId) },
+                        label = { Text("Buat Nonton Bareng") },
+                        modifier = Modifier.padding(end = 6.dp),
+                    )
+                    androidx.compose.material3.OutlinedTextField(
+                        value = partyJoinCode,
+                        onValueChange = { partyJoinCode = it.uppercase().take(6) },
+                        label = { Text("Kode party") },
+                        singleLine = true,
+                        modifier = Modifier.padding(end = 6.dp),
+                    )
+                    FilterChip(
+                        selected = false,
+                        enabled = partyJoinCode.length == 6,
+                        onClick = { partySocket.value?.partyJoin(partyJoinCode) },
+                        label = { Text("Gabung") },
+                    )
+                } else {
+                    FilterChip(
+                        selected = true,
+                        onClick = { },
+                        label = { Text("Party: $partyCode (bagikan kodenya)") },
+                    )
+                }
+            }
+        }
         if (pb != null) {
             val hardLangs = pb.sources.mapNotNull { it.lang }.distinct()
             val readySubs = pb.subtitles.filter { it.status == "done" && it.fileUrl != null }

@@ -278,6 +278,11 @@ func (a *API) handlePlayback(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "episode tidak ditemukan")
 		return
 	}
+	// Gerbang freemium (STRUKTUR Bagian 4): tamu maks. 1 episode.
+	if !a.gateEpisode(w, r, ep.ID, ep.TitleID) {
+		return
+	}
+	aksesTier, _ := a.viewerTier(r)
 	type source struct {
 		URL   string  `json:"url"`
 		Label *string `json:"label,omitempty"`
@@ -321,7 +326,10 @@ func (a *API) handlePlayback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"episode": ep, "sources": sources, "subtitles": subtitles,
+		"episode":   ep,
+		"sources":   sources,
+		"subtitles": subtitles,
+		"access":    map[string]any{"tier": string(aksesTier), "ads": aksesTier != tierPremium},
 	})
 }
 
@@ -342,6 +350,11 @@ func (a *API) handleChapter(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "chapter tidak ditemukan")
 		return
 	}
+	// Gerbang freemium: tamu maks. 1 chapter.
+	if !a.gateChapter(w, r, ch.ID, ch.TitleID) {
+		return
+	}
+	aksesTier, _ := a.viewerTier(r)
 	type page struct {
 		PageNo    int     `json:"page_no"`
 		ImageURL  string  `json:"image_url"`
@@ -361,5 +374,9 @@ func (a *API) handleChapter(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chapter": ch, "pages": pages})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"chapter": ch,
+		"pages":   pages,
+		"access":  map[string]any{"tier": string(aksesTier), "ads": aksesTier != tierPremium},
+	})
 }
