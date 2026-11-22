@@ -290,7 +290,7 @@ fun HomeScreen(
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
             ) {
                 typeFilters.forEach { (value, label) ->
                     Text(
