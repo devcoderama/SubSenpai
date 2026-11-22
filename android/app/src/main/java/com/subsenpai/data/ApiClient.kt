@@ -189,6 +189,22 @@ class ApiClient(
         }
     }
 
+    /** Unduh berkas mentah (mis. poster judul) tanpa envelope sesi. */
+    suspend fun downloadBytes(url: String): ByteArray? = withContext(Dispatchers.IO) {
+        try {
+            val origin = java.net.URI(url).let { "${it.scheme}://${it.host}/" }
+            val req = Request.Builder().url(url)
+                .header("Referer", origin)
+                .get()
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) resp.body?.bytes() else null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     suspend fun uploadImage(path: String, bytes: ByteArray, filename: String): JSONObject {
         val media = when {
             filename.endsWith(".png", true) -> "image/png"

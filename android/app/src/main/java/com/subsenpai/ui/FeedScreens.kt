@@ -83,6 +83,7 @@ import com.subsenpai.data.FeedPost
 import com.subsenpai.data.FeedUploadManager
 import com.subsenpai.data.FeedUploadState
 import com.subsenpai.data.PendingPost
+import com.subsenpai.data.ShareToPostBus
 import com.subsenpai.data.GroupItem
 import com.subsenpai.data.isVideo
 import com.subsenpai.data.relativeTimeId
@@ -341,6 +342,7 @@ fun FeedScreen(
     var mediaIsVideo by remember { mutableStateOf(false) }
     var postError by remember { mutableStateOf<String?>(null) }
     val uploadState by FeedUploadManager.state.collectAsState()
+    val sharePrefill by ShareToPostBus.prefill.collectAsState()
 
     // OpenDocument (bukan Photo Picker): di beberapa perangkat
     // (HyperOS) Photo Picker hanya menampilkan gambar walau diminta
@@ -563,6 +565,23 @@ fun FeedScreen(
     }
 
     val composerFocus = remember { FocusRequester() }
+    // "Bagikan ke Post" dari Detail/Player: terapkan ke composer.
+    LaunchedEffect(sharePrefill) {
+        val p = sharePrefill ?: return@LaunchedEffect
+        draft = p.text
+        draftCategory = p.category
+        if (p.posterUrl != null) {
+            mediaUri = Uri.parse(p.posterUrl)
+            mediaIsVideo = false
+            mediaBytes = null
+            scope.launch {
+                mediaBytes = repo.downloadBytes(p.posterUrl)
+            }
+        }
+        ShareToPostBus.clear()
+        listState.animateScrollToItem(0)
+        composerFocus.requestFocus()
+    }
     Box(modifier = Modifier.fillMaxSize()) {
     LazyColumn(
         state = listState,
@@ -578,7 +597,7 @@ fun FeedScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Chat", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text("Post", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = {
                         searchOpen = !searchOpen

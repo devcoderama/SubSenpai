@@ -573,6 +573,9 @@ class CatalogRepository(
     /** Urai tautan pendek (vt.tiktok.com dsb.) ke URL akhirnya. */
     suspend fun resolveUrl(url: String): String? = api.resolveRedirect(url)
 
+    /** Unduh berkas mentah (poster untuk Bagikan ke Post). */
+    suspend fun downloadBytes(url: String): ByteArray? = api.downloadBytes(url)
+
     suspend fun feedNotifications(): Pair<List<FeedNotification>, Int> {
         val o = api.get("/api/v1/feed/notifications")
         val items = buildList {

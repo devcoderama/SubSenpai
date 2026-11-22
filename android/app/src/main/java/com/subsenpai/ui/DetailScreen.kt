@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +63,7 @@ fun DetailScreen(
     onBack: () -> Unit,
     onNeedLogin: () -> Unit,
     onOpenTitle: (String) -> Unit,
+    onShareToPost: (TitleDetail) -> Unit,
 ) {
     var detail by remember { mutableStateOf<TitleDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -217,21 +220,41 @@ fun DetailScreen(
                                 }
                             },
                         )
-                        DetailAction(
-                            icon = R.drawable.ic_share,
-                            label = "Bagikan",
-                            onClick = {
-                                val send = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(
-                                        Intent.EXTRA_TEXT,
-                                        "Nonton ${d.card.title} di SubSenpai" +
-                                            (d.synopsis?.let { "\n\n$it" } ?: ""),
-                                    )
-                                }
-                                ctx.startActivity(Intent.createChooser(send, "Bagikan"))
-                            },
-                        )
+                        Box {
+                            var shareMenu by remember { mutableStateOf(false) }
+                            DetailAction(
+                                icon = R.drawable.ic_share,
+                                label = "Bagikan",
+                                onClick = { shareMenu = true },
+                            )
+                            DropdownMenu(
+                                expanded = shareMenu,
+                                onDismissRequest = { shareMenu = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Bagikan ke Post") },
+                                    onClick = {
+                                        shareMenu = false
+                                        onShareToPost(d)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Bagikan ke aplikasi lain") },
+                                    onClick = {
+                                        shareMenu = false
+                                        val send = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(
+                                                Intent.EXTRA_TEXT,
+                                                "Nonton ${d.card.title} di SubSenpai" +
+                                                    (d.synopsis?.let { "\n\n$it" } ?: ""),
+                                            )
+                                        }
+                                        ctx.startActivity(Intent.createChooser(send, "Bagikan"))
+                                    },
+                                )
+                            }
+                        }
                     }
                     d.synopsis?.let {
                         Spacer(Modifier.height(14.dp))

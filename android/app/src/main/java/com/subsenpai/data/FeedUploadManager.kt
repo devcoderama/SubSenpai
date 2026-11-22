@@ -18,6 +18,31 @@ class PendingPost(
     val isVideo: Boolean,
 )
 
+/** Muatan "Bagikan ke Post" dari halaman Detail/Player. */
+class SharePrefill(
+    val text: String,
+    val posterUrl: String?,
+    val category: String,
+)
+
+/**
+ * Bus antar-layar untuk berbagi judul ke tab Post (permintaan
+ * Rams 2026-11-22): halaman Detail dan Player mengisi prefill,
+ * lalu FeedScreen menerapkannya ke composer agar pengguna bisa
+ * menyunting teksnya sebelum memposting.
+ */
+object ShareToPostBus {
+    val prefill = MutableStateFlow<SharePrefill?>(null)
+
+    fun send(p: SharePrefill) {
+        prefill.value = p
+    }
+
+    fun clear() {
+        prefill.value = null
+    }
+}
+
 /** Keadaan antrean unggahan feed untuk spanduk status. */
 sealed interface FeedUploadState {
     data object Idle : FeedUploadState

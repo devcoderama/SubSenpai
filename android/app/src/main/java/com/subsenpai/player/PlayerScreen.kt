@@ -1,6 +1,7 @@
 package com.subsenpai.player
 
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.view.MotionEvent
@@ -31,6 +32,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -128,6 +131,7 @@ fun PlayerScreen(
     onBack: () -> Unit,
     onNeedLogin: () -> Unit = {},
     onOpenTitle: (String) -> Unit = {},
+    onShareToPost: (TitleDetail) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -422,6 +426,21 @@ fun PlayerScreen(
                             onOpenServer = { sheet = SheetKind.Server },
                             onOpenSubtitle = { sheet = SheetKind.Subtitle },
                             onOpenParty = { sheet = SheetKind.Party },
+                            onShareToPost = { detail?.let { onShareToPost(it) } },
+                            onShareSystem = {
+                                val d = detail
+                                if (d != null) {
+                                    val send = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(
+                                            Intent.EXTRA_TEXT,
+                                            "Nonton ${d.card.title} di SubSenpai" +
+                                                (d.synopsis?.let { "\n\n$it" } ?: ""),
+                                        )
+                                    }
+                                    context.startActivity(Intent.createChooser(send, "Bagikan"))
+                                }
+                            },
                             onTranslate = {
                                 val base = readySubs.firstOrNull { it.lang == "en" } ?: readySubs.first()
                                 translating = true
@@ -825,6 +844,8 @@ private fun PlayerActions(
     onOpenSubtitle: () -> Unit,
     onOpenParty: () -> Unit,
     onTranslate: () -> Unit,
+    onShareToPost: () -> Unit,
+    onShareSystem: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -847,6 +868,26 @@ private fun PlayerActions(
                 accent = partyActive,
                 onClick = onOpenParty,
             )
+        }
+        Box {
+            var shareMenu by remember { mutableStateOf(false) }
+            ActionButton(text = "Bagikan", onClick = { shareMenu = true })
+            DropdownMenu(expanded = shareMenu, onDismissRequest = { shareMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("Bagikan ke Post") },
+                    onClick = {
+                        shareMenu = false
+                        onShareToPost()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Bagikan ke aplikasi lain") },
+                    onClick = {
+                        shareMenu = false
+                        onShareSystem()
+                    },
+                )
+            }
         }
     }
 }

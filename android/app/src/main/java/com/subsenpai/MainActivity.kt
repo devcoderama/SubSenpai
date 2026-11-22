@@ -49,6 +49,40 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
                 val nav = rememberNavController()
                 val repo = remember { CatalogRepository(auth = AuthStore(context)) }
+                // Bagikan judul ke tab Post: isi prefill composer lalu
+                // pindah ke tab Post (FeedScreen menerapkannya).
+                val shareToPost: (com.subsenpai.data.TitleDetail) -> Unit = { d ->
+                    val typeLabel = when (d.card.type) {
+                        "anime" -> "Anime"
+                        "donghua" -> "Donghua"
+                        "film" -> "Film"
+                        else -> "Umum"
+                    }
+                    val text = buildString {
+                        append("🎬 Lagi nonton ${d.card.title}")
+                        d.card.year?.let { append(" ($it)") }
+                        append(" — $typeLabel")
+                        d.synopsis?.let { s ->
+                            append("\n\n")
+                            append(s.take(280))
+                        }
+                    }
+                    com.subsenpai.data.ShareToPostBus.send(
+                        com.subsenpai.data.SharePrefill(
+                            text = text,
+                            posterUrl = d.card.posterUrl,
+                            category = when (d.card.type) {
+                                "anime", "donghua", "film" -> d.card.type
+                                else -> "umum"
+                            },
+                        ),
+                    )
+                    nav.navigate("chat") {
+                        popUpTo("home") { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
                 var authVersion by remember { mutableStateOf(0) }
                 val backEntry by nav.currentBackStackEntryAsState()
                 val route = backEntry?.destination?.route
@@ -56,7 +90,7 @@ class MainActivity : ComponentActivity() {
                 val mainRoutes = setOf("home", "chat", "premium", "watchlist", "more")
                 val bottomItems = listOf(
                     Triple("home", "Beranda", R.drawable.ic_home),
-                    Triple("chat", "Chat", R.drawable.ic_chat),
+                    Triple("chat", "Post", R.drawable.ic_chat),
                     Triple("premium", "Premium", R.drawable.ic_star),
                     Triple("watchlist", "Daftar Saya", R.drawable.ic_bookmark),
                     Triple("more", "Lainnya", R.drawable.ic_menu),
@@ -216,6 +250,7 @@ class MainActivity : ComponentActivity() {
                                 onBack = { nav.popBackStack() },
                                 onNeedLogin = { nav.navigate("login") },
                                 onOpenTitle = { nav.navigate("detail/$it") },
+                                onShareToPost = shareToPost,
                             )
                         }
                         composable(
@@ -228,6 +263,7 @@ class MainActivity : ComponentActivity() {
                                 onBack = { nav.popBackStack() },
                                 onNeedLogin = { nav.navigate("login") },
                                 onOpenTitle = { nav.navigate("detail/$it") },
+                                onShareToPost = shareToPost,
                             )
                         }
                     }
