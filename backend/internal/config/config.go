@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	Host            string // alamat dengar; kosong = semua antarmuka
 	Port            string
 	DatabaseURL     string
 	SessionTTLHours int
@@ -46,6 +47,7 @@ func Load() Config {
 		jwtTTL = 720
 	}
 	return Config{
+		Host:            os.Getenv("HOST"),
 		Port:            getenv("PORT", "8080"),
 		DatabaseURL:     os.Getenv("DATABASE_URL"),
 		SessionTTLHours: ttl,

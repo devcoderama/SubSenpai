@@ -35,12 +35,12 @@ func main() {
 	api := httpapi.New(pool, sessions, cfg)
 
 	srv := &http.Server{
-		Addr:              ":" + cfg.Port,
+		Addr:              cfg.Host + ":" + cfg.Port,
 		Handler:           api.Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		log.Printf("API SubSenpai mendengarkan di :%s", cfg.Port)
+		log.Printf("API SubSenpai mendengarkan di %s:%s", cfg.Host, cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server: %v", err)
 		}
