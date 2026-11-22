@@ -13,18 +13,20 @@ import (
 )
 
 // animestreamResolver menarget tema WordPress "Animestream" (dipakai
-// Anichin, Kuronime, dan banyak situs fansub lain). Tiga fakta tema yang
-// terverifikasi hidup di anichin.my (2026-11-22):
+// Anichin, Kuronime, dan banyak situs fansub lain). CATATAN ARAHAN
+// (Rams, 2026-11-22): untuk Anichin HANYA anichin.moe yang boleh
+// dipakai — anichin.my adalah situs kloningan berbahaya dan tidak
+// boleh di-fetch sama sekali (lihat moeBase/mirrorCandidates).
+// Fakta tema yang terverifikasi hidup (2026-11-22):
 //   - WP REST API terbuka: pencarian judul lewat /wp-json/wp/v2/search
 //     (halaman series berawalan /series/); episode adalah post biasa
 //     berslug "<slug-series>-episode-<n>-subtitle-indonesia" yang semuanya
 //     berkategori series-nya, jadi daftar episode diambil lewat
 //     /wp-json/wp/v2/posts?categories=<id> (parameter search pada /posts
 //     dinonaktifkan situs ini — selalu mengembalikan kosong).
-//   - Daftar episode di anichin.my dimuat sisi klien (tidak ada di
-//     HTML statis), tapi mirror anichin.moe menyajikannya sebagai
-//     eplister statis — Episodes() memakai REST dulu, lalu eplister
-//     HTML sebagai cadangan.
+//   - Halaman series anichin.moe menyajikan daftar episode sebagai
+//     eplister HTML statis — Episodes() Anichin mendahulukan eplister
+//     itu, jalur WP menjadi cadangan.
 //   - Halaman episode menyediakan <select class="mirror"> berisi opsi
 //     server sebagai HTML embed ter-base64, plus satu iframe bawaan.
 type animestreamResolver struct{ key string }
@@ -48,7 +50,7 @@ type wpPost struct {
 }
 
 func (a *animestreamResolver) Search(ctx context.Context, src Source, query string) ([]Candidate, error) {
-	base := strings.TrimRight(src.BaseURL, "/")
+	base := moeBase(src.BaseURL)
 	u := base + "/wp-json/wp/v2/search?per_page=25&search=" + url.QueryEscape(query)
 	raw, err := Fetch(ctx, u)
 	if err != nil {
@@ -77,63 +79,36 @@ type wpCategoryFull struct {
 	Count int    `json:"count"`
 }
 
-// Discover menemukan seri dari indeks kategori WordPress: di tema
-// Animestream tiap seri adalah satu kategori (slug kategori = slug seri,
-// terbukti di anichin.my: 573 kategori seri) dan semua post episodenya
-// berkategori itu — jadi daftar kategori terurut jumlah post terbanyak
-// adalah indeks seri situs ini. URL seri dibangun sebagai
-// <base>/series/<slug>/ sesuai pola permalink tema.
+// Discover menemukan seri untuk katalog, dua jalur menurut resolver:
+//   - Anichin: scraping arsip HTML anichin.moe (discoverArchive) —
+//     arahan Rams 2026-11-22: anichin.my adalah situs kloningan
+//     berbahaya dan tidak boleh dipakai sama sekali, dan wp-json
+//     anichin.moe mati kena Cloudflare 403.
+//   - Resolver Animestream lain (Kuronime): indeks kategori
+//     WordPress — di tema ini tiap seri adalah satu kategori (slug
+//     kategori = slug seri) dan semua post episodenya berkategori
+//     itu, jadi daftar kategori terurut jumlah post terbanyak adalah
+//     indeks seri situs ini. URL seri dibangun sebagai
+//     <base>/series/<slug>/ sesuai pola permalink tema.
 func (a *animestreamResolver) Discover(ctx context.Context, src Source, limit int) ([]DiscoveredTitle, error) {
-	// Halaman pertama dicoba ke tiap basis wpBases sampai ada yang
-	// menjawab dengan kategori (wp-json anichin.moe kena Cloudflare
-	// 403 — lihat wpBases); basis pemenang dipakai untuk seluruh
-	// halaman berikutnya. Semua basis gagal di halaman pertama →
-	// error, sama seperti perilaku gagal sebelumnya.
-	var base string
-	var firstCats []wpCategoryFull
-	var lastErr error
-	for _, b := range wpBases(src.BaseURL) {
+	if a.key == "anichin" {
+		return a.discoverArchive(ctx, src, limit)
+	}
+	base := strings.TrimRight(src.BaseURL, "/")
+	out := []DiscoveredTitle{}
+	for page := 1; page <= 20 && len(out) < limit; page++ {
 		u := fmt.Sprintf("%s/wp-json/wp/v2/categories?per_page=100&page=%d&orderby=count&order=desc&_fields=name,slug,count",
-			b, 1)
+			base, page)
 		raw, err := Fetch(ctx, u)
 		if err != nil {
-			lastErr = err
-			continue
+			if page == 1 {
+				return nil, err
+			}
+			break
 		}
 		var cats []wpCategoryFull
 		if err := json.Unmarshal([]byte(raw), &cats); err != nil {
-			lastErr = fmt.Errorf("daftar kategori WP tidak terbaca: %w", err)
-			continue
-		}
-		if len(cats) == 0 {
-			continue
-		}
-		base, firstCats = b, cats
-		break
-	}
-	if base == "" {
-		if lastErr != nil {
-			return nil, lastErr
-		}
-		return []DiscoveredTitle{}, nil
-	}
-	out := []DiscoveredTitle{}
-	// URL seri tetap dibangun dari base sumber yang dikonfigurasi —
-	// basis WP pemenang hanya soal transport wp-json, bukan alamat
-	// kanonis serinya.
-	srcBase := strings.TrimRight(src.BaseURL, "/")
-	for page := 1; page <= 20 && len(out) < limit; page++ {
-		cats := firstCats
-		if page > 1 {
-			u := fmt.Sprintf("%s/wp-json/wp/v2/categories?per_page=100&page=%d&orderby=count&order=desc&_fields=name,slug,count",
-				base, page)
-			raw, err := Fetch(ctx, u)
-			if err != nil {
-				break
-			}
-			if err := json.Unmarshal([]byte(raw), &cats); err != nil {
-				return nil, fmt.Errorf("daftar kategori WP tidak terbaca: %w", err)
-			}
+			return nil, fmt.Errorf("daftar kategori WP tidak terbaca: %w", err)
 		}
 		for _, c := range cats {
 			if c.Count <= 0 || c.Slug == "" {
@@ -146,13 +121,136 @@ func (a *animestreamResolver) Discover(ctx context.Context, src Source, limit in
 			out = append(out, DiscoveredTitle{
 				Title: name,
 				Slug:  c.Slug,
-				URL:   seriesURL(srcBase, c.Slug),
+				URL:   seriesURL(base, c.Slug),
 			})
 			if len(out) >= limit {
 				break
 			}
 		}
 		if len(cats) < 100 {
+			break
+		}
+	}
+	return out, nil
+}
+
+var (
+	archiveCardRe   = regexp.MustCompile(`(?is)<article class="bs"[^>]*>(.*?)</article>`)
+	archiveAnchorRe = regexp.MustCompile(`(?is)(<a\s[^>]*href="([^"]+)"[^>]*>)`)
+	archiveTTRe     = regexp.MustCompile(`(?is)<div class="tt">(.*?)<h2`)
+	archiveStatusRe = regexp.MustCompile(`(?is)<div class="status\s+([^"]*)">(.*?)</div>`)
+	archiveEpxRe    = regexp.MustCompile(`(?is)<span class="epx">(.*?)</span>`)
+)
+
+// parseArchivePage mengurai satu halaman arsip seri tema Animestream
+// (anichin.moe /anime/): tiap kartu <article class="bs"> menaut
+// langsung ke halaman seri level akar dan membawa poster serinya
+// (img.ts-post-image), judul di div.tt (teks sebelum <h2>), dan
+// status di div.status / span.epx — "Completed" berarti tamat,
+// selain itu ongoing. URL & poster relatif dibuat absolut ke base.
+func parseArchivePage(page, base string) []DiscoveredTitle {
+	baseURL, err := url.Parse(strings.TrimRight(base, "/") + "/")
+	if err != nil {
+		return nil
+	}
+	out := []DiscoveredTitle{}
+	seen := map[string]bool{}
+	for _, m := range archiveCardRe.FindAllStringSubmatch(page, -1) {
+		card := m[1]
+		am := archiveAnchorRe.FindStringSubmatch(card)
+		if am == nil {
+			continue
+		}
+		ref, err := url.Parse(am[2])
+		if err != nil {
+			continue
+		}
+		slug := strings.Trim(ref.Path, "/")
+		if slug == "" || strings.Contains(slug, "/") || seen[slug] {
+			continue
+		}
+		var title string
+		if tm := archiveTTRe.FindStringSubmatch(card); tm != nil {
+			title = cleanText(tm[1])
+		}
+		if title == "" {
+			title = cleanText(attr(am[1], "title"))
+		}
+		title = strings.TrimSuffix(title, " Subtitle Indonesia")
+		if title == "" {
+			continue
+		}
+		seen[slug] = true
+		d := DiscoveredTitle{
+			Title: title,
+			Slug:  slug,
+			URL:   baseURL.ResolveReference(ref).String(),
+		}
+		if tag := tsImgRe.FindString(card); tag != "" {
+			img := attr(tag, "src")
+			if img == "" || strings.HasPrefix(img, "data:") {
+				img = attr(tag, "data-src")
+			}
+			if img != "" {
+				if ir, err := url.Parse(img); err == nil {
+					d.Poster = baseURL.ResolveReference(ir).String()
+				}
+			}
+		}
+		if sm := archiveStatusRe.FindStringSubmatch(card); sm != nil &&
+			(strings.Contains(sm[1], "Completed") || strings.EqualFold(cleanText(sm[2]), "Completed")) {
+			d.Completed = true
+		}
+		if em := archiveEpxRe.FindStringSubmatch(card); em != nil &&
+			strings.EqualFold(cleanText(em[1]), "Completed") {
+			d.Completed = true
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+// discoverArchive adalah discovery Anichin: scraping arsip seri
+// HTML anichin.moe — <base>/anime/ lalu <base>/anime/?page=2, 3, …
+// (30 kartu seri per halaman, terverifikasi 2026-11-22; bentuk path
+// /anime/page/N/ TIDAK dipakai — situs membalas halaman 1 lagi di
+// alamat itu, jadi paginasi query yang benar), berhenti bila
+// halaman memberi 0 kartu, halaman hanya berisi kartu yang sudah
+// terlihat, limit pemanggil tercapai, atau 40 halaman. Kartu
+// didedupe antar halaman berdasarkan slug.
+func (a *animestreamResolver) discoverArchive(ctx context.Context, src Source, limit int) ([]DiscoveredTitle, error) {
+	base := moeBase(src.BaseURL)
+	out := []DiscoveredTitle{}
+	seen := map[string]bool{}
+	for page := 1; page <= 40 && len(out) < limit; page++ {
+		u := base + "/anime/"
+		if page > 1 {
+			u = fmt.Sprintf("%s/anime/?page=%d", base, page)
+		}
+		pageHTML, err := Fetch(ctx, u)
+		if err != nil {
+			if page == 1 {
+				return nil, err
+			}
+			break
+		}
+		cards := parseArchivePage(pageHTML, base)
+		if len(cards) == 0 {
+			break
+		}
+		added := 0
+		for _, d := range cards {
+			if seen[d.Slug] {
+				continue
+			}
+			seen[d.Slug] = true
+			out = append(out, d)
+			added++
+			if len(out) >= limit {
+				break
+			}
+		}
+		if added == 0 {
 			break
 		}
 	}
@@ -203,10 +301,11 @@ func parsePosterMap(page, mirrorBase string) map[string]string {
 }
 
 // posterMapBase menentukan basis halaman daftar untuk peta poster
-// per resolver: Anichin memakai mirror resminya anichin.moe (halaman
-// HTML anichin.my tidak bisa diandalkan dari server — WAF), sedangkan
-// Kuronime memakai base URL sumbernya sendiri (tema Animestream yang
-// sama, kartu episodenya membawa poster seri dengan pola yang sama).
+// per resolver: Anichin memakai anichin.moe (satu-satunya domain
+// Anichin yang boleh dipakai — anichin.my kloningan berbahaya),
+// sedangkan Kuronime memakai base URL sumbernya sendiri (tema
+// Animestream yang sama, kartu episodenya membawa poster seri dengan
+// pola yang sama).
 func posterMapBase(key string, src Source) (string, bool) {
 	switch key {
 	case "anichin":
@@ -260,17 +359,16 @@ type wpCategory struct {
 // series adalah satu kategori (slug kategori = slug series) dan semua
 // post episodenya berkategori itu. Parameter search pada /posts dinonaktifkan
 // situs (selalu kosong), jadi jalur kategori adalah jalur yang andal.
-// Episodes mengambil daftar episode lewat WP REST (jalur utama);
-// bila jalur itu gagal/kosong, jatuh ke daftar episode HTML
-// (eplister) di halaman series — mirror anichin.moe menyajikan
+// Episodes mengambil daftar episode lewat WP REST atau daftar
+// episode HTML (eplister) di halaman series — anichin.moe menyajikan
 // eplister sebagai HTML statis (terverifikasi 2026-11-22 pada
-// "Tales of Herding Gods": 108 episode tertaut dari halaman seri),
-// tidak seperti anichin.my yang memuatnya sisi klien.
+// "Tales of Herding Gods": 108 episode tertaut dari halaman seri).
 func (a *animestreamResolver) Episodes(ctx context.Context, src Source, titleURL string) ([]EpisodeRef, error) {
-	// Anichin: eplister HTML (.moe) DIDAHULUKAN — WP REST anichin.my
-	// terbukti timeout dari VPS (log worker 2026-11-22), sehingga
-	// jalur WP dulu membakar 30 dtk per judul sebelum cadangan
-	// sempat dicoba. Resolver Animestream lain tetap WP dulu.
+	// Anichin: eplister HTML (.moe) DIDAHULUKAN — anichin.my dilarang
+	// dipakai (kloningan berbahaya) dan wp-json anichin.moe mati kena
+	// Cloudflare 403, sehingga jalur WP praktis tidak memberi hasil
+	// untuk Anichin dan hanya membakar waktu per judul. Resolver
+	// Animestream lain tetap WP dulu.
 	if a.key == "anichin" {
 		if htmlEps, herr := a.episodesHTML(ctx, titleURL); herr == nil && len(htmlEps) > 0 {
 			return htmlEps, nil
@@ -383,63 +481,50 @@ func seriesPathForHost(path, host string) string {
 	return path
 }
 
-// wpBases mengembalikan basis-basi yang dicoba untuk panggilan
-// WP-JSON (Discover & jalur WP Episodes), basis sumber lebih dulu
-// lalu pasangan mirror Anichin-nya: wp-json di anichin.moe mati kena
-// Cloudflare 403 "Attention Required" (terbukti 2026-11-22) sementara
-// HTML-nya sehat, dan anichin.my menjawab wp-json dengan data asli —
-// jadi base hasil override env (DONGHUA_ID=anichin.moe) tidak boleh
-// mematikan jalur WP. Host di luar pasangan Anichin hanya memakai
-// base-nya sendiri.
-func wpBases(base string) []string {
+// moeBase menormalisasi base URL ke host anichin.moe bila host-nya
+// anichin.my: anichin.my adalah situs kloningan berbahaya (arahan
+// Rams 2026-11-22) dan tidak boleh di-fetch sama sekali — base/URL
+// .my hanya dipakai sebagai bahan membentuk alamat .moe-nya. Host
+// lain dikembalikan apa adanya.
+func moeBase(base string) string {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	u, err := url.Parse(base)
-	if err != nil || u.Host == "" {
-		return []string{base}
+	if err != nil || u.Host != "anichin.my" {
+		return base
 	}
-	var other string
-	switch u.Host {
-	case "anichin.moe":
-		other = "anichin.my"
-	case "anichin.my":
-		other = "anichin.moe"
-	default:
-		return []string{base}
-	}
-	u.Host = other
+	u.Host = "anichin.moe"
 	u.Scheme = "https"
-	return []string{base, u.String()}
+	return strings.TrimRight(u.String(), "/")
 }
 
-// mirrorCandidates mengembalikan URL halaman apa adanya plus pasangan
-// host anichin.my ↔ anichin.moe dengan format path seri yang
-// disesuaikan untuk host tujuan (mirror menyajikan HTML statis
-// lengkap; domain utama kerap membatasi akses server). Host selain
-// pasangan Anichin tidak diberi kandidat silang: kandidat lama ke
-// anichin.moe dengan path asing selalu berakhir redirect ke beranda.
+// mirrorCandidates mengembalikan kandidat URL halaman untuk dibaca
+// sebagai HTML statis. Untuk Anichin kandidatnya SELALU anichin.moe:
+// anichin.my adalah situs kloningan berbahaya (arahan Rams
+// 2026-11-22) dan tidak boleh di-fetch sama sekali — URL tersimpan
+// lama berbentuk anichin.my/series/<slug>/ hanya dipakai sebagai
+// bahan membentuk URL .moe-nya (format path disesuaikan lewat
+// seriesPathForHost, karena /series/<slug>/ di .moe membalas 301 ke
+// beranda). Host selain Anichin: URL apa adanya, tanpa kandidat
+// silang.
 func mirrorCandidates(titleURL string) []string {
-	candidates := []string{titleURL}
 	u, err := url.Parse(titleURL)
 	if err != nil {
-		return candidates
+		return []string{titleURL}
 	}
-	var other string
 	switch u.Host {
-	case "anichin.my":
-		other = "anichin.moe"
 	case "anichin.moe":
-		other = "anichin.my"
-	default:
-		return candidates
+		return []string{titleURL}
+	case "anichin.my":
+		u.Host = "anichin.moe"
+		u.Scheme = "https"
+		u.Path = seriesPathForHost(u.Path, "anichin.moe")
+		return []string{u.String()}
 	}
-	u.Host = other
-	u.Scheme = "https"
-	u.Path = seriesPathForHost(u.Path, other)
-	return append(candidates, u.String())
+	return []string{titleURL}
 }
 
-// moeFirstCandidates mendahulukan mirror anichin.moe (domain utama
-// kerap timeout dari server; mirror menjawab cepat).
+// moeFirstCandidates mendahulukan kandidat anichin.moe (untuk
+// Anichin kini satu-satunya kandidat dari mirrorCandidates).
 func moeFirstCandidates(titleURL string) []string {
 	c := mirrorCandidates(titleURL)
 	if len(c) == 2 {
@@ -648,8 +733,8 @@ func metaComplete(m *SeriesMeta) bool {
 // HTML statis dipakai sebagai cadangan seperti daftar episode).
 // Kandidat dinilai satu per satu; kandidat pertama yang hasil urainya
 // LENGKAP (metaComplete) langsung dikembalikan — menunggu kandidat
-// berikutnya hanya membuang waktu bila kandidat itu lambat/mati
-// (anichin.my dari VPS hampir selalu timeout). Bila tidak ada yang
+// berikutnya hanya membuang waktu bila kandidat itu lambat/mati.
+// Bila tidak ada yang
 // lengkap, SEMUA kandidat tetap dinilai dan hasil urai terlengkap
 // yang dikembalikan — bukan kandidat pertama yang sekadar punya
 // sinopsis, karena halaman salah alamat bisa memberi sinopsis
@@ -690,19 +775,10 @@ func (a *animestreamResolver) episodesWP(ctx context.Context, src Source, titleU
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 	slug := parts[len(parts)-1]
 
-	// Tiap basis wpBases dicoba utuh: id kategori dan daftar pos
-	// harus berasal dari basis yang sama (wp-json anichin.moe kena
-	// Cloudflare 403 — lihat wpBases). Semua basis gagal → error
-	// terakhir, dan cadangan eplister pemanggil berjalan seperti biasa.
-	var lastErr error
-	for _, base := range wpBases(src.BaseURL) {
-		eps, err := a.episodesWPBase(ctx, base, slug)
-		if err == nil {
-			return eps, nil
-		}
-		lastErr = err
-	}
-	return nil, lastErr
+	// Jalur WP memakai base sumber yang dikonfigurasi saja
+	// (dinormalisasi moeBase agar tidak pernah menyentuh anichin.my);
+	// kegagalannya ditangani cadangan eplister pemanggil seperti biasa.
+	return a.episodesWPBase(ctx, moeBase(src.BaseURL), slug)
 }
 
 func (a *animestreamResolver) episodesWPBase(ctx context.Context, base, slug string) ([]EpisodeRef, error) {

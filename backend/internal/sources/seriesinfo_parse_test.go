@@ -134,16 +134,19 @@ func TestSeriesPathForHost(t *testing.T) {
 }
 
 func TestMirrorCandidatesAnichin(t *testing.T) {
+	// anichin.my adalah kloningan berbahaya (arahan Rams 2026-11-22):
+	// kandidat TIDAK BOLEH pernah mengarah ke .my. URL .my tersimpan
+	// lama hanya dipakai sebagai bahan membentuk URL .moe-nya.
 	fromMy := mirrorCandidates("https://anichin.my/series/soul-land-movie-sword-dao-chen-xin/")
-	if len(fromMy) != 2 || fromMy[1] != "https://anichin.moe/soul-land-movie-sword-dao-chen-xin/" {
-		t.Errorf("kandidat dari .my = %v", fromMy)
+	if len(fromMy) != 1 || fromMy[0] != "https://anichin.moe/soul-land-movie-sword-dao-chen-xin/" {
+		t.Errorf("kandidat dari .my = %v, mau hanya URL .moe", fromMy)
 	}
 	fromMoe := mirrorCandidates("https://anichin.moe/soul-land-movie-sword-dao-chen-xin/")
-	if len(fromMoe) != 2 || fromMoe[1] != "https://anichin.my/series/soul-land-movie-sword-dao-chen-xin/" {
-		t.Errorf("kandidat dari .moe = %v", fromMoe)
+	if len(fromMoe) != 1 || fromMoe[0] != "https://anichin.moe/soul-land-movie-sword-dao-chen-xin/" {
+		t.Errorf("kandidat dari .moe = %v, mau URL itu sendiri saja", fromMoe)
 	}
 	first := moeFirstCandidates("https://anichin.my/series/soul-land-movie-sword-dao-chen-xin/")
-	if len(first) != 2 || first[0] != "https://anichin.moe/soul-land-movie-sword-dao-chen-xin/" {
+	if len(first) != 1 || first[0] != "https://anichin.moe/soul-land-movie-sword-dao-chen-xin/" {
 		t.Errorf("moeFirst = %v", first)
 	}
 	other := mirrorCandidates("https://kuronime.sbs/series/contoh-anime/")
@@ -152,31 +155,19 @@ func TestMirrorCandidatesAnichin(t *testing.T) {
 	}
 }
 
-func TestWPBases(t *testing.T) {
-	cases := []struct {
-		in   string
-		want []string
-	}{
-		// wp-json .moe mati (Cloudflare 403) → cadangan .my wajib ada.
-		{"https://anichin.moe", []string{"https://anichin.moe", "https://anichin.my"}},
-		{"https://anichin.my", []string{"https://anichin.my", "https://anichin.moe"}},
-		// Host lain tidak diberi basis silang.
-		{"https://kuronime.sbs", []string{"https://kuronime.sbs"}},
-		// Garis miring akhir dibuang; path pada base dipertahankan
-		// apa adanya di kedua basis.
-		{"https://anichin.moe/", []string{"https://anichin.moe", "https://anichin.my"}},
-		{"https://anichin.my/sub/", []string{"https://anichin.my/sub", "https://anichin.moe/sub"}},
+func TestMoeBase(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"https://anichin.my", "https://anichin.moe"},
+		{"https://anichin.my/", "https://anichin.moe"},
+		{"https://anichin.moe", "https://anichin.moe"},
+		{"https://anichin.moe/", "https://anichin.moe"},
+		// Host lain tidak disentuh.
+		{"https://kuronime.sbs/", "https://kuronime.sbs"},
+		{"", ""},
 	}
 	for _, c := range cases {
-		got := wpBases(c.in)
-		if len(got) != len(c.want) {
-			t.Errorf("wpBases(%q) = %v, mau %v", c.in, got, c.want)
-			continue
-		}
-		for i := range got {
-			if got[i] != c.want[i] {
-				t.Errorf("wpBases(%q)[%d] = %q, mau %q", c.in, i, got[i], c.want[i])
-			}
+		if got := moeBase(c.in); got != c.want {
+			t.Errorf("moeBase(%q) = %q, mau %q", c.in, got, c.want)
 		}
 	}
 }

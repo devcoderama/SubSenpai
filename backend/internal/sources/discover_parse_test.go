@@ -99,3 +99,47 @@ func TestParseHiCards(t *testing.T) {
 		t.Errorf("kartu pertama salah: %+v", out[0])
 	}
 }
+
+func TestParseArchivePage(t *testing.T) {
+	// Fixture mengikuti struktur nyata arsip anichin.moe /anime/
+	// (terverifikasi 2026-11-22): kartu <article class="bs"> menaut
+	// langsung ke seri level akar, judul di div.tt, status di
+	// div.status / span.epx, poster img.ts-post-image relatif.
+	page := `<div class="listupd normal">
+	<article class="bs" itemscope="itemscope" itemtype="http://schema.org/CreativeWork"><div class="bsx"><a href="/100-000-years-of-refining-qi/" itemprop="url" title="100.000 Years of Refining Qi" class="tip" rel="21864"><div class="limit"><div class="typez Donghua">Donghua</div><div class="ply"><i class="far fa-play-circle"></i></div><div class="bt"><span class="epx">Ongoing</span><span class="sb Sub">Sub</span></div><img src="/wp-content/uploads/2023/02/100.000-Years-of-Refining-Qi-1-768x1077.jpg" class="ts-post-image wp-post-image" loading="lazy" itemprop="image" title="100.000 Years of Refining Qi"/></div><div class="tt">100.000 Years of Refining Qi<h2 itemprop="headline">100.000 Years of Refining Qi</h2></div></a></div></article>
+	<article class="bs" itemscope="itemscope" itemtype="http://schema.org/CreativeWork"><div class="bsx"><a href="/36-cavalry/" itemprop="url" title="36 Cavalry" class="tip" rel="28576"><div class="limit"><div class="status Completed">Completed</div><div class="typez Donghua">Donghua</div><div class="bt"><span class="epx">Completed</span><span class="sb Sub">Sub</span></div><img src="/wp-content/uploads/2023/10/36-Cavalry.webp" class="ts-post-image wp-post-image" loading="lazy" itemprop="image" title="36 Cavalry"/></div><div class="tt">36 Cavalry<h2 itemprop="headline">36 Cavalry</h2></div></a></div></article>
+	<article class="bs" itemscope="itemscope" itemtype="http://schema.org/CreativeWork"><div class="bsx"><a href="/btth-movie-battle-of-two-emperors-subtitle-indonesia/" itemprop="url" title="BTTH Movie: Battle of Two Emperors Subtitle Indonesia" class="tip" rel="59559"><div class="limit"><div class="status Completed">Completed</div><div class="typez Donghua">Donghua</div><div class="bt"><span class="epx">Ep Final Movie</span><span class="sb Sub">Sub</span></div><img src="https://anichin.moe/wp-content/uploads/2026/11/BTTH-Movie.webp" class="ts-post-image wp-post-image" loading="lazy" itemprop="image" title="BTTH Movie: Battle of Two Emperors"/></div><div class="tt">BTTH Movie: Battle of Two Emperors<h2 itemprop="headline">BTTH Movie: Battle of Two Emperors Subtitle Indonesia</h2></div></a></div></article>
+	</div>`
+	out := parseArchivePage(page, "https://anichin.moe")
+	if len(out) != 3 {
+		t.Fatalf("kartu terbaca = %d, mau 3: %+v", len(out), out)
+	}
+	first := out[0]
+	if first.Slug != "100-000-years-of-refining-qi" || first.Title != "100.000 Years of Refining Qi" {
+		t.Errorf("kartu pertama salah: %+v", first)
+	}
+	if first.URL != "https://anichin.moe/100-000-years-of-refining-qi/" {
+		t.Errorf("URL kartu pertama = %q", first.URL)
+	}
+	if first.Poster != "https://anichin.moe/wp-content/uploads/2023/02/100.000-Years-of-Refining-Qi-1-768x1077.jpg" {
+		t.Errorf("poster relatif harus dibuat absolut: %q", first.Poster)
+	}
+	if first.Completed {
+		t.Errorf("kartu Ongoing tidak boleh bertanda tamat")
+	}
+	second := out[1]
+	if second.Slug != "36-cavalry" || !second.Completed {
+		t.Errorf("kartu Completed salah: %+v", second)
+	}
+	third := out[2]
+	if third.Slug != "btth-movie-battle-of-two-emperors-subtitle-indonesia" ||
+		third.Title != "BTTH Movie: Battle of Two Emperors" || !third.Completed {
+		t.Errorf("kartu film (status div saja, epx 'Ep Final Movie') salah: %+v", third)
+	}
+	if third.Poster != "https://anichin.moe/wp-content/uploads/2026/11/BTTH-Movie.webp" {
+		t.Errorf("poster absolut harus dipertahankan: %q", third.Poster)
+	}
+	if got := parseArchivePage(`<html><body><div class="listupd"></div></body></html>`, "https://anichin.moe"); len(got) != 0 {
+		t.Errorf("halaman tanpa kartu harus kosong, dapat %d", len(got))
+	}
+}

@@ -21,7 +21,7 @@ func TestDiscoverAnichinLive(t *testing.T) {
 	if !ok {
 		t.Fatal("anichin tidak mendukung Discover")
 	}
-	src := Source{Name: "Anichin", ContentType: "donghua", Lang: "id", BaseURL: "https://anichin.my", Resolver: "anichin"}
+	src := Source{Name: "Anichin", ContentType: "donghua", Lang: "id", BaseURL: "https://anichin.moe", Resolver: "anichin"}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	found, err := disc.Discover(ctx, src, 600)
@@ -135,7 +135,7 @@ func TestEpisodesAnichinMoeLive(t *testing.T) {
 	if !ok {
 		t.Fatal("resolver anichin tidak terdaftar")
 	}
-	src := Source{Name: "Anichin", ContentType: "donghua", Lang: "id", BaseURL: "https://anichin.my", Resolver: "anichin", FetchMode: "server"}
+	src := Source{Name: "Anichin", ContentType: "donghua", Lang: "id", BaseURL: "https://anichin.moe", Resolver: "anichin", FetchMode: "server"}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	eps, err := r.Episodes(ctx, src, "https://anichin.moe/tales-of-herding-god/")
@@ -170,7 +170,7 @@ func TestSeriesInfoAnichinLive(t *testing.T) {
 	if !ok {
 		t.Fatal("anichin tidak mendukung SeriesInfo")
 	}
-	src := Source{Name: "Anichin", ContentType: "donghua", Lang: "id", BaseURL: "https://anichin.my", Resolver: "anichin", FetchMode: "server"}
+	src := Source{Name: "Anichin", ContentType: "donghua", Lang: "id", BaseURL: "https://anichin.moe", Resolver: "anichin", FetchMode: "server"}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	meta, err := infoer.SeriesInfo(ctx, src, "https://anichin.moe/tales-of-herding-god/")
