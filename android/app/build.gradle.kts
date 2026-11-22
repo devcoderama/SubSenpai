@@ -12,8 +12,8 @@ android {
         applicationId = "com.subsenpai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 9
-        versionName = "0.6.2"
+        versionCode = 10
+        versionName = "0.7.0"
         // Alamat backend bawaan untuk pengembangan (emulator → host).
         // Rilis memakai alamat resmi dari pengaturan aplikasi.
         // Alamat API: bawaan emulator; build produksi menimpa lewat
@@ -28,9 +28,26 @@ android {
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     }
 
+    signingConfigs {
+        // Keystore rilis persisten di luar repo (workspace build), kata
+        // sandinya diteruskan sebagai properti gradle oleh skrip build —
+        // tidak pernah ditulis di repo. Tanpa properti ini, build rilis
+        // memakai konfigurasi bawaan (untuk build uji lokal saja).
+        create("release") {
+            val sf = providers.gradleProperty("releaseStoreFile").orNull
+            if (sf != null) {
+                storeFile = file(sf)
+                storePassword = providers.gradleProperty("releaseStorePassword").get()
+                keyAlias = providers.gradleProperty("releaseKeyAlias").get()
+                keyPassword = providers.gradleProperty("releaseKeyPassword").get()
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     buildFeatures {

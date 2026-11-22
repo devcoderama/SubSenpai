@@ -19,6 +19,9 @@ import com.subsenpai.data.AuthStore
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.player.PlayerScreen
 import com.subsenpai.ui.ChatListScreen
+import com.subsenpai.ui.ComicBrowseScreen
+import com.subsenpai.ui.ComicDetailScreen
+import com.subsenpai.ui.ComicReaderScreen
 import com.subsenpai.ui.ChatRoomScreen
 import com.subsenpai.ui.DetailScreen
 import com.subsenpai.ui.DeviceReaderScreen
@@ -51,6 +54,29 @@ class MainActivity : ComponentActivity() {
                                 onOpenWatchlist = { nav.navigate("watchlist") },
                                 onOpenPremium = { nav.navigate("premium") },
                                 onOpenChat = { nav.navigate("chat") },
+                                onOpenComics = { nav.navigate("comics") },
+                            )
+                        }
+                        composable("comics") {
+                            ComicBrowseScreen(
+                                onBack = { nav.popBackStack() },
+                                onOpenSeries = { s ->
+                                    com.subsenpai.data.ComicNav.series = s
+                                    nav.navigate("comicdetail")
+                                },
+                            )
+                        }
+                        composable("comicdetail") {
+                            ComicDetailScreen(
+                                onBack = { nav.popBackStack() },
+                                onRead = { nav.navigate("comicreader") },
+                            )
+                        }
+                        composable("comicreader") {
+                            ComicReaderScreen(
+                                repo,
+                                onBack = { nav.popBackStack() },
+                                onNeedLogin = { nav.navigate("login") },
                             )
                         }
                         composable("premium") {

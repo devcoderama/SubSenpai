@@ -66,6 +66,7 @@ fun HomeScreen(
     onOpenWatchlist: () -> Unit,
     onOpenPremium: () -> Unit = {},
     onOpenChat: () -> Unit = {},
+    onOpenComics: () -> Unit = {},
 ) {
     var trending by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var terbaru by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
@@ -131,6 +132,7 @@ fun HomeScreen(
                 )
                 Row {
                     TextButton(onClick = onOpenPremium) { Text("Premium", color = Color.White) }
+                    TextButton(onClick = onOpenComics) { Text("Komik", color = Color.White) }
                     if (loggedIn) {
                         TextButton(onClick = onOpenChat) { Text("Chat", color = Color.White) }
                         TextButton(onClick = onOpenWatchlist) { Text("Watchlist", color = Color.White) }
