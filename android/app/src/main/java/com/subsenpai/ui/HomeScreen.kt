@@ -77,6 +77,7 @@ fun HomeScreen(
     onOpenComic: (com.subsenpai.data.ComicSeries) -> Unit = {},
 ) {
     var trending by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
+    var homeLoaded by remember { mutableStateOf(false) }
     var terbaru by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var perType by remember { mutableStateOf<Map<String, List<TitleCard>>>(emptyMap()) }
     var hasil by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
@@ -127,6 +128,7 @@ fun HomeScreen(
         } catch (e: Exception) {
             error = e.message
         }
+        homeLoaded = true
         val loaded = mutableMapOf<String, List<TitleCard>>()
         for ((t, _) in rowTypes) {
             try {
@@ -213,6 +215,12 @@ fun HomeScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
+        }
+        if (!homeLoaded && error == null) {
+            // Umpan beranda belum tiba: animasi merek, bukan halaman kosong.
+            item {
+                BrandLoading(modifier = Modifier.fillParentMaxHeight())
+            }
         }
         if (error != null) {
             item {

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema platform gelap: windowBackground gelap sejak proses
+         start agar tidak ada kilap putih sebelum Compose melukis
+         UI pertamanya (kedip putih saat membuka aplikasi/halaman). -->
+    <style name="Theme.SubSenpai" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#141414</item>
+        <item name="android:statusBarColor">#141414</item>
+        <item name="android:navigationBarColor">#141414</item>
+        <item name="android:colorAccent">#E50914</item>
+    </style>
+</resources>

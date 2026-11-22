@@ -544,6 +544,13 @@ private fun VideoPlayerContainer(
     onNeedLogin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Halaman embed yang sedang dimuat WebView: selama ini wadah
+    // menutupinya dengan animasi merek agar kilap putih bawaan
+    // WebView (latar putih sebelum halaman selesai dilukis) tidak
+    // terlihat sebagai kedip putih.
+    var webLoading by remember(curSrc?.url) {
+        mutableStateOf(curSrc != null && isEmbedUrl(curSrc.url))
+    }
     Box(modifier = modifier.background(Color.Black)) {
         if (locked != null) {
             Column(
@@ -567,12 +574,30 @@ private fun VideoPlayerContainer(
                 AndroidView(
                     factory = {
                         WebView(it).apply {
+                            // Latar gelap sejak awal: tanpa ini WebView
+                            // berwarna putih sampai halaman embed
+                            // selesai dilukis (kedip putih).
+                            setBackgroundColor(0xFF0D0D0F.toInt())
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.mediaPlaybackRequiresUserGesture = false
                             settings.userAgentString =
                                 "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
-                            webViewClient = WebViewClient()
+                            webViewClient = object : WebViewClient() {
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    webLoading = false
+                                }
+
+                                @Deprecated("Deprecated in Java")
+                                override fun onReceivedError(
+                                    view: WebView?,
+                                    errorCode: Int,
+                                    description: String?,
+                                    failingUrl: String?,
+                                ) {
+                                    webLoading = false
+                                }
+                            }
                             layoutParams = ViewGroup.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -597,12 +622,18 @@ private fun VideoPlayerContainer(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        if (loading) {
-            Text(
-                "Memuat video…",
-                color = WatchMuted,
-                modifier = Modifier.align(Alignment.Center),
-            )
+        if (loading || (curSrc != null && isEmbedUrl(curSrc.url) && webLoading)) {
+            // Penutup gelap + animasi memuat ala Netflix selama
+            // data playback atau halaman embed belum siap.
+            Box(
+                modifier = Modifier.fillMaxSize().background(WatchBg),
+            ) {
+                com.subsenpai.ui.BrandLoading(
+                    modifier = Modifier.fillMaxSize(),
+                    accent = WatchAccent,
+                    compact = true,
+                )
+            }
         }
         if (error != null && locked == null) {
             Text(

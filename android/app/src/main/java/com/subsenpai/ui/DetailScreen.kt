@@ -79,6 +79,12 @@ fun DetailScreen(
     }
 
     LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (detail == null && error == null) {
+            // Selama detail dimuat: animasi merek, bukan halaman kosong.
+            item {
+                BrandLoading(modifier = Modifier.fillParentMaxHeight())
+            }
+        }
         if (error != null) {
             item {
                 TextButton(onClick = onBack) { Text("← Kembali", color = Color.White) }
