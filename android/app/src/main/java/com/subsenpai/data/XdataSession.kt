@@ -25,16 +25,31 @@ import javax.crypto.spec.SecretKeySpec
  *   xdata = base64url-nopad(IV 12 byte ‖ ciphertext ‖ tag), AAD = teks xtime.
  */
 class XdataSession {
-    private var sessionId: String? = null
-    private var key: ByteArray? = null
+    /**
+     * Pasangan id sesi + kunci yang tak terpisahkan. Permintaan API
+     * mengambil satu snapshot lalu memakai id-nya untuk header dan
+     * kuncinya untuk dekripsi responsnya sendiri — jadi handshake
+     * ulang oleh permintaan lain yang berjalan bersamaan tidak bisa
+     * merusak dekripsi yang sedang berlangsung (BAD_DECRYPT).
+     */
+    class Snapshot(val id: String, val key: ByteArray)
 
-    val isReady: Boolean get() = sessionId != null && key != null
-    val id: String? get() = sessionId
+    @Volatile
+    private var current: Snapshot? = null
+
+    val isReady: Boolean get() = current != null
+    val id: String? get() = current?.id
+
+    fun snapshot(): Snapshot? = current
 
     /** Buang sesi (dipakai saat server menjawab 401 — handshake ulang). */
     fun reset() {
-        sessionId = null
-        key = null
+        current = null
+    }
+
+    /** Buang sesi hanya bila yang tersimpan masih snapshot ini. */
+    fun resetIfCurrent(snap: Snapshot) {
+        if (current?.id == snap.id) current = null
     }
 
     /** Hasil persiapan handshake: kunci publik klien untuk dikirim ke server. */
@@ -59,13 +74,12 @@ class XdataSession {
         hkdf.init(HKDFParameters(shared, null, "subsenpai-xdata-v1".toByteArray(Charsets.UTF_8)))
         val derived = ByteArray(32)
         hkdf.generateBytes(derived, 0, derived.size)
-        sessionId = newSessionId
-        key = derived
+        current = Snapshot(newSessionId, derived)
     }
 
-    /** Buka envelope menjadi teks JSON asal. */
-    fun open(xdata: String, xtime: Long): String {
-        val k = key ?: error("sesi belum handshake")
+    /** Buka envelope dengan snapshot sesi yang dipakai permintaannya. */
+    fun open(snap: Snapshot, xdata: String, xtime: Long): String {
+        val k = snap.key
         val payload = b64decode(xdata)
         require(payload.size > 12) { "xdata terlalu pendek" }
         val nonce = payload.copyOfRange(0, 12)
