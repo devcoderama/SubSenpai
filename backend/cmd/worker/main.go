@@ -47,17 +47,22 @@ func main() {
 		if err := jobs.CheckSources(ctx, pool); err != nil {
 			log.Printf("cek sumber: %v", err)
 		}
-		if err := jobs.DiscoverTitles(ctx, pool); err != nil {
-			log.Printf("penemuan judul: %v", err)
-		}
-		if err := jobs.PurgePosterless(ctx, pool); err != nil {
-			log.Printf("purge poster: %v", err)
-		}
+		// Enrich + Sync DIDAHULUKAN sebelum penemuan: penemuan katalog
+		// lambat (ratusan judul + fetch yang bisa timeout 30 dtk per
+		// situs), dan terbukti (log 2026-11-22) membuat enrich/sync
+		// kelaparan — siklus selalu keburu mati oleh restart sebelum
+		// giliran mereka. Data yang terlihat pengguna diisi dulu.
 		if err := jobs.EnrichTitles(ctx, pool); err != nil {
 			log.Printf("enrich judul: %v", err)
 		}
 		if err := jobs.SyncSources(ctx, pool); err != nil {
 			log.Printf("sinkron sumber: %v", err)
+		}
+		if err := jobs.DiscoverTitles(ctx, pool); err != nil {
+			log.Printf("penemuan judul: %v", err)
+		}
+		if err := jobs.PurgePosterless(ctx, pool); err != nil {
+			log.Printf("purge poster: %v", err)
 		}
 	}
 	runSources()

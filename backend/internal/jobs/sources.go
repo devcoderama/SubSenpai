@@ -190,7 +190,13 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 			continue
 		}
 		meta, err := infoer.SeriesInfo(ctx, j.src, j.url)
-		if err != nil || meta == nil {
+		if err != nil {
+			// Dicatat (tidak ditelan diam-diam) agar kegagalan fetch
+			// per sumber terlihat di log worker.
+			log.Printf("enrich %s: %v", j.titleID, err)
+			continue
+		}
+		if meta == nil {
 			continue
 		}
 		if meta.Synopsis == "" && meta.Studio == "" && len(meta.Genres) == 0 {

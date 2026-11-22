@@ -213,6 +213,16 @@ type wpCategory struct {
 // "Tales of Herding Gods": 108 episode tertaut dari halaman seri),
 // tidak seperti anichin.my yang memuatnya sisi klien.
 func (a *animestreamResolver) Episodes(ctx context.Context, src Source, titleURL string) ([]EpisodeRef, error) {
+	// Anichin: eplister HTML (.moe) DIDAHULUKAN — WP REST anichin.my
+	// terbukti timeout dari VPS (log worker 2026-11-22), sehingga
+	// jalur WP dulu membakar 30 dtk per judul sebelum cadangan
+	// sempat dicoba. Resolver Animestream lain tetap WP dulu.
+	if a.key == "anichin" {
+		if htmlEps, herr := a.episodesHTML(ctx, titleURL); herr == nil && len(htmlEps) > 0 {
+			return htmlEps, nil
+		}
+		return a.episodesWP(ctx, src, titleURL)
+	}
 	eps, err := a.episodesWP(ctx, src, titleURL)
 	if err == nil && len(eps) > 0 {
 		return eps, nil
@@ -298,10 +308,23 @@ func mirrorCandidates(titleURL string) []string {
 	return candidates
 }
 
-// episodesHTML mencoba halaman series apa adanya, lalu mirror
-// anichin.moe dengan path yang sama.
+// moeFirstCandidates mendahulukan mirror anichin.moe (domain utama
+// kerap timeout dari server; mirror menjawab cepat).
+func moeFirstCandidates(titleURL string) []string {
+	c := mirrorCandidates(titleURL)
+	if len(c) == 2 {
+		return []string{c[1], c[0]}
+	}
+	return c
+}
+
+// episodesHTML mencoba halaman series (untuk Anichin: mirror
+// anichin.moe dulu), lalu kandidat berikutnya.
 func (a *animestreamResolver) episodesHTML(ctx context.Context, titleURL string) ([]EpisodeRef, error) {
 	candidates := mirrorCandidates(titleURL)
+	if a.key == "anichin" {
+		candidates = moeFirstCandidates(titleURL)
+	}
 	var lastErr error
 	for _, cand := range candidates {
 		page, err := Fetch(ctx, cand)
@@ -400,8 +423,12 @@ func parseSeriesPage(html string) *SeriesMeta {
 // SeriesInfo membaca metadata seri dari halaman serinya (mirror
 // HTML statis dipakai sebagai cadangan seperti daftar episode).
 func (a *animestreamResolver) SeriesInfo(ctx context.Context, src Source, titleURL string) (*SeriesMeta, error) {
+	candidates := mirrorCandidates(titleURL)
+	if a.key == "anichin" {
+		candidates = moeFirstCandidates(titleURL)
+	}
 	var lastErr error
-	for _, cand := range mirrorCandidates(titleURL) {
+	for _, cand := range candidates {
 		page, err := Fetch(ctx, cand)
 		if err != nil {
 			lastErr = err
