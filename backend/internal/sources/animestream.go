@@ -562,8 +562,8 @@ var (
 	entryRe   = regexp.MustCompile(`(?is)<div class="entry-content"[^>]*>(.*?)</div>`)
 	firstH4Re = regexp.MustCompile(`(?is)^\s*<h4[^>]*>(.*?)</h4>`)
 	yearRe    = regexp.MustCompile(`(19|20)\d{2}`)
-	durRe     = regexp.MustCompile(`(\d+)\s*min`)
-	durHourRe = regexp.MustCompile(`(\d+)\s*h`)
+	durRe     = regexp.MustCompile(`(?i)(\d+)\s*(?:menit|min)`)
+	durHourRe = regexp.MustCompile(`(?i)(\d+)\s*(?:jam|h)`)
 )
 
 // boilerplateSynopsisMarkers adalah frasa khas teks boilerplate iklan
@@ -598,7 +598,9 @@ func BoilerplateSynopsisMarkers() []string {
 }
 
 // parseDurationMin mengubah teks Durasi blok spe menjadi menit:
-// "1h 30min" → 90, "2h" → 120, "20 min"/"20min" → 20.
+// "1h 30min" → 90, "2h" → 120, "20 min"/"20min" → 20. Sebagian
+// judul di situs memakai label bahasa Indonesia: "15 Menit" → 15,
+// "1 Jam 30 Menit" → 90.
 func parseDurationMin(val string) int {
 	total := 0
 	if hm := durHourRe.FindStringSubmatch(val); hm != nil {
@@ -738,7 +740,10 @@ func metaComplete(m *SeriesMeta) bool {
 // lengkap, SEMUA kandidat tetap dinilai dan hasil urai terlengkap
 // yang dikembalikan — bukan kandidat pertama yang sekadar punya
 // sinopsis, karena halaman salah alamat bisa memberi sinopsis
-// boilerplate saja.
+// boilerplate saja. Bila tidak ada kandidat yang menghasilkan
+// metadata sama sekali: error fetch terakhir dikembalikan bila ada;
+// bila semua fetch berhasil tapi skornya 0 semua, error deskriptif
+// dikembalikan (bukan (nil, nil)) agar kegagalan tidak senyap.
 func (a *animestreamResolver) SeriesInfo(ctx context.Context, src Source, titleURL string) (*SeriesMeta, error) {
 	candidates := mirrorCandidates(titleURL)
 	if a.key == "anichin" {
@@ -762,7 +767,15 @@ func (a *animestreamResolver) SeriesInfo(ctx context.Context, src Source, titleU
 		}
 	}
 	if best == nil {
-		return nil, lastErr
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		// Semua kandidat berhasil di-fetch tapi tidak satu pun
+		// menghasilkan metadata (skor 0). Dulu jalur ini
+		// mengembalikan (nil, nil) sehingga kegagalannya senyap
+		// total di pemanggil; kini error deskriptif agar tercatat
+		// lewat jalur log jobs/httpapi yang sudah ada.
+		return nil, fmt.Errorf("SeriesInfo: tidak ada metadata terbaca dari %s", titleURL)
 	}
 	return best, nil
 }

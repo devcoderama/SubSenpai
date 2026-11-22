@@ -182,6 +182,8 @@ func TestParseDurationMin(t *testing.T) {
 		{"20 min", 20},
 		{"20min", 20},
 		{"1h30min", 90},
+		{"15 Menit", 15},
+		{"1 Jam 30 Menit", 90},
 		{"", 0},
 	}
 	for _, c := range cases {
