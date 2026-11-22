@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,7 +25,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,6 +57,7 @@ import com.subsenpai.R
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.SettingsStore
 import com.subsenpai.data.TitleCard
+import com.subsenpai.data.TitleFacets
 import kotlinx.coroutines.launch
 
 private val typeFilters = listOf(
@@ -70,6 +76,7 @@ private val rowTypes = listOf(
  * Info, lalu baris-baris poster. Navigasi utama pindah ke bilah
  * bawah di MainActivity.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     repo: CatalogRepository,
@@ -92,6 +99,11 @@ fun HomeScreen(
     var query by remember { mutableStateOf("") }
     var genre by remember { mutableStateOf<String?>(null) }
     var genreList by remember { mutableStateOf<List<String>>(emptyList()) }
+    var year by remember { mutableStateOf<Int?>(null) }
+    var country by remember { mutableStateOf<String?>(null) }
+    var network by remember { mutableStateOf<String?>(null) }
+    var facets by remember { mutableStateOf<TitleFacets?>(null) }
+    var filterOpen by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
     val browsing = type != null || query.isNotBlank()
     val scope = rememberCoroutineScope()
@@ -127,20 +139,29 @@ fun HomeScreen(
         }
     }
     LaunchedEffect(type) {
-        genreList = if (type != null) {
+        if (type != null) {
             try {
-                repo.genres(type!!)
+                val f = repo.filters(type!!)
+                facets = f
+                genreList = f.genres
             } catch (e: Exception) {
-                emptyList()
+                // Backend lama (tanpa /filters): chip genre tetap jalan.
+                facets = null
+                genreList = try {
+                    repo.genres(type!!)
+                } catch (e2: Exception) {
+                    emptyList()
+                }
             }
         } else {
-            emptyList()
+            facets = null
+            genreList = emptyList()
         }
     }
-    LaunchedEffect(type, query, genre) {
+    LaunchedEffect(type, query, genre, year, country, network) {
         if (!browsing) return@LaunchedEffect
         try {
-            hasil = repo.titles(type, query.ifBlank { null }, genre)
+            hasil = repo.titles(type, query.ifBlank { null }, genre, year, country, network)
         } catch (e: Exception) {
             error = e.message
         }
@@ -169,12 +190,24 @@ fun HomeScreen(
                 }
             }
             if (browsing) {
-                if (type != null && genreList.isNotEmpty()) {
+                if (type != null && (genreList.isNotEmpty() || facets != null)) {
                     item {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                         ) {
+                            val extraActive = listOf(year, country, network).count { it != null }
+                            val hasExtra = facets?.let {
+                                it.years.isNotEmpty() || it.countries.isNotEmpty() || it.networks.isNotEmpty()
+                            } == true
+                            if (hasExtra) {
+                                item {
+                                    GenreChip(
+                                        if (extraActive > 0) "Filter ($extraActive)" else "Filter",
+                                        extraActive > 0,
+                                    ) { filterOpen = true }
+                                }
+                            }
                             item {
                                 GenreChip("Semua Genre", genre == null) { genre = null }
                             }
@@ -331,7 +364,13 @@ fun HomeScreen(
                         color = if (type == value) Color.White else Color(0xFFB3B3B3),
                         fontWeight = if (type == value) FontWeight.Bold else FontWeight.Normal,
                         style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.clickable { type = value; genre = null }.padding(bottom = 10.dp),
+                        modifier = Modifier.clickable {
+                            type = value
+                            genre = null
+                            year = null
+                            country = null
+                            network = null
+                        }.padding(bottom = 10.dp),
                     )
                 }
             }
@@ -344,6 +383,120 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
+        }
+        if (filterOpen && facets != null) {
+            ModalBottomSheet(onDismissRequest = { filterOpen = false }) {
+                FilterSheetContent(
+                    facets = facets!!,
+                    genre = genre,
+                    year = year,
+                    country = country,
+                    network = network,
+                    onGenre = { genre = it },
+                    onYear = { year = it },
+                    onCountry = { country = it },
+                    onNetwork = { network = it },
+                    onReset = {
+                        genre = null
+                        year = null
+                        country = null
+                        network = null
+                    },
+                    onClose = { filterOpen = false },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Panel filter lanjutan ala "Advance Filter" hashflix (permintaan
+ * Rams 2026-11-23): genre, tahun rilis, negara (region), dan
+ * network/perusahaan — semua pilihan dihitung backend dari katalog
+ * sendiri. Pilihan langsung diterapkan; ketuk chip yang sama untuk
+ * membatalkan pilihan itu.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FilterSheetContent(
+    facets: TitleFacets,
+    genre: String?,
+    year: Int?,
+    country: String?,
+    network: String?,
+    onGenre: (String?) -> Unit,
+    onYear: (Int?) -> Unit,
+    onCountry: (String?) -> Unit,
+    onNetwork: (String?) -> Unit,
+    onReset: () -> Unit,
+    onClose: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Filter", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            "Saring judul berdasarkan genre, tahun, negara, dan lainnya. Pilihan langsung diterapkan.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (facets.genres.isNotEmpty()) {
+            Text("Genre", fontWeight = FontWeight.Bold)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                facets.genres.forEach { g ->
+                    GenreChip(g, genre == g) { onGenre(if (genre == g) null else g) }
+                }
+            }
+        }
+        if (facets.years.isNotEmpty()) {
+            Text("Tahun Rilis", fontWeight = FontWeight.Bold)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                facets.years.forEach { y ->
+                    GenreChip(y.toString(), year == y) { onYear(if (year == y) null else y) }
+                }
+            }
+        }
+        if (facets.countries.isNotEmpty()) {
+            Text("Negara", fontWeight = FontWeight.Bold)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                facets.countries.forEach { c ->
+                    GenreChip(c.name, country == c.value) {
+                        onCountry(if (country == c.value) null else c.value)
+                    }
+                }
+            }
+        }
+        if (facets.networks.isNotEmpty()) {
+            Text("Network / Perusahaan", fontWeight = FontWeight.Bold)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                facets.networks.forEach { n ->
+                    GenreChip(n, network == n) { onNetwork(if (network == n) null else n) }
+                }
+            }
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp, top = 4.dp),
+        ) {
+            OutlinedButton(onClick = onReset, modifier = Modifier.weight(1f)) { Text("Reset") }
+            Button(
+                onClick = onClose,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
+            ) { Text("Terapkan") }
         }
     }
 }

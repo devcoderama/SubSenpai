@@ -70,6 +70,17 @@ data class ScheduleItem(
 /** Grup jadwal satu hari ("Senin".."Minggu", "Update Acak", "Rilis Terbaru"). */
 data class ScheduleGroup(val day: String, val items: List<ScheduleItem>)
 
+/** Satu pilihan faset filter (nama tampilan + nilai yang dikirim ke API). */
+data class FacetOption(val name: String, val value: String)
+
+/** Faset filter lanjutan satu tipe dari GET /api/v1/filters. */
+data class TitleFacets(
+    val genres: List<String>,
+    val years: List<Int>,
+    val countries: List<FacetOption>,
+    val networks: List<String>,
+)
+
 data class PremiumStatus(
     val tier: String,
     val isPremium: Boolean,

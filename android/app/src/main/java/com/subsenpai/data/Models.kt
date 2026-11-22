@@ -543,11 +543,21 @@ class CatalogRepository(
         return cards("trending") to cards("terbaru")
     }
 
-    suspend fun titles(type: String?, query: String?, genre: String? = null): List<TitleCard> {
+    suspend fun titles(
+        type: String?,
+        query: String?,
+        genre: String? = null,
+        year: Int? = null,
+        country: String? = null,
+        network: String? = null,
+    ): List<TitleCard> {
         val params = StringBuilder("/api/v1/titles?limit=30")
         if (!type.isNullOrBlank()) params.append("&type=").append(type)
         if (!query.isNullOrBlank()) params.append("&q=").append(java.net.URLEncoder.encode(query, "UTF-8"))
         if (!genre.isNullOrBlank()) params.append("&genre=").append(java.net.URLEncoder.encode(genre, "UTF-8"))
+        if (year != null) params.append("&year=").append(year)
+        if (!country.isNullOrBlank()) params.append("&country=").append(java.net.URLEncoder.encode(country, "UTF-8"))
+        if (!network.isNullOrBlank()) params.append("&network=").append(java.net.URLEncoder.encode(network, "UTF-8"))
         val o = api.get(params.toString())
         return buildList {
             val arr = o.optJSONArray("items")
@@ -562,6 +572,29 @@ class CatalogRepository(
             val arr = o.optJSONArray("genres")
             if (arr != null) for (i in 0 until arr.length()) add(arr.getJSONObject(i).getString("name"))
         }
+    }
+
+    /** Faset filter lanjutan (genre, tahun, negara, network) satu tipe. */
+    suspend fun filters(type: String): TitleFacets {
+        val o = api.get("/api/v1/filters?type=$type")
+        fun names(key: String): List<String> = buildList {
+            val arr = o.optJSONArray(key)
+            if (arr != null) for (i in 0 until arr.length()) add(arr.getJSONObject(i).getString("name"))
+        }
+        fun options(key: String): List<FacetOption> = buildList {
+            val arr = o.optJSONArray(key)
+            if (arr != null) for (i in 0 until arr.length()) {
+                val f = arr.getJSONObject(i)
+                add(FacetOption(f.getString("name"), f.getString("value")))
+            }
+        }
+        val years = buildList {
+            val arr = o.optJSONArray("years")
+            if (arr != null) for (i in 0 until arr.length()) {
+                arr.getJSONObject(i).getString("value").toIntOrNull()?.let { add(it) }
+            }
+        }
+        return TitleFacets(names("genres"), years, options("countries"), names("networks"))
     }
 
     suspend fun titleDetail(id: String): TitleDetail = TitleDetail.fromJson(api.get("/api/v1/titles/$id"))

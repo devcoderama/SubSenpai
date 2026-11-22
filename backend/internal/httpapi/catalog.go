@@ -117,10 +117,26 @@ func decodeCursor(s string) (cursor, error) {
 	return c, err
 }
 
+// titleFilter: saringan katalog dari parameter URL /titles — genre,
+// tahun rilis, negara (region), dan network/perusahaan. Nilai kosong
+// berarti tidak menyaring. Filter lanjutan film meniru "Advance
+// Filter" hashflix (permintaan Rams 2026-11-23); faset pilihannya
+// disajikan /api/v1/filters dari isi katalog sendiri.
+type titleFilter struct {
+	Genre   string
+	Year    int
+	Country string
+	Network string
+}
+
+func (f titleFilter) empty() bool {
+	return f.Genre == "" && f.Year == 0 && f.Country == "" && f.Network == ""
+}
+
 // titlesPage menjalankan query katalog satu halaman dan mengembalikan
 // payload respons + jumlah item di halaman ini (sebelum dipotong
 // limit, untuk keputusan pencarian live).
-func (a *API) titlesPage(ctx context.Context, typ, genre, search string, cur *cursor, limit int) (map[string]any, int, error) {
+func (a *API) titlesPage(ctx context.Context, typ string, flt titleFilter, search string, cur *cursor, limit int) (map[string]any, int, error) {
 	args := []any{}
 	// Komik dicabut dari katalog (keputusan 2026-11-22): jenis
 	// manga/manhua/manhwa tidak pernah ditampilkan, apa pun
@@ -130,9 +146,21 @@ func (a *API) titlesPage(ctx context.Context, typ, genre, search string, cur *cu
 		args = append(args, typ)
 		where += " and t.type = $" + strconv.Itoa(len(args))
 	}
-	if genre != "" {
-		args = append(args, []string{genre})
+	if flt.Genre != "" {
+		args = append(args, []string{flt.Genre})
 		where += " and t.genres @> $" + strconv.Itoa(len(args))
+	}
+	if flt.Year > 0 {
+		args = append(args, flt.Year)
+		where += " and t.year = $" + strconv.Itoa(len(args))
+	}
+	if flt.Country != "" {
+		args = append(args, flt.Country)
+		where += " and lower(t.country) = lower($" + strconv.Itoa(len(args)) + ")"
+	}
+	if flt.Network != "" {
+		args = append(args, flt.Network)
+		where += " and t.network = $" + strconv.Itoa(len(args))
 	}
 	if search != "" {
 		args = append(args, search)
@@ -199,11 +227,18 @@ func (a *API) handleTitles(w http.ResponseWriter, r *http.Request) {
 		cur = &c
 	}
 	search := q.Get("q")
+	year, _ := strconv.Atoi(q.Get("year"))
+	flt := titleFilter{
+		Genre:   q.Get("genre"),
+		Year:    year,
+		Country: q.Get("country"),
+		Network: q.Get("network"),
+	}
 	if search != "" && cur == nil {
 		// Halaman pertama pencarian TIDAK lewat cache: hasil kosong
 		// harus bisa langsung jatuh ke pencarian live on-demand, dan
 		// hasilnya harus langsung terlihat (bukan menunggu TTL cache).
-		payload, n, err := a.titlesPage(r.Context(), typ, q.Get("genre"), search, nil, limit)
+		payload, n, err := a.titlesPage(r.Context(), typ, flt, search, nil, limit)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, "kesalahan server")
 			return
@@ -212,27 +247,27 @@ func (a *API) handleTitles(w http.ResponseWriter, r *http.Request) {
 			lctx, cancel := context.WithTimeout(r.Context(), onDemandTimeout)
 			a.liveSearch(lctx, typ, search)
 			cancel()
-			if p2, _, err := a.titlesPage(r.Context(), typ, q.Get("genre"), search, nil, limit); err == nil {
+			if p2, _, err := a.titlesPage(r.Context(), typ, flt, search, nil, limit); err == nil {
 				payload = p2
 			}
 		}
 		writeJSON(w, http.StatusOK, payload)
 		return
 	}
-	if cur == nil && search == "" && q.Get("genre") == "" && shouldDiscoverEmpty(typ, "", 0) {
+	if cur == nil && search == "" && flt.empty() && shouldDiscoverEmpty(typ, "", 0) {
 		// Halaman pertama per tipe video server tanpa filter TIDAK
 		// lewat cache: katalog tipe yang masih kosong harus langsung
 		// memicu discovery on-demand (bukan menunggu siklus worker)
 		// dan hasilnya — termasuk yang diselesaikan goroutine
 		// latar — harus langsung terlihat, bukan tertahan TTL
 		// cache. Pola yang sama seperti pencarian di atas.
-		payload, n, err := a.titlesPage(r.Context(), typ, "", "", nil, limit)
+		payload, n, err := a.titlesPage(r.Context(), typ, titleFilter{}, "", nil, limit)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, "kesalahan server")
 			return
 		}
 		if shouldDiscoverEmpty(typ, "", n) && a.discoverOnDemand(r, typ) {
-			if p2, _, err := a.titlesPage(r.Context(), typ, "", "", nil, limit); err == nil {
+			if p2, _, err := a.titlesPage(r.Context(), typ, titleFilter{}, "", nil, limit); err == nil {
 				payload = p2
 			}
 		}
@@ -241,7 +276,7 @@ func (a *API) handleTitles(w http.ResponseWriter, r *http.Request) {
 	}
 	key := "titles?" + r.URL.RawQuery
 	a.serveCached(w, key, func() (any, error) {
-		payload, _, err := a.titlesPage(r.Context(), typ, q.Get("genre"), search, cur, limit)
+		payload, _, err := a.titlesPage(r.Context(), typ, flt, search, cur, limit)
 		return payload, err
 	})
 }
@@ -283,6 +318,102 @@ func (a *API) handleGenres(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		return map[string]any{"genres": genres}, rows.Err()
+	})
+}
+
+// namaNegaraISO: nama tampilan untuk kode negara ISO 3166 alpha-2
+// yang disimpan hashflix di titles.country film. Nilai lain (nama
+// negara utuh dari Anichin/Kuronime, mis. "China") tampil apa adanya.
+var namaNegaraISO = map[string]string{
+	"US": "Amerika Serikat", "GB": "Inggris", "KR": "Korea Selatan",
+	"JP": "Jepang", "CN": "China", "TW": "Taiwan", "HK": "Hong Kong",
+	"ID": "Indonesia", "IN": "India", "TH": "Thailand", "FR": "Prancis",
+	"DE": "Jerman", "ES": "Spanyol", "IT": "Italia", "CA": "Kanada",
+	"AU": "Australia", "PH": "Filipina", "VN": "Vietnam", "MY": "Malaysia",
+	"SG": "Singapura", "RU": "Rusia", "TR": "Turki", "MX": "Meksiko",
+	"BR": "Brasil", "AR": "Argentina", "NL": "Belanda", "SE": "Swedia",
+	"NO": "Norwegia", "DK": "Denmark", "FI": "Finlandia", "PL": "Polandia",
+	"CZ": "Ceko", "HU": "Hungaria", "UA": "Ukraina", "EG": "Mesir",
+	"SA": "Arab Saudi", "AE": "Uni Emirat Arab", "IR": "Iran",
+	"PK": "Pakistan", "BD": "Bangladesh", "MM": "Myanmar", "KH": "Kamboja",
+	"NZ": "Selandia Baru", "ZA": "Afrika Selatan", "CL": "Chile",
+	"CO": "Kolombia", "PE": "Peru", "BE": "Belgia", "CH": "Swiss",
+	"AT": "Austria", "GR": "Yunani", "PT": "Portugal", "IE": "Irlandia",
+	"IL": "Israel", "IQ": "Irak", "LB": "Lebanon", "QA": "Qatar",
+	"NP": "Nepal", "MN": "Mongolia", "KZ": "Kazakhstan", "UZ": "Uzbekistan",
+	"HR": "Kroasia", "RS": "Serbia", "BG": "Bulgaria", "RO": "Rumania",
+	"IS": "Islandia", "LK": "Sri Lanka", "NG": "Nigeria", "KE": "Kenya",
+}
+
+type facetOut struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+	Count int    `json:"count"`
+}
+
+// handleFilters: faset filter lanjutan untuk satu tipe — genre,
+// tahun rilis, negara (region), network/perusahaan — dihitung dari
+// katalog sendiri supaya tidak ada pilihan yang hasilnya kosong.
+// Bahan panel "Filter" ala Advance Filter hashflix di aplikasi.
+func (a *API) handleFilters(w http.ResponseWriter, r *http.Request) {
+	typ := r.URL.Query().Get("type")
+	if typ == "" || !titleTypes[typ] {
+		writeErr(w, http.StatusBadRequest, "type wajib dikenal")
+		return
+	}
+	a.serveCached(w, "filters?"+r.URL.RawQuery, func() (any, error) {
+		ctx := r.Context()
+		base := "from titles t where not t.is_adult and t.type = $1"
+		facet := func(query string, display func(string) string) ([]facetOut, error) {
+			rows, err := a.pool.Query(ctx, query, typ)
+			if err != nil {
+				return nil, err
+			}
+			defer rows.Close()
+			out := []facetOut{}
+			for rows.Next() {
+				var f facetOut
+				if err := rows.Scan(&f.Value, &f.Count); err != nil {
+					return nil, err
+				}
+				f.Name = f.Value
+				if display != nil {
+					f.Name = display(f.Value)
+				}
+				out = append(out, f)
+			}
+			return out, rows.Err()
+		}
+		genres, err := facet(`select g, count(*) as c from titles t, unnest(t.genres) g
+			where not t.is_adult and t.type = $1 group by g order by c desc, g asc`, nil)
+		if err != nil {
+			return nil, err
+		}
+		years, err := facet(`select year::text, count(*) as c `+base+`
+			and t.year is not null group by t.year order by t.year desc`, nil)
+		if err != nil {
+			return nil, err
+		}
+		countries, err := facet(`select t.country, count(*) as c `+base+`
+			and coalesce(t.country, '') <> '' group by t.country order by c desc, t.country asc`,
+			func(v string) string {
+				if n, ok := namaNegaraISO[v]; ok {
+					return n
+				}
+				return v
+			})
+		if err != nil {
+			return nil, err
+		}
+		networks, err := facet(`select t.network, count(*) as c `+base+`
+			and coalesce(t.network, '') <> '' group by t.network order by c desc, t.network asc limit 40`, nil)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"genres": genres, "years": years,
+			"countries": countries, "networks": networks,
+		}, nil
 	})
 }
 
