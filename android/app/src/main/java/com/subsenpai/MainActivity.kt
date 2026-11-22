@@ -154,6 +154,20 @@ class MainActivity : ComponentActivity() {
                                 onOpenFriends = { nav.navigate("friends") },
                                 onOpenGroups = { nav.navigate("groups") },
                                 onOpenSettings = { nav.navigate("settings") },
+                                onOpenTransactions = { nav.navigate("transactions") },
+                                onOpenMyVouchers = { nav.navigate("myvouchers") },
+                            )
+                        }
+                        composable("transactions") {
+                            com.subsenpai.ui.TransactionsScreen(
+                                repo,
+                                onBack = { nav.popBackStack() },
+                            )
+                        }
+                        composable("myvouchers") {
+                            com.subsenpai.ui.MyVouchersScreen(
+                                repo,
+                                onBack = { nav.popBackStack() },
                             )
                         }
                         composable("history") {

@@ -77,6 +77,9 @@ type checkoutReq struct {
 	Purpose       string `json:"purpose"` // subscription | voucher
 	RecipientCode string `json:"recipient_code"`
 	Channel       string `json:"channel"` // kode channel Tokopay (bawaan QRIS)
+	// Quantity khusus purpose voucher: jumlah kode yang diterbitkan
+	// (kuota orang yang bisa dibagi), 1–10, bawaan 1.
+	Quantity int `json:"quantity"`
 }
 
 // handleCheckout membuat sesi pembayaran. GoPay: nominal unik
@@ -130,13 +133,22 @@ func (a *API) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	// Penerima hadiah voucher harus ada sebelum sesi dibuat.
-	var recipientID *string
+	// Voucher: kuota = jumlah kode yang diterbitkan untuk dibagikan
+	// (permintaan Rams 2026-11-22). recipient_code kini OPSIONAL —
+	// bila diisi, semua kode ditujukan ke akun itu; bila kosong,
+	// kode bebas dibagikan ke siapa saja.
+	qty := 1
 	if req.Purpose == "voucher" {
-		if req.RecipientCode == "" {
-			writeErr(w, http.StatusBadRequest, "recipient_code wajib untuk hadiah voucher")
+		if req.Quantity < 0 || req.Quantity > 10 {
+			writeErr(w, http.StatusBadRequest, "quantity voucher harus 1–10")
 			return
 		}
+		if req.Quantity > 0 {
+			qty = req.Quantity
+		}
+	}
+	var recipientID *string
+	if req.Purpose == "voucher" && req.RecipientCode != "" {
 		var rid string
 		if err := a.pool.QueryRow(ctx, `
 			select id from profiles where friend_code = $1`, req.RecipientCode).Scan(&rid); err != nil {
@@ -145,16 +157,21 @@ func (a *API) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		}
 		recipientID = &rid
 	}
+	// Harga dasar: voucher dikali kuota.
+	base := plan.Price
+	if req.Purpose == "voucher" {
+		base = plan.Price * qty
+	}
 	// Kode unik untuk pencocokan GoPay (diusahakan tidak bertabrakan
 	// dengan sesi gopay pending lain pada nominal yang sama).
 	unique := 1
-	amount := plan.Price
+	amount := base
 	for attempt := 0; attempt < 20; attempt++ {
 		n, _ := rand.Int(rand.Reader, big.NewInt(999))
 		unique = int(n.Int64()) + 1
-		amount = plan.Price + unique
+		amount = base + unique
 		if req.Provider != "gopay" {
-			amount = plan.Price
+			amount = base
 			break
 		}
 		var clash bool
@@ -183,17 +200,25 @@ func (a *API) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		"unique_code": unique,
 		"expires_at":  expires,
 	}
-	// Hadiah voucher: voucher terbit sekarang, bisa ditukar setelah sesi lunas.
+	// Voucher: kode terbit sekarang (sebanyak kuota), bisa ditukar
+	// setelah sesi lunas. assigned_to terisi hanya bila recipient_code
+	// diberikan; kosong = bebas dibagikan ke siapa saja.
 	if req.Purpose == "voucher" {
-		code := giftCode()
-		if _, err := a.pool.Exec(ctx, `
-			insert into vouchers (code, source, duration_days, created_by, assigned_to, payment_ref)
-			values ($1, 'purchase', $2, $3::uuid, $4::uuid, $5)`,
-			code, plan.Days, p.ID, *recipientID, sessionID); err != nil {
-			writeErr(w, http.StatusInternalServerError, "gagal membuat voucher hadiah")
-			return
+		codes := make([]string, 0, qty)
+		for i := 0; i < qty; i++ {
+			code := giftCode()
+			if _, err := a.pool.Exec(ctx, `
+				insert into vouchers (code, source, duration_days, created_by, assigned_to, payment_ref)
+				values ($1, 'purchase', $2, $3::uuid, $4::uuid, $5)`,
+				code, plan.Days, p.ID, recipientID, sessionID); err != nil {
+				writeErr(w, http.StatusInternalServerError, "gagal membuat voucher")
+				return
+			}
+			codes = append(codes, code)
 		}
-		resp["voucher_code"] = code
+		resp["voucher_code"] = codes[0]
+		resp["voucher_codes"] = codes
+		resp["quantity"] = qty
 	}
 	switch req.Provider {
 	case "tokopay":
@@ -339,28 +364,87 @@ func (a *API) handleVoucherRedeem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"premium_until": until, "days_added": v.Days})
 }
 
-// handleVouchersMine: voucher aktif yang ditujukan ke akun ini.
+// handleVouchersMine: semua voucher yang berkaitan dengan akun ini —
+// yang DIBELI user (created_by, untuk dibagikan; lengkap dengan
+// status pembayaran & penukar) dan yang DITUJUKAN ke user
+// (assigned_to). Dipakai halaman "Voucher Saya".
 func (a *API) handleVouchersMine(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	type voucher struct {
-		Code      string     `json:"code"`
-		Days      int        `json:"duration_days"`
-		Source    string     `json:"source"`
-		ExpiresAt *time.Time `json:"expires_at,omitempty"`
+		Code           string     `json:"code"`
+		Days           int        `json:"duration_days"`
+		Source         string     `json:"source"`
+		Status         string     `json:"status"`
+		ExpiresAt      *time.Time `json:"expires_at,omitempty"`
+		CreatedByMe    bool       `json:"created_by_me"`
+		ForMe          bool       `json:"for_me"`
+		PaymentStatus  *string    `json:"payment_status,omitempty"`
+		RedeemedByName *string    `json:"redeemed_by_name,omitempty"`
 	}
 	out := []voucher{}
 	rows, err := a.pool.Query(r.Context(), `
-		select code, duration_days, source, expires_at from vouchers
-		where assigned_to = $1::uuid and status = 'active'
-		order by created_at desc`, p.ID)
+		select v.code, v.duration_days, v.source, v.status, v.expires_at,
+		       (v.created_by = $1::uuid), (v.assigned_to = $1::uuid),
+		       ps.status, rp.display_name
+		from vouchers v
+		left join payment_sessions ps on ps.id::text = v.payment_ref
+		left join profiles rp on rp.id = v.redeemed_by
+		where v.created_by = $1::uuid or v.assigned_to = $1::uuid
+		order by v.created_at desc
+		limit 100`, p.ID)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var v voucher
-			if err := rows.Scan(&v.Code, &v.Days, &v.Source, &v.ExpiresAt); err == nil {
+			if err := rows.Scan(&v.Code, &v.Days, &v.Source, &v.Status, &v.ExpiresAt,
+				&v.CreatedByMe, &v.ForMe, &v.PaymentStatus, &v.RedeemedByName); err == nil {
 				out = append(out, v)
 			}
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"vouchers": out})
+}
+
+// handleTransactions: riwayat sesi pembayaran milik user (untuk
+// halaman Riwayat Transaksi) — status segar bisa diminta lewat
+// GET /api/v1/payments/status/{id} (cek pembayaran).
+func (a *API) handleTransactions(w http.ResponseWriter, r *http.Request) {
+	p := auth.FromContext(r.Context())
+	labels := map[string]string{}
+	for _, pl := range billing.LoadPlans(r.Context(), a.pool) {
+		labels[pl.ID] = pl.Label
+	}
+	type transaction struct {
+		ID        string    `json:"id"`
+		Purpose   string    `json:"purpose"`
+		Provider  string    `json:"provider"`
+		PlanID    string    `json:"plan_id"`
+		PlanLabel string    `json:"plan_label"`
+		Amount    int       `json:"amount"`
+		Status    string    `json:"status"`
+		CreatedAt time.Time `json:"created_at"`
+		ExpiresAt time.Time `json:"expires_at"`
+	}
+	out := []transaction{}
+	rows, err := a.pool.Query(r.Context(), `
+		select id, purpose, provider, coalesce(plan,''), amount, status, created_at, expires_at
+		from payment_sessions
+		where user_id = $1::uuid
+		order by created_at desc
+		limit 50`, p.ID)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var t transaction
+			if err := rows.Scan(&t.ID, &t.Purpose, &t.Provider, &t.PlanID, &t.Amount,
+				&t.Status, &t.CreatedAt, &t.ExpiresAt); err == nil {
+				t.PlanLabel = labels[t.PlanID]
+				if t.PlanLabel == "" {
+					t.PlanLabel = t.PlanID
+				}
+				out = append(out, t)
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"transactions": out})
 }

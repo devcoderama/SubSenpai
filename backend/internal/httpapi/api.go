@@ -110,6 +110,7 @@ func (a *API) Router() http.Handler {
 			r.Post("/api/v1/premium/trial", a.handleTrial)
 			r.Post("/api/v1/payments/checkout", a.handleCheckout)
 			r.Get("/api/v1/payments/status/{sessionId}", a.handlePaymentStatus)
+			r.Get("/api/v1/transactions", a.handleTransactions)
 			r.Post("/api/v1/vouchers/redeem", a.handleVoucherRedeem)
 			r.Get("/api/v1/vouchers/mine", a.handleVouchersMine)
 			r.Get("/api/v1/devices", a.handleDevicesList)

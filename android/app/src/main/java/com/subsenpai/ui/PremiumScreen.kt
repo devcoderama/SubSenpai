@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,8 +46,6 @@ import coil.compose.AsyncImage
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.PaymentMethodItem
 import com.subsenpai.data.PlanItem
-import com.subsenpai.data.PremiumStatus
-import com.subsenpai.data.VoucherItem
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.NumberFormat
@@ -65,165 +62,134 @@ private val methodGroups = listOf(
     "pulsa" to "Pulsa",
 )
 
-/** Hasil checkout Tokopay yang ditampilkan sebagai kartu bayar. */
+/** Hasil checkout yang ditampilkan di langkah pembayaran. */
 private class PayResult(
+    val sessionId: String,
     val totalBayar: Int,
     val nomorVa: String,
     val payUrl: String,
     val qrLink: String,
     val panduan: String,
-    val voucherCode: String,
+    val voucherCodes: List<String>,
 )
 
 /**
- * Layar Premium (dirombak 2026-11-22 atas permintaan Rams): pilih
- * kartu paket, lalu pilih metode pembayaran Tokopay — daftar
- * metodenya dari database (migrasi 0015) lengkap dengan ikon, bisa
- * diaktifkan/dinonaktifkan admin. Tombol GoPay/Tokopay per paket
- * yang lama dihapus; satu tombol Bayar di bawah.
+ * Layar Premium (dirombak lagi 2026-11-22 atas permintaan Rams
+ * agar tidak kepanjangan): dua kategori — Langganan Premium
+ * langsung & Beli Voucher (dengan kuota jumlah orang) — lalu alur
+ * bertahap: 1 pilih paket → Lanjut → 2 metode pembayaran → Bayar →
+ * 3 detail pembayaran + tombol Cek Pembayaran (server juga
+ * mengaktifkan otomatis lewat callback Tokopay). Masa aktif
+ * premium dicek di halaman profil; riwayat & voucher ada di
+ * Lainnya › Riwayat Transaksi / Voucher Saya.
  */
 @Composable
 fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var status by remember { mutableStateOf<PremiumStatus?>(null) }
+    var tab by remember { mutableStateOf(0) } // 0 langganan, 1 voucher
+    var step by remember { mutableStateOf(1) }
     var plans by remember { mutableStateOf<List<PlanItem>>(emptyList()) }
     var methods by remember { mutableStateOf<List<PaymentMethodItem>>(emptyList()) }
-    var vouchers by remember { mutableStateOf<List<VoucherItem>>(emptyList()) }
+    var selectedPlan by remember { mutableStateOf<PlanItem?>(null) }
+    var selectedMethod by remember { mutableStateOf<PaymentMethodItem?>(null) }
+    var qty by remember { mutableStateOf(1) }
+    var payResult by remember { mutableStateOf<PayResult?>(null) }
+    var payPaid by remember { mutableStateOf(false) }
+    var checking by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var redeemCode by remember { mutableStateOf("") }
-    var giftCode by remember { mutableStateOf("") }
-    var giftPlan by remember { mutableStateOf<PlanItem?>(null) }
-    var selectedPlan by remember { mutableStateOf<PlanItem?>(null) }
-    var selectedMethod by remember { mutableStateOf<PaymentMethodItem?>(null) }
-    var payResult by remember { mutableStateOf<PayResult?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var refresh by remember { mutableStateOf(0) }
 
-    LaunchedEffect(refresh) {
+    LaunchedEffect(Unit) {
         try {
-            status = repo.premiumStatus()
             plans = repo.plans()
             methods = repo.paymentMethods()
             if (selectedPlan == null) selectedPlan = plans.firstOrNull()
-            if (giftPlan == null) giftPlan = plans.firstOrNull()
             if (selectedMethod == null) {
-                selectedMethod = methods.firstOrNull { it.code == "QRIS" }
-                    ?: methods.firstOrNull()
+                selectedMethod = methods.firstOrNull { it.code == "QRIS" } ?: methods.firstOrNull()
             }
-            vouchers = repo.myVouchers()
         } catch (e: Exception) {
             error = e.message
         }
     }
 
-    fun act(block: suspend () -> String) {
+    fun checkPayment() {
+        val pr = payResult ?: return
+        checking = true
         scope.launch {
-            error = null
-            info = null
             try {
-                info = block()
-                refresh++
+                val o = repo.paymentStatus(pr.sessionId)
+                if (o.optString("status") == "paid") {
+                    payPaid = true
+                    info = null
+                } else {
+                    info = "Pembayaran belum terdeteksi lunas. Selesaikan pembayaran, lalu cek lagi."
+                }
             } catch (e: Exception) {
                 error = e.message
+            } finally {
+                checking = false
             }
         }
     }
 
-    fun showPayResult(o: JSONObject, voucherCode: String = "") {
-        payResult = PayResult(
-            totalBayar = o.optInt("total_bayar", o.optInt("amount")),
-            nomorVa = o.optString("nomor_va"),
-            payUrl = o.optString("pay_url"),
-            qrLink = o.optString("qr_link"),
-            panduan = o.optString("panduan"),
-            voucherCode = voucherCode,
-        )
+    // Cek sekali otomatis saat masuk langkah pembayaran.
+    LaunchedEffect(payResult?.sessionId) {
+        if (payResult != null && !payPaid) checkPayment()
     }
+
+    val isVoucher = tab == 1
+    val total = (selectedPlan?.price ?: 0) * (if (isVoucher) qty else 1)
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        TextButton(onClick = onBack) { Text("← Kembali") }
+        TextButton(onClick = { if (step > 1) step-- else onBack() }) { Text("← Kembali") }
         Text("Premium", style = MaterialTheme.typography.headlineSmall)
-        status?.let { s ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(
-                        when {
-                            s.isPremium -> "Premium aktif"
-                            else -> "Akun gratis"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    s.premiumUntil?.let { Text("Berlaku sampai: ${it.take(10)}") }
-                    if (s.trialAvailable) {
-                        Spacer(Modifier.height(6.dp))
-                        Button(onClick = {
-                            act { "Trial aktif! Premium 3 hari. Sampai: " + (repo.claimTrial()?.take(10) ?: "") }
-                        }) { Text("Klaim trial gratis 3 hari") }
-                    }
-                }
-            }
-        }
 
-        Text("1 · Pilih paket", style = MaterialTheme.typography.titleMedium)
-        plans.forEach { plan ->
-            val selected = selectedPlan?.id == plan.id
-            Card(
-                modifier = Modifier.fillMaxWidth()
-                    .border(
-                        width = if (selected) 2.dp else 0.dp,
-                        color = if (selected) FeedPurple else Color.Transparent,
-                        shape = RoundedCornerShape(12.dp),
-                    )
-                    .clickable { selectedPlan = plan },
-                colors = CardDefaults.cardColors(
-                    containerColor = if (selected) Color(0xFF262033) else Color(0xFF1E1B26),
-                ),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+        // Kategori: langganan langsung / beli voucher.
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Langganan Premium", "Beli Voucher").forEachIndexed { i, label ->
+                Card(
+                    modifier = Modifier.weight(1f)
+                        .border(
+                            width = if (tab == i) 2.dp else 0.dp,
+                            color = if (tab == i) FeedPurple else Color.Transparent,
+                            shape = RoundedCornerShape(12.dp),
+                        )
+                        .clickable { tab = i; step = 1; payResult = null; payPaid = false },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (tab == i) Color(0xFF262033) else Color(0xFF1E1B26),
+                    ),
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(plan.label, style = MaterialTheme.typography.titleMedium, color = Color.White)
-                        Text(rp(plan.price), color = Color(0xFFB3B3B3))
-                        if (plan.days > 30) {
-                            Text(
-                                "≈ " + rp(plan.price * 30 / plan.days) + "/bulan",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = FeedPurple,
-                            )
-                        }
-                    }
-                    if (selected) {
-                        Box(
-                            modifier = Modifier.size(24.dp).background(FeedPurple, CircleShape),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text("✓", color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
+                    Text(
+                        label,
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
                 }
             }
         }
 
-        Text("2 · Metode pembayaran (Tokopay)", style = MaterialTheme.typography.titleMedium)
-        if (methods.isEmpty()) {
-            Text(
-                "Metode pembayaran belum tersedia. Coba lagi sebentar lagi.",
-                color = Color(0xFFB3B3B3),
-            )
-        }
-        methodGroups.forEach { (group, title) ->
-            val inGroup = methods.filter { it.group == group }
-            if (inGroup.isNotEmpty()) {
-                Text(title, style = MaterialTheme.typography.titleSmall, color = Color(0xFFB3B3B3))
-                inGroup.forEach { m ->
-                    val selected = selectedMethod?.code == m.code
+        Text(
+            "Langkah $step dari 3 · " + when (step) {
+                1 -> "Pilih paket"
+                2 -> "Metode pembayaran"
+                else -> "Pembayaran"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFFB3B3B3),
+        )
+
+        when (step) {
+            1 -> {
+                plans.forEach { plan ->
+                    val selected = selectedPlan?.id == plan.id
                     Card(
                         modifier = Modifier.fillMaxWidth()
                             .border(
@@ -231,181 +197,278 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit) {
                                 color = if (selected) FeedPurple else Color.Transparent,
                                 shape = RoundedCornerShape(12.dp),
                             )
-                            .clickable { selectedMethod = m },
+                            .clickable { selectedPlan = plan },
                         colors = CardDefaults.cardColors(
                             containerColor = if (selected) Color(0xFF262033) else Color(0xFF1E1B26),
                         ),
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            if (m.iconUrl.isNotBlank()) {
-                                AsyncImage(
-                                    model = m.iconUrl,
-                                    contentDescription = m.name,
-                                    modifier = Modifier.size(30.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(Color.White)
-                                        .padding(3.dp),
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier.size(30.dp).background(Color(0xFF3A3A44), CircleShape),
-                                    contentAlignment = Alignment.Center,
-                                ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(plan.label, style = MaterialTheme.typography.titleMedium, color = Color.White)
+                                Text(rp(plan.price), color = Color(0xFFB3B3B3))
+                                if (plan.days > 30) {
                                     Text(
-                                        m.name.take(1),
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        "≈ " + rp(plan.price * 30 / plan.days) + "/bulan",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = FeedPurple,
                                     )
                                 }
                             }
-                            Spacer(Modifier.width(12.dp))
-                            Text(m.name, color = Color.White, modifier = Modifier.weight(1f))
                             if (selected) {
-                                Text("✓", color = FeedPurple, style = MaterialTheme.typography.titleMedium)
+                                Box(
+                                    modifier = Modifier.size(24.dp).background(FeedPurple, CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text("✓", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                                }
                             }
                         }
                     }
                 }
-            }
-        }
-
-        Button(
-            enabled = selectedPlan != null && selectedMethod != null && !busy,
-            onClick = {
-                val plan = selectedPlan!!
-                val method = selectedMethod!!
-                busy = true
-                payResult = null
-                act {
-                    try {
-                        val o = repo.checkout(plan.id, "tokopay", "subscription", channel = method.code)
-                        showPayResult(o)
-                        "Order ${method.name} dibuat — selesaikan pembayaran sebelum kedaluwarsa. Premium aktif otomatis setelah pembayaran terkonfirmasi."
-                    } finally {
-                        busy = false
+                if (isVoucher) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text("Mau dibagikan ke berapa orang?", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedButton(onClick = { if (qty > 1) qty-- }) { Text("−") }
+                                Text(
+                                    "$qty",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    modifier = Modifier.padding(horizontal = 18.dp),
+                                )
+                                OutlinedButton(onClick = { if (qty < 10) qty++ }) { Text("+") }
+                                Spacer(Modifier.width(10.dp))
+                                Text("kode voucher", color = Color(0xFFB3B3B3))
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Total: ${rp(total)} — $qty kode × ${selectedPlan?.days ?: 0} hari premium. " +
+                                    "Kode bisa dibagikan ke siapa saja dan dipakai siapa pun yang menukarkannya.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFB3B3B3),
+                            )
+                        }
                     }
                 }
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                if (selectedPlan != null && selectedMethod != null) {
-                    "Bayar ${rp(selectedPlan!!.price)} via ${selectedMethod!!.name}"
-                } else {
-                    "Bayar"
-                },
-            )
-        }
-
-        payResult?.let { pr ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("Selesaikan pembayaran", style = MaterialTheme.typography.titleMedium)
-                    if (pr.voucherCode.isNotBlank()) {
-                        Text("Kode voucher hadiah: ${pr.voucherCode} (aktif setelah lunas)")
+                Button(
+                    enabled = selectedPlan != null,
+                    onClick = { step = 2 },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Lanjut") }
+                if (isVoucher) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("Punya kode voucher?", style = MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = redeemCode,
+                            onValueChange = { redeemCode = it },
+                            label = { Text("Kode voucher") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                        )
+                        Button(
+                            enabled = redeemCode.isNotBlank(),
+                            onClick = {
+                                val code = redeemCode.trim()
+                                scope.launch {
+                                    error = null
+                                    try {
+                                        val o = repo.redeemVoucher(code)
+                                        redeemCode = ""
+                                        info = "Voucher ditukar! Premium sampai " +
+                                            o.optString("premium_until").take(10)
+                                    } catch (e: Exception) {
+                                        error = e.message
+                                    }
+                                }
+                            },
+                        ) { Text("Tukar") }
                     }
-                    Text("Total bayar: ${rp(pr.totalBayar)}")
-                    if (pr.nomorVa.isNotBlank()) {
+                }
+            }
+
+            2 -> {
+                selectedPlan?.let { plan ->
+                    Text(
+                        (if (isVoucher) "Voucher " else "Langganan ") + plan.label +
+                            (if (isVoucher) " × $qty kode" else "") + " — " + rp(total),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                    )
+                }
+                if (methods.isEmpty()) {
+                    Text("Metode pembayaran belum tersedia. Coba lagi sebentar lagi.", color = Color(0xFFB3B3B3))
+                }
+                methodGroups.forEach { (group, title) ->
+                    val inGroup = methods.filter { it.group == group }
+                    if (inGroup.isNotEmpty()) {
+                        Text(title, style = MaterialTheme.typography.titleSmall, color = Color(0xFFB3B3B3))
+                        inGroup.forEach { m ->
+                            val selected = selectedMethod?.code == m.code
+                            Card(
+                                modifier = Modifier.fillMaxWidth()
+                                    .border(
+                                        width = if (selected) 2.dp else 0.dp,
+                                        color = if (selected) FeedPurple else Color.Transparent,
+                                        shape = RoundedCornerShape(12.dp),
+                                    )
+                                    .clickable { selectedMethod = m },
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (selected) Color(0xFF262033) else Color(0xFF1E1B26),
+                                ),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (m.iconUrl.isNotBlank()) {
+                                        AsyncImage(
+                                            model = m.iconUrl,
+                                            contentDescription = m.name,
+                                            modifier = Modifier.size(30.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color.White)
+                                                .padding(3.dp),
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier.size(30.dp).background(Color(0xFF3A3A44), CircleShape),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                m.name.take(1),
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(m.name, color = Color.White, modifier = Modifier.weight(1f))
+                                    if (selected) {
+                                        Text("✓", color = FeedPurple, style = MaterialTheme.typography.titleMedium)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Button(
+                    enabled = selectedPlan != null && selectedMethod != null && !busy,
+                    onClick = {
+                        val plan = selectedPlan!!
+                        val method = selectedMethod!!
+                        busy = true
+                        error = null
+                        info = null
+                        scope.launch {
+                            try {
+                                val o = repo.checkout(
+                                    plan.id, "tokopay",
+                                    if (isVoucher) "voucher" else "subscription",
+                                    channel = method.code,
+                                    quantity = if (isVoucher) qty else 1,
+                                )
+                                val codes = mutableListOf<String>()
+                                val arr = o.optJSONArray("voucher_codes")
+                                if (arr != null) for (i in 0 until arr.length()) codes.add(arr.getString(i))
+                                payResult = PayResult(
+                                    sessionId = o.optString("session_id"),
+                                    totalBayar = o.optInt("total_bayar", o.optInt("amount")),
+                                    nomorVa = o.optString("nomor_va"),
+                                    payUrl = o.optString("pay_url"),
+                                    qrLink = o.optString("qr_link"),
+                                    panduan = o.optString("panduan"),
+                                    voucherCodes = codes,
+                                )
+                                payPaid = false
+                                step = 3
+                            } catch (e: Exception) {
+                                error = e.message
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Bayar ${rp(total)}") }
+            }
+
+            else -> {
+                val pr = payResult
+                if (pr == null) {
+                    Text("Belum ada pembayaran yang dibuat.", color = Color(0xFFB3B3B3))
+                } else {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text("Selesaikan pembayaran", style = MaterialTheme.typography.titleMedium)
+                            Text("Total bayar: ${rp(pr.totalBayar)}")
+                            if (pr.nomorVa.isNotBlank()) {
+                                Text(
+                                    "Nomor VA / kode bayar: ${pr.nomorVa}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            if (pr.panduan.isNotBlank()) {
+                                Text(pr.panduan, style = MaterialTheme.typography.bodySmall)
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (pr.payUrl.isNotBlank()) {
+                                    Button(onClick = {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pr.payUrl)))
+                                    }) { Text("Buka halaman bayar") }
+                                }
+                                if (pr.qrLink.isNotBlank()) {
+                                    OutlinedButton(onClick = {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pr.qrLink)))
+                                    }) { Text("Lihat QR") }
+                                }
+                            }
+                        }
+                    }
+                    if (payPaid) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF14331F)),
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text("✓ Pembayaran berhasil!", color = Color.White, fontWeight = FontWeight.Bold)
+                                Text(
+                                    if (isVoucher) {
+                                        "Pembayaran lunas — ${pr.voucherCodes.size} kode voucher aktif. " +
+                                            "Lihat & bagikan di Lainnya › Voucher Saya."
+                                    } else {
+                                        "Premium kamu sudah aktif. Cek masa aktifnya di halaman profil " +
+                                            "(Lainnya › kartu akun)."
+                                    },
+                                    color = Color(0xFFB3B3B3),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    } else {
+                        OutlinedButton(
+                            enabled = !checking,
+                            onClick = { checkPayment() },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(if (checking) "Mengecek…" else "Sudah bayar? Cek Pembayaran") }
                         Text(
-                            "Nomor VA / kode bayar: ${pr.nomorVa}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
+                            "Status juga tercatat di Lainnya › Riwayat Transaksi. " +
+                                "Server mengaktifkan otomatis lewat callback Tokopay begitu pembayaran masuk.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFB3B3B3),
                         )
                     }
-                    if (pr.panduan.isNotBlank()) {
-                        Text(pr.panduan, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (pr.payUrl.isNotBlank()) {
-                            Button(onClick = {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pr.payUrl)))
-                            }) { Text("Buka halaman bayar") }
-                        }
-                        if (pr.qrLink.isNotBlank()) {
-                            OutlinedButton(onClick = {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pr.qrLink)))
-                            }) { Text("Lihat QR") }
-                        }
-                    }
+                    Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Selesai") }
                 }
             }
         }
 
-        Text("Voucher", style = MaterialTheme.typography.titleMedium)
-        if (vouchers.isNotEmpty()) {
-            Text("Voucher untukmu:", style = MaterialTheme.typography.bodyMedium)
-            vouchers.forEach { v ->
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("${v.code} · ${v.days} hari (${v.source})")
-                    TextButton(onClick = {
-                        act {
-                            val o = repo.redeemVoucher(v.code)
-                            "Voucher ditukar! Premium sampai " + o.optString("premium_until").take(10)
-                        }
-                    }) { Text("Tukar") }
-                }
-            }
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = redeemCode,
-                onValueChange = { redeemCode = it },
-                label = { Text("Kode voucher") },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-            )
-            Button(
-                enabled = redeemCode.isNotBlank(),
-                onClick = {
-                    val code = redeemCode.trim()
-                    act {
-                        val o = repo.redeemVoucher(code)
-                        redeemCode = ""
-                        "Voucher ditukar! Premium sampai " + o.optString("premium_until").take(10)
-                    }
-                },
-            ) { Text("Tukar") }
-        }
-        Text("Hadiahkan premium ke teman", style = MaterialTheme.typography.titleMedium)
-        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            plans.forEach { plan ->
-                OutlinedButton(onClick = { giftPlan = plan }) {
-                    Text((if (giftPlan?.id == plan.id) "✓ " else "") + plan.days + " hari")
-                }
-            }
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = giftCode,
-                onValueChange = { giftCode = it },
-                label = { Text("Kode teman penerima") },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-            )
-            Button(
-                enabled = giftCode.isNotBlank() && giftPlan != null && selectedMethod != null && !busy,
-                onClick = {
-                    val plan = giftPlan!!
-                    val method = selectedMethod!!
-                    val code = giftCode.trim()
-                    busy = true
-                    payResult = null
-                    act {
-                        try {
-                            val o = repo.checkout(plan.id, "tokopay", "voucher", code, channel = method.code)
-                            showPayResult(o, o.optString("voucher_code"))
-                            "Hadiah dibuat via ${method.name}! Kode voucher di atas aktif setelah pembayaran lunas."
-                        } finally {
-                            busy = false
-                        }
-                    }
-                },
-            ) { Text("Kirim hadiah") }
-        }
         if (info != null) Text(info!!, style = MaterialTheme.typography.bodyMedium)
         if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error)
         Spacer(Modifier.height(16.dp))

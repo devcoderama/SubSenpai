@@ -337,6 +337,7 @@ class CatalogRepository(
         purpose: String,
         recipientCode: String? = null,
         channel: String? = null,
+        quantity: Int = 1,
     ): JSONObject {
         val body = JSONObject()
             .put("plan_id", planId)
@@ -344,7 +345,30 @@ class CatalogRepository(
             .put("purpose", purpose)
         if (recipientCode != null) body.put("recipient_code", recipientCode)
         if (channel != null) body.put("channel", channel)
+        if (quantity > 1) body.put("quantity", quantity)
         return api.post("/api/v1/payments/checkout", body)
+    }
+
+    /** Cek status pembayaran (server menanyakan gateway & mengaktifkan sesi bila lunas). */
+    suspend fun paymentStatus(sessionId: String): JSONObject =
+        api.get("/api/v1/payments/status/$sessionId")
+
+    /** Riwayat transaksi (sesi pembayaran) milik user. */
+    suspend fun transactions(): List<TransactionItem> {
+        val o = api.get("/api/v1/transactions")
+        return buildList {
+            val arr = o.optJSONArray("transactions")
+            if (arr != null) for (i in 0 until arr.length()) {
+                val t = arr.getJSONObject(i)
+                add(
+                    TransactionItem(
+                        t.getString("id"), t.optString("purpose"), t.optString("provider"),
+                        t.optString("plan_label"), t.optInt("amount"), t.optString("status"),
+                        t.optString("created_at"),
+                    ),
+                )
+            }
+        }
     }
 
     suspend fun redeemVoucher(code: String): JSONObject =
@@ -356,7 +380,18 @@ class CatalogRepository(
             val arr = o.optJSONArray("vouchers")
             if (arr != null) for (i in 0 until arr.length()) {
                 val v = arr.getJSONObject(i)
-                add(VoucherItem(v.getString("code"), v.getInt("duration_days"), v.optString("source")))
+                add(
+                    VoucherItem(
+                        code = v.getString("code"),
+                        days = v.getInt("duration_days"),
+                        source = v.optString("source"),
+                        status = v.optString("status", "active"),
+                        createdByMe = v.optBoolean("created_by_me"),
+                        forMe = v.optBoolean("for_me"),
+                        paymentStatus = v.optString("payment_status").ifBlank { null },
+                        redeemedByName = v.optString("redeemed_by_name").ifBlank { null },
+                    ),
+                )
             }
         }
     }

@@ -17,6 +17,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +42,7 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.subsenpai.BuildConfig
 import com.subsenpai.data.CatalogRepository
+import com.subsenpai.data.PremiumStatus
 import kotlinx.coroutines.launch
 
 /** Kegagalan berantai login Google — membawa rincian tiap jalur. */
@@ -133,7 +135,22 @@ fun LoginScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var cmDetail by remember { mutableStateOf<String?>(null) }
     var loggedIn by remember { mutableStateOf(repo.isLoggedIn) }
+    var premium by remember { mutableStateOf<PremiumStatus?>(null) }
     val auth = repo.auth
+
+    // Masa aktif premium ditampilkan di halaman profil ini
+    // (permintaan Rams 2026-11-22 — dipindah dari halaman Premium).
+    LaunchedEffect(loggedIn) {
+        premium = if (loggedIn) {
+            try {
+                repo.premiumStatus()
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+    }
     val clientConfigured = BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank()
 
     // Jalur ketiga: intent klasik Google Sign-In (Play Services Auth).
@@ -187,6 +204,39 @@ fun LoginScreen(
             auth.email?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             auth.friendCode?.let {
                 Text("Kode teman: $it", style = MaterialTheme.typography.bodyMedium)
+            }
+            premium?.let { ps ->
+                Spacer(Modifier.height(8.dp))
+                if (ps.isPremium) {
+                    Text(
+                        "★ Premium aktif" +
+                            (ps.premiumUntil?.let { " sampai " + it.take(10) } ?: ""),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color(0xFF4CAF50),
+                    )
+                } else {
+                    Text("Akun gratis", style = MaterialTheme.typography.titleSmall)
+                    if (ps.trialAvailable) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    try {
+                                        val until = repo.claimTrial()
+                                        premium = PremiumStatus(
+                                            tier = "premium",
+                                            isPremium = true,
+                                            premiumUntil = until,
+                                            trialAvailable = false,
+                                        )
+                                    } catch (e: Exception) {
+                                        error = e.message
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Klaim trial premium gratis 3 hari") }
+                    }
+                }
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(

@@ -65,7 +65,27 @@ data class PremiumStatus(
     val trialAvailable: Boolean,
 )
 
-data class VoucherItem(val code: String, val days: Int, val source: String)
+data class VoucherItem(
+    val code: String,
+    val days: Int,
+    val source: String,
+    val status: String = "active",
+    val createdByMe: Boolean = false,
+    val forMe: Boolean = false,
+    val paymentStatus: String? = null,
+    val redeemedByName: String? = null,
+)
+
+/** Satu baris riwayat transaksi (sesi pembayaran). */
+data class TransactionItem(
+    val id: String,
+    val purpose: String,
+    val provider: String,
+    val planLabel: String,
+    val amount: Int,
+    val status: String,
+    val createdAt: String,
+)
 
 data class ChatChannelItem(val id: String, val name: String, val kind: String)
 
