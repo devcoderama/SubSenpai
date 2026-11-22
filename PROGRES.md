@@ -11,6 +11,7 @@
 ✓ [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) → panel admin website terpisah khusus admin
 ✓ [STRUKTUR.md](STRUKTUR.md) + [database/DATABASE.md](database/DATABASE.md) + [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) → rekomendasi putaran 1–2 terintegrasi resmi
 ✓ [FITUR.md](FITUR.md) → fitur resmi F13–F39
+✓ [FITUR.md](FITUR.md) + [STRUKTUR.md](STRUKTUR.md) → F40 sumber subtitle siap pakai per bahasa (registri sumber; transkripsi Whisper & terjemahan mesin bukan lagi jalur utama)
 ✓ [KEAMANAN.md](KEAMANAN.md) → keamanan resmi, Play Integrity O8, gerbang versi minimum O17, dan token integrasi F35
 ✓ [OPTIMASI.md](OPTIMASI.md) → optimasi resmi O9–O27
 ✓ [NOTE.md](NOTE.md) → distribusi aplikasi hanya melalui website resmi & GitHub Releases
@@ -25,7 +26,7 @@
 
 ✓ Fase 0 → sinkronisasi final DATABASE.md selesai (52 tabel) — pembangunan bisa dimulai
 ✓ Fase 1 → katalog multi-konten + halaman detail + player HLS (backend Go + aplikasi Android terbangun & terverifikasi: migrasi 52 tabel jalan, endpoint katalog terenkripsi xdata terbukti hidup, APK debug terkompilasi)
-- Fase 2 → worker subtitle bahasa asal (caption/Whisper → SRT asal) + terjemahan subtitle di perangkat user
+- Fase 2 → registri sumber per bahasa + resolver per situs (F40: subtitle siap pakai) + migrasi 0002 (content_sources, episode_sources.lang) + cadangan terjemahan gtx di perangkat
 - Fase 3 → login Google + JWT backend + watchlist + riwayat
 - Fase 4 → gerbang freemium + pembayaran + voucher + chat global + teman & grup + DM + nonton bareng
 - Fase 5 → mode baca + reader vertikal + sumber perangkat ber-Cloudflare F39 + OCR & terjemahan balon komik F31

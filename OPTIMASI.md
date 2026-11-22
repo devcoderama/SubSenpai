@@ -110,6 +110,8 @@ Database lokal berbagi disk VPS (patokan 50 GB) dengan sistem — harus ada kebi
 
 ## O24 — Pra-Saring Audio (VAD) Sebelum Transkripsi
 
+> **Status: DITANGGUHKAN sejak F40 (2026-11-22).** Jalur utama subtitle kini sumber siap pakai per bahasa (F40) — tidak ada transkripsi, jadi pra-saring ini tidak terpakai. Isi di bawah dipertahankan hanya bila jalur transkripsi dihidupkan lagi kelak.
+
 Biaya variabel terbesar SubSenpai adalah menit transkripsi Whisper; jangan membayar menit yang tidak berisi dialog:
 - Sebelum audio dikirim ke API transkripsi, worker menjalankan **deteksi aktivitas suara (VAD)**: segmen hening panjang dipangkas, dan rentang intro/outro yang sudah ditandai (F10) tidak ditranskripsikan sebagai dialog.
 - Yang dikirim hanya segmen berisi ucapan, **beserta peta offset waktunya** — sehingga timestamp hasil transkripsi dipetakan kembali ke garis waktu asli episode dan file SRT akhir tetap tepat.

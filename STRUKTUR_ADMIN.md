@@ -30,11 +30,12 @@ Struktur folder & daftar halaman panel tinggal di **[web_admin/README.md](web_ad
 - **Tab Permintaan Judul**: daftar `title_requests` terurut berdasar jumlah suara (`title_request_votes`) — admin menyetujui, menolak, atau menandai `added` setelah judulnya dibuat (peminta & pendukung otomatis ternotifikasi lewat sistem notifikasi).
 - Poster diunggah ke R2 dari panel (tidak perlu URL manual).
 
-### 3.3 Manajemen Subtitle
-- Daftar antrean berdasarkan status (`queued` / `processing` / `done` / `failed`) + alasan gagal.
-- **Retry** subtitle yang gagal, per episode atau massal.
-- Unggah SRT manual (menimpa hasil mesin) & hapus subtitle yang buruk.
-- Picu pembuatan subtitle untuk episode tertentu di luar antrean otomatis.
+### 3.3 Manajemen Subtitle & Sumber Konten
+- **Registri sumber (F40)** — daftar `content_sources`: tambah/nonaktifkan sumber, **ganti domain** (`base_url`) saat situs sumber pindah alamat, atur resolver, bahasa, jenis subtitle (soft/hard), dan prioritas per jenis konten × bahasa; status kesehatan tiap sumber dari cek berkala (O9) tampil di sini.
+- Daftar antrean pengambilan berdasarkan status (`queued` / `processing` / `done` / `failed`) + alasan gagal.
+- **Retry** pengambilan yang gagal, per episode atau massal.
+- Unggah SRT manual (menimpa hasil ambilan) & hapus subtitle yang buruk.
+- Picu pengambilan untuk episode tertentu di luar antrean otomatis.
 
 ### 3.4 Manajemen User
 - Daftar user (dari `profiles`): email, tanggal daftar, status premium.

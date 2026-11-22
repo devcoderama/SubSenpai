@@ -572,7 +572,7 @@ Catatan: tidak ada layanan auth eksternal — `profiles` adalah tabel user itu s
 | `episodes` | Episode video untuk anime/donghua/film | Katalog |
 | `chapters` | Chapter untuk manga/manhua/manhwa | Katalog |
 | `chapter_pages` | Halaman gambar per chapter | Katalog |
-| `subtitles` | File subtitle per episode: BAHASA ASAL dari worker (caption/Whisper) + varian komunitas hasil kontribusi user (F13); terjemahan lain dibuat aplikasi di perangkat user | Katalog |
+| `subtitles` | Berkas subtitle per episode: trek siap pakai hasil ambilan worker dari sumber softsub (F40) + varian komunitas hasil kontribusi user (F13); sumber hardsub tidak menghasilkan baris di sini (alirannya di `episode_sources` per bahasa); terjemahan mesin hanya cadangan di perangkat user. Registri sumbernya: tabel `content_sources` (migrasi 0002, Fase 2) | Katalog |
 | `profiles` | Tabel user (identitas Google: email + google_sub) + profil + cache status premium | User |
 | `subscriptions` | Langganan premium & status pembayaran | Monetisasi |
 | `watchlist` | Judul favorit per profil penonton + saklar notifikasi per judul (`notify`) + penanda pengingat cerdas (O21) | User |

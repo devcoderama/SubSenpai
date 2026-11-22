@@ -269,3 +269,24 @@ Untuk sumber yang dilindungi anti-bot Cloudflare (contoh nyata: **manhuarmtl.com
 **Perubahan data**
 - Kolom baru di `titles`: `fetch_mode` ∈ `server|device` (bawaan `server`), `source_domain` (boleh kosong), `source_url_template` (boleh kosong) — ketiganya hanya terisi untuk judul perangkat.
 - `read_history` mendapat kolom penanda eksternal (label chapter + nomor) yang dipakai bila chapter berasal dari sumber perangkat (tanpa baris `chapters`).
+
+## F40 — Sumber Subtitle Siap Pakai per Bahasa (Registri Sumber)
+
+Keputusan Rams (2026-11-22): subtitle **tidak dibuat sendiri** — tidak ada pipeline transkripsi Whisper dan tidak ada terjemahan mesin sebagai jalur utama. Subtitle diambil **siap pakai** dari situs sumber yang memang menyediakan subtitle dalam bahasa itu; tiap jenis konten × bahasa punya sumbernya sendiri yang tercatat di registri `content_sources` (STRUKTUR.md Bagian 3) dan bisa diganti admin.
+
+Peta sumber awal (terverifikasi aktif 2026-11-22):
+- **Anime** — Indonesia: **Kuronime**; Inggris: **HiAnime** (softsub — satu video, banyak trek subtitle; di banyak judul treknya juga mencakup Indonesia, Melayu, Spanyol, Vietnam, Thailand); Spanyol: **AnimeFLV**; Vietnam: **AnimeVietsub**; Mandarin: **AGE动漫** (`agedm.io`); Thailand: **AnimeRuka** (+ trek Thai HiAnime); Korea: keluarga **Anilife** (ada, tapi paling tidak stabil domainnya); Melayu: trek Melayu HiAnime (tidak ada situs khusus yang layak); Jepang: bahasa asal — tanpa subtitle / caption bawaan bila ada.
+- **Donghua** — Indonesia: **Anichin** (videonya embed dari host pihak ketiga seperti OK.ru/Dailymotion — yang diselesaikan resolver adalah embed-nya); Inggris + multi-bahasa ("All Sub"): **AnimeXin**; bahasa lain memang langka untuk donghua — Mandarin adalah audio aslinya.
+- **Film** — **hashflix.top** saja dulu (satu sumber), karena player web-nya sudah menyediakan subtitle bawaan; detail teknis treknya (diambil sebagai berkas atau mode embed) dipastikan saat implementasi.
+- **Manga/manhua/manhwa** — tetap **manhuarmtl.com** lewat pola perangkat F39; tidak berubah.
+
+Aturan mainnya:
+- **Softsub vs hardsub.** Sumber softsub → trek diekstrak jadi berkas (R2 + tabel `subtitles`), bisa dipilih/dimatikan di player. Sumber hardsub (kebanyakan situs fansub) → tiap bahasa adalah aliran video sendiri (`episode_sources` ber-`lang`); subtitle menyatu dan tidak bisa dimatikan.
+- **Domain bisa diganti tanpa rilis.** Situs-situs ini sering pindah domain — `base_url` hidup di registri dan diubah admin dari panel; cek kesehatan berkala (O9) menandai sumber mati agar player melewatinya otomatis.
+- **Sumber ber-Cloudflare diselesaikan di perangkat** dengan pola F39 (cookie clearance per domain, hanya di perangkat) — berlaku juga untuk sumber video, bukan hanya komik.
+- **Cadangan terjemahan di perangkat tetap ada.** Bila bahasa user belum punya sumber siap pakai untuk judul itu, aplikasi menerjemahkan trek yang tersedia (biasanya Inggris) di perangkat via Google Translate gratis (`gtx`, pola D TRADE) + cache lokal — persis rancangan terjemahan sebelumnya, kini berstatus cadangan. Tombol Terjemahkan untuk teks bebas (sinopsis/komentar/chat) tidak berubah.
+- **MyAnimeList bukan sumber streaming** (itu basis data) — perannya metadata katalog & integrasi daftar (F16/F35), bukan sumber video/subtitle.
+
+**Perubahan data**
+- Tabel baru `content_sources` + kolom baru `lang` di `episode_sources` + nilai `sumber` pada `subtitles.source` — semuanya lewat **migrasi 0002** pada Fase 2; skema final Fase 0 (migrasi 0001) tidak diubah mundur (disiplin O23).
+

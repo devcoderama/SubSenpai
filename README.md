@@ -2,7 +2,7 @@
 
 **Anime, donghua, film, dan komik dalam satu aplikasi — konten video dengan subtitle otomatis multi-bahasa.**
 
-SubSenpai adalah aplikasi streaming & baca: anime dan donghua dari sumber asalnya (raw, tanpa subtitle) dengan subtitle yang dibuat otomatis lewat pipeline Whisper + terjemahan mesin, film, serta manga/manhua/manhwa untuk dibaca. Tamu bisa mencicipi 1 episode/chapter; sisanya dibuka lewat login — gratis dengan iklan, atau premium tanpa iklan.
+SubSenpai adalah aplikasi streaming & baca: anime, donghua, dan film dari situs sumber yang memang menyediakan subtitle dalam banyak bahasa — subtitle diambil **siap pakai per bahasa** (tanpa pipeline transkripsi/terjemahan sebagai jalur utama) — serta manga/manhua/manhwa untuk dibaca. Tamu bisa mencicipi 1 episode/chapter; sisanya dibuka lewat login — gratis dengan iklan, atau premium tanpa iklan.
 
 > 🚧 **MASIH DALAM TAHAP PENGEMBANGAN** — repo ini baru berisi rancangan dan struktur awal. Belum ada versi yang bisa dipakai.
 
@@ -13,8 +13,8 @@ SubSenpai adalah aplikasi streaming & baca: anime dan donghua dari sumber asalny
 - 📺 **Katalog multi-konten** — anime, donghua, film, manga, manhua, manhwa; telusur & cari berdasarkan judul, tipe, genre, musim, dan tahun
 - ▶️ **Streaming langsung** — video diputar langsung dari sumbernya (HLS) ke player
 - 📖 **Mode baca** — chapter komik per halaman gambar, nyaman di HP
-- 🗣️ **Subtitle otomatis multi-bahasa** — transkripsi dibuat pipeline Whisper di server menjadi subtitle bahasa asal, lalu **aplikasi menerjemahkannya di perangkat user** ke bahasa pilihan user memakai Google Translate gratis (endpoint `gtx`, pola D TRADE — tanpa API key, dipanggil dari IP perangkat user sendiri sehingga jarang kena limit); hasil terjemahannya tersimpan di cache lokal perangkat
-- ⚡ **Jalur cepat caption** — kalau sumbernya punya closed caption bahasa asal, caption langsung diterjemahkan (timing presisi, tanpa transkripsi)
+- 🗣️ **Subtitle siap pakai multi-bahasa** — subtitle diambil dari situs sumber per bahasa: Indonesia dari Kuronime (anime) & Anichin (donghua), Inggris + banyak bahasa lain dari trek softsub HiAnime & AnimeXin, Spanyol dari AnimeFLV, Vietnam dari AnimeVietsub, dan seterusnya (peta lengkap: FITUR.md F40). Bahasa yang belum ada sumber siap pakainya ditutup **cadangan** terjemahan di perangkat user (Google Translate gratis endpoint `gtx`, pola D TRADE — tanpa API key, dari IP perangkat user sendiri); domain tiap sumber bisa diganti admin karena situs-situs ini sering pindah alamat
+- 🎞️ **Softsub & hardsub** — sumber softsub: trek subtitlenya diekstrak sebagai berkas terpisah (bisa dipilih/dimatikan di player); sumber hardsub: tiap bahasa adalah aliran videonya sendiri, subtitle menyatu di gambar
 - 🌐 **Aplikasi multi-bahasa + tombol Terjemahkan** — antarmuka aplikasi tersedia dalam banyak bahasa (diatur di Pengaturan; bawaan mengikuti bahasa perangkat), dan sinopsis, komentar, serta pesan chat bisa diterjemahkan sekali ketuk memakai Google Translate gratis (endpoint publik `gtx` seperti di D TRADE) **langsung dari perangkat user** — hasilnya di-cache lokal agar tidak menerjemahkan teks yang sama dua kali; server tidak memanggil layanan terjemahan sama sekali
 - 👤 **Akun pengguna** — masuk **wajib dengan Google** (anti-bot; tanpa form email/password), watchlist, dan riwayat tontonan/bacaan (auth ditangani backend Go sendiri — tanpa Supabase)
 - 🎟️ **Freemium** — tamu: 1 episode/chapter; login gratis: lanjut dengan iklan; premium: tanpa iklan, semua terbuka
@@ -32,23 +32,23 @@ SubSenpai adalah aplikasi streaming & baca: anime dan donghua dari sumber asalny
 - 🔐 **Response API terenkripsi** — semua response JSON backend dibungkus envelope `xdata`/`xtime` (AES-256-GCM dengan **kunci sesi sekali pakai hasil tukar kunci ECDH** — tidak ada kunci yang tertanam di aplikasi) dan baru dibuka di aplikasi — anti-scraping, anti-tamper, anti-replay (detail di STRUKTUR.md Bagian 11)
 - 🌙 **Mode gelap** — tema bawaan untuk nonton malam
 
-## 🗣️ Cara Kerja Subtitle Otomatis
+## 🗣️ Cara Kerja Subtitle
 
 ```
-Video raw ──► ekstrak audio ──► Whisper (transkripsi + timestamp)
-                                       │
-                                       ▼
-                 teks bahasa asal ──► terjemahan mesin ──► file .srt/.ass
-                                       │
-                                       ▼
-                           tampil sebagai subtitle di player
+User memilih bahasa ──► API mengecek ketersediaan bahasa episode itu
+                                   │
+              ┌────────────────────┼─────────────────────┐
+              ▼                    ▼                     ▼
+     trek softsub siap pakai   aliran hardsub        belum ada sumber
+     (berkas di R2)            per bahasa            → cadangan: terjemahan
+                                                     gtx di perangkat user
 ```
 
-1. **Transkripsi** — audio ditranskripsi oleh Whisper (large-v3; WhisperX untuk timing per kata) menjadi teks bertimestamp.
-2. **Terjemahan (di aplikasi)** — file subtitle bahasa asal tersimpan di server; saat user memutar, **aplikasi** menerjemahkan baris-barisnya ke bahasa user memakai Google Translate gratis (endpoint `gtx`) langsung dari perangkat user (IP tiap user berbeda — jarang kena limit, seperti di D TRADE), lalu menyimpan hasil terjemahannya di cache lokal perangkat.
-3. **Penyajian** — player memuat subtitle bahasa asal dari object storage, menerjemahkannya di perangkat bila bahasa user berbeda, dan menampilkannya sebagai track subtitle; pemutaran berikutnya memakai cache lokal perangkat.
+1. **Registri sumber** — tiap jenis konten × bahasa dipetakan ke situs sumbernya di tabel `content_sources` (dikelola admin; domain bisa diganti tanpa rilis aplikasi karena situs-situs ini sering pindah alamat).
+2. **Pengambilan** — worker menjalankan resolver tiap sumber: mengambil daftar episode & aliran video, mengekstrak trek softsub menjadi berkas subtitle di R2, dan mencatat aliran hardsub per bahasa. Sumber ber-Cloudflare diselesaikan aplikasi di perangkat (pola WebView clearance seperti sumber komik).
+3. **Penyajian** — player memakai bahasa pilihan user bila sumbernya tersedia. Bila belum, aplikasi menerjemahkan trek yang ada (biasanya Inggris) di perangkat memakai Google Translate gratis (`gtx`, pola D TRADE) dan menyimpan hasilnya di cache lokal perangkat — terjemahan mesin berstatus **cadangan**, bukan jalur utama.
 
-Catatan jujur: kualitas subtitle mesin adalah "cukup untuk mengikuti cerita", bukan setara fansub manusia — nama karakter, istilah khas, dan lagu pembuka/penutup adalah titik lemahnya. Subtitle otomatis hanya untuk konten video; menerjemahkan komik (OCR + menimpa teks pada gambar) adalah persoalan terpisah yang jauh lebih berat.
+Catatan jujur: mutu subtitle mengikuti mutu fansub sumbernya — umumnya baik dan jauh di atas terjemahan mesin, tapi tidak kita kendalikan, dan cakupan tiap bahasa bergantung pada sumbernya (Korea, Melayu, dan teks Jepang paling tipis). Subtitle hanya untuk konten video; menerjemahkan komik (OCR + menimpa teks pada gambar) adalah persoalan terpisah (F31).
 
 ## 🎟️ Model Akses (Freemium)
 
@@ -71,8 +71,8 @@ Pemisahan berdasarkan **jenis data**, bukan per genre:
 | Database + Auth | PostgreSQL **lokal di VPS** + auth oleh backend Go | Katalog multi-konten, episode/chapter, subtitle, user, langganan — penyimpanan database mengikuti disk VPS (jauh lebih besar dari batas paket gratis Supabase); login Google diverifikasi backend dan sesi memakai JWT buatan backend, tanpa Supabase |
 | File storage | Cloudflare R2 | Poster, halaman komik & file subtitle (.srt/.ass) |
 | Video | Stream langsung dari sumber (HLS) | Tidak lewat server sendiri — hemat bandwidth |
-| Worker subtitle | Job latar Go (antrean transkripsi + SRT bahasa asal) + API transkripsi cloud | Transkripsi dititipkan ke API Whisper (Groq/OpenAI); worker Python mandiri hanya bila perlu full offline. Worker TIDAK menerjemahkan — itu urusan aplikasi di perangkat user |
-| Penerjemahan | Google Translate **gratis** — endpoint publik `client=gtx`, dipanggil **aplikasi dari perangkat user** (bukan server) | Subtitle diterjemahkan di perangkat + fitur Terjemahkan untuk sinopsis/komentar/chat; hasil terjemahan di-cache lokal di perangkat user |
+| Worker sumber | Job latar Go (resolver situs sumber + cek kesehatan sumber) | Mengambil daftar episode, aliran video & trek subtitle siap pakai dari situs sumber per bahasa (F40); tidak ada transkripsi dan tidak ada terjemahan di server |
+| Penerjemahan (cadangan) | Google Translate **gratis** — endpoint publik `client=gtx`, dipanggil **aplikasi dari perangkat user** (bukan server) | Hanya cadangan: subtitle bahasa yang belum punya sumber siap pakai + fitur Terjemahkan untuk sinopsis/komentar/chat; hasil terjemahan di-cache lokal di perangkat user |
 | Pembayaran | Midtrans / Xendit + GoPay Merchant API pihak ketiga | Langganan premium & voucher (QRIS, e-wallet, transfer). Jalur GoPay: QRIS dinamis + konfirmasi polling mutasi (tanpa webhook) — [Api-Gopar-Merch](https://github.com/ZeroByte000/Api-Gopar-Merch) |
 | Panel admin | Website terpisah khusus admin (role `admin`) | Kelola katalog, subtitle, user, langganan + monitoring — [STRUKTUR_ADMIN.md](STRUKTUR_ADMIN.md) |
 
@@ -82,7 +82,7 @@ Alur progres dari awal sampai akhir: lihat **[PROGRES.md](PROGRES.md)**. Detail 
 
 - [ ] Fase 0 — Rancangan & struktur repo *(sedang berjalan)*
 - [ ] Fase 1 — Katalog multi-konten + halaman detail + player HLS
-- [ ] Fase 2 — Worker subtitle otomatis (transkripsi → terjemah → SRT)
+- [ ] Fase 2 — Registri sumber per bahasa + resolver per situs (subtitle siap pakai)
 - [ ] Fase 3 — Akun, watchlist, riwayat
 - [ ] Fase 4 — Gerbang freemium (tamu 1 episode) + iklan + premium + Chat Global, teman & grup + DM antar teman & nonton bareng
 - [ ] Fase 5 — Mode baca manga/manhua/manhwa (termasuk mode gulir vertikal untuk manhwa/manhua)
