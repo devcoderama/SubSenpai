@@ -2,6 +2,10 @@ package com.subsenpai.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -121,6 +125,7 @@ fun DetailScreen(
                             listOfNotNull(
                                 d.card.rating?.let { "★ $it" },
                                 d.card.year?.toString(),
+                                d.durationMin?.let { "$it mnt/ep" },
                                 d.card.type.replaceFirstChar { it.uppercase() },
                                 d.card.status,
                             ).joinToString(" · "),
@@ -129,11 +134,25 @@ fun DetailScreen(
                             modifier = Modifier.padding(top = 4.dp),
                         )
                         if (d.card.genres.isNotEmpty()) {
-                            Text(
-                                d.card.genres.joinToString(", "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Row(
+                                modifier = Modifier.padding(top = 8.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                d.card.genres.forEach { g ->
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color(0x33FFFFFF),
+                                    ) {
+                                        Text(
+                                            g,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -197,8 +216,44 @@ fun DetailScreen(
                         }
                     }
                     d.synopsis?.let {
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            "Sinopsis",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(4.dp))
                         Text(it, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    val infoRows = listOfNotNull(
+                        d.studio?.let { "Studio" to it },
+                        d.network?.let { "Jaringan" to it },
+                        d.country?.let { "Negara" to it },
+                        d.season?.let { s ->
+                            "Musim" to (s.replaceFirstChar { it.uppercase() } +
+                                (d.card.year?.let { " $it" } ?: ""))
+                        },
+                        d.card.titleAlt?.let { "Judul Lain" to it },
+                    )
+                    if (infoRows.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            "Detail",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        infoRows.forEach { (label, value) ->
+                            Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.fillMaxWidth(0.28f),
+                                )
+                                Text(value, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
                     }
                 }
             }
@@ -217,7 +272,8 @@ fun DetailScreen(
                             .clickable { onPlay(ep.id) },
                     ) {
                         Text(
-                            "Episode ${ep.episodeNo}" + (ep.title?.let { " — $it" } ?: ""),
+                            "▶  Episode ${ep.episodeNo}" + (ep.title?.let { " — $it" } ?: "") +
+                                (ep.durationSec?.let { " · ${it / 60} mnt" } ?: ""),
                             modifier = Modifier.padding(14.dp),
                         )
                     }

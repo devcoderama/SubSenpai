@@ -75,6 +75,11 @@ data class TitleDetail(
     val fetchMode: String = "server",
     val sourceDomain: String? = null,
     val sourceUrlTemplate: String? = null,
+    val season: String? = null,
+    val network: String? = null,
+    val studio: String? = null,
+    val durationMin: Int? = null,
+    val country: String? = null,
 ) {
     companion object {
         fun fromJson(o: JSONObject): TitleDetail {
@@ -82,6 +87,11 @@ data class TitleDetail(
             return TitleDetail(
                 card = TitleCard.fromJson(t),
                 synopsis = t.optString("synopsis").ifBlank { null },
+                season = t.optString("season").ifBlank { null },
+                network = t.optString("network").ifBlank { null },
+                studio = t.optString("studio").ifBlank { null },
+                durationMin = if (t.has("duration_min") && !t.isNull("duration_min")) t.getInt("duration_min") else null,
+                country = t.optString("country").ifBlank { null },
                 fetchMode = t.optString("fetch_mode").ifBlank { "server" },
                 sourceDomain = t.optString("source_domain").ifBlank { null },
                 sourceUrlTemplate = t.optString("source_url_template").ifBlank { null },
