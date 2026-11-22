@@ -129,12 +129,18 @@ data class Playback(
     val subtitles: List<SubtitleItem>,
     val introStartSec: Int?,
     val introEndSec: Int?,
+    /** Judul pemilik episode ini (dari objek episode respons yang sama). */
+    val titleId: String = "",
+    /** Nomor episode ini (dari objek episode respons yang sama). */
+    val episodeNo: Int = 0,
 ) {
     companion object {
         fun fromJson(o: JSONObject): Playback {
             val ep = o.getJSONObject("episode")
             return Playback(
                 episodeId = ep.getString("id"),
+                titleId = ep.optString("title_id"),
+                episodeNo = ep.optInt("episode_no"),
                 sources = buildList {
                     val arr = o.optJSONArray("sources")
                     if (arr != null) for (i in 0 until arr.length()) {

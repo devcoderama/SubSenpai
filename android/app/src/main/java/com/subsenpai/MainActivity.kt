@@ -160,6 +160,7 @@ class MainActivity : ComponentActivity() {
                                 entry.arguments!!.getString("episodeId")!!,
                                 onBack = { nav.popBackStack() },
                                 onNeedLogin = { nav.navigate("login") },
+                                onOpenTitle = { nav.navigate("detail/$it") },
                             )
                         }
                         composable(

@@ -1,33 +1,55 @@
 package com.subsenpai.player
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
@@ -37,11 +59,23 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.subsenpai.data.CatalogRepository
+import com.subsenpai.data.EpisodeItem
 import com.subsenpai.data.GtxTranslator
 import com.subsenpai.data.Playback
+import com.subsenpai.data.PlaybackSource
 import com.subsenpai.data.SubtitleItem
+import com.subsenpai.data.TitleCard
+import com.subsenpai.data.TitleDetail
+import com.subsenpai.ui.PosterImage
 import kotlinx.coroutines.launch
 import java.util.Locale
+
+/** Palet halaman nonton (redesign ala YouTube mobile, aksen ungu). */
+private val WatchBg = Color(0xFF0D0D0F)
+private val WatchSurface = Color(0xFF19191D)
+private val WatchAccent = Color(0xFF8B5CF6)
+private val WatchText = Color(0xFFF4F4F5)
+private val WatchMuted = Color(0xFFA1A1AA)
 
 /** Pilihan trek teks aktif di player. */
 private sealed interface SubChoice {
@@ -49,6 +83,8 @@ private sealed interface SubChoice {
     data class Local(val uri: Uri, val lang: String) : SubChoice
     data object None : SubChoice
 }
+
+private enum class SheetKind { Server, Subtitle, Party }
 
 private fun mimeOf(format: String): String = when (format) {
     "vtt" -> MimeTypes.TEXT_VTT
@@ -70,13 +106,16 @@ private fun isEmbedUrl(url: String): Boolean {
 }
 
 /**
- * Player HLS (Media3/ExoPlayer) dengan bahasa F40:
- * - Sumber softsub: trek subtitle siap pakai dari sumber bisa dipilih.
- * - Sumber hardsub: tiap bahasa adalah alirannya sendiri — memilih bahasa
- *   berarti berpindah aliran video.
- * - Bila bahasa perangkat belum punya trek siap pakai, chip "Terjemahkan"
- *   menjalankan cadangan gtx di perangkat (hasilnya di-cache lokal).
- * - Kegagalan putar berpindah otomatis ke sumber berikutnya (failover O9).
+ * Halaman nonton (redesign total v0.7.6): tata letak ala YouTube
+ * mobile — header, player 16:9, info judul/episode, tombol aksi
+ * (server/subtitle/terjemahan/party lewat BottomSheet), navigasi
+ * episode, sinopsis, dan rekomendasi — semuanya bisa di-scroll
+ * (LazyColumn) di bawah player yang tetap menempel di atas.
+ *
+ * Seluruh mekanisme lama dipertahankan: ExoPlayer untuk berkas
+ * langsung + WebView untuk embed, failover server, subtitle siap
+ * pakai & terjemahan gtx di perangkat, gerbang freemium, laporan
+ * progres, dan sinkronisasi nonton bareng.
  */
 @Composable
 fun PlayerScreen(
@@ -84,27 +123,44 @@ fun PlayerScreen(
     episodeId: String,
     onBack: () -> Unit,
     onNeedLogin: () -> Unit = {},
+    onOpenTitle: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val translator = remember { GtxTranslator() }
     val deviceLang = remember { Locale.getDefault().language.ifBlank { "id" } }
 
+    // Episode yang sedang diputar bisa berganti dari dalam halaman
+    // (tombol sebelumnya/berikutnya & daftar episode).
+    var epId by remember(episodeId) { mutableStateOf(episodeId) }
     var playback by remember { mutableStateOf<Playback?>(null) }
+    var detail by remember { mutableStateOf<TitleDetail?>(null) }
+    var recommendations by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var locked by remember { mutableStateOf<String?>(null) }
     var sourceIdx by remember { mutableStateOf(0) }
     var subChoice by remember { mutableStateOf<SubChoice>(SubChoice.None) }
     var translating by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
+    var sheet by remember { mutableStateOf<SheetKind?>(null) }
+    var fullscreen by remember { mutableStateOf(false) }
+    var descExpanded by remember { mutableStateOf(false) }
 
     val player = remember {
         ExoPlayer.Builder(context).build().apply { playWhenReady = true }
     }
 
-    LaunchedEffect(episodeId) {
+    LaunchedEffect(epId) {
+        playback = null
+        detail = null
+        recommendations = emptyList()
+        sourceIdx = 0
+        subChoice = SubChoice.None
+        error = null
+        locked = null
+        descExpanded = false
         try {
-            val pb = repo.playback(episodeId)
+            val pb = repo.playback(epId)
             playback = pb
             pb.subtitles.firstOrNull { it.status == "done" && it.fileUrl != null }?.let {
                 subChoice = SubChoice.Remote(it)
@@ -120,6 +176,25 @@ fun PlayerScreen(
         }
     }
 
+    // Info judul + daftar episode dari endpoint detail yang sudah ada.
+    LaunchedEffect(playback?.titleId) {
+        val tid = playback?.titleId
+        if (tid.isNullOrBlank()) return@LaunchedEffect
+        try {
+            val d = repo.titleDetail(tid)
+            detail = d
+            try {
+                recommendations = repo.titles(d.card.type, null)
+                    .filter { it.id != d.card.id }
+                    .take(12)
+            } catch (e: Exception) {
+                // Rekomendasi gagal diam-diam saja.
+            }
+        } catch (e: Exception) {
+            // Info tambahan gagal: player tetap jalan dengan data putar.
+        }
+    }
+
     LaunchedEffect(playback, sourceIdx, subChoice) {
         val pb = playback ?: return@LaunchedEffect
         val src = pb.sources.getOrNull(sourceIdx) ?: run {
@@ -127,7 +202,7 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
         if (isEmbedUrl(src.url)) {
-            // Sumber embed diputar WebView (lihat area video di bawah);
+            // Sumber embed diputar WebView (lihat kontainer player);
             // kosongkan ExoPlayer agar tidak ikut berbunyi.
             player.clearMediaItems()
             player.stop()
@@ -160,18 +235,18 @@ fun PlayerScreen(
     }
 
     // Lapor progres tonton berkala (Fase 3) agar "Lanjutkan" akurat.
-    LaunchedEffect(episodeId) {
+    LaunchedEffect(epId) {
         while (true) {
             kotlinx.coroutines.delay(15_000)
             val pos = (player.currentPosition / 1000).toInt()
-            if (pos > 0) repo.reportWatch(episodeId, pos)
+            if (pos > 0) repo.reportWatch(epId, pos)
         }
     }
-    DisposableEffect(episodeId) {
+    DisposableEffect(epId) {
         onDispose {
             val pos = (player.currentPosition / 1000).toInt()
             if (pos > 0) {
-                scope.launch { repo.reportWatch(episodeId, pos) }
+                scope.launch { repo.reportWatch(epId, pos) }
             }
         }
     }
@@ -192,6 +267,19 @@ fun PlayerScreen(
     }
     DisposableEffect(Unit) {
         onDispose { player.release() }
+    }
+
+    // Layar penuh: putar ke lanskap selama aktif.
+    val activity = context as? Activity
+    LaunchedEffect(fullscreen) {
+        activity?.requestedOrientation = if (fullscreen) {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
     }
 
     // ---------- Nonton bareng (Fase 4) ----------
@@ -254,187 +342,693 @@ fun PlayerScreen(
     }
 
     val pb = playback
-    Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        TextButton(onClick = onBack) { Text("← Kembali", color = Color.White) }
-        if (locked != null) {
-            Text(
-                "🔒 $locked",
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 12.dp),
+    val curSrc = pb?.sources?.getOrNull(sourceIdx)
+    val readySubs = pb?.subtitles?.filter { it.status == "done" && it.fileUrl != null } ?: emptyList()
+    val canTranslate = readySubs.isNotEmpty() &&
+        readySubs.none { it.lang == deviceLang } && !translating
+    val episodes = detail?.episodes ?: emptyList()
+    val curEpIdx = episodes.indexOfFirst { it.id == epId }
+
+    Column(modifier = Modifier.fillMaxSize().background(WatchBg)) {
+        if (!fullscreen) {
+            WatchHeader(
+                title = detail?.card?.title,
+                partyCode = partyCode,
+                onBack = onBack,
             )
-            Text(
-                "Masuk gratis untuk membuka semua episode — atau Premium untuk tanpa iklan.",
-                color = Color.LightGray,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
-            androidx.compose.material3.Button(
-                onClick = onNeedLogin,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            ) { Text("Masuk") }
         }
-        if (repo.isLoggedIn && pb != null) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                if (partyCode == null) {
-                    FilterChip(
-                        selected = false,
-                        onClick = { partySocket.value?.partyCreate(episodeId) },
-                        label = { Text("Buat Nonton Bareng") },
-                        modifier = Modifier.padding(end = 6.dp),
-                    )
-                    androidx.compose.material3.OutlinedTextField(
-                        value = partyJoinCode,
-                        onValueChange = { partyJoinCode = it.uppercase().take(6) },
-                        label = { Text("Kode party") },
-                        singleLine = true,
-                        modifier = Modifier.padding(end = 6.dp),
-                    )
-                    FilterChip(
-                        selected = false,
-                        enabled = partyJoinCode.length == 6,
-                        onClick = { partySocket.value?.partyJoin(partyJoinCode) },
-                        label = { Text("Gabung") },
-                    )
-                } else {
-                    FilterChip(
-                        selected = true,
-                        onClick = { },
-                        label = { Text("Party: $partyCode (bagikan kodenya)") },
-                    )
-                }
-            }
-        }
-        if (pb != null) {
-            val hardLangs = pb.sources.mapNotNull { it.lang }.distinct()
-            val readySubs = pb.subtitles.filter { it.status == "done" && it.fileUrl != null }
-            val canTranslate = readySubs.isNotEmpty() &&
-                readySubs.none { it.lang == deviceLang } && !translating
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp),
-            ) {
-                hardLangs.forEach { lang ->
-                    val idx = pb.sources.indexOfFirst { it.lang == lang }
-                    FilterChip(
-                        selected = sourceIdx == idx,
-                        onClick = { sourceIdx = idx },
-                        label = { Text("Video ${lang.uppercase()}") },
-                        modifier = Modifier.padding(end = 6.dp),
-                    )
-                }
-                readySubs.forEach { sub ->
-                    FilterChip(
-                        selected = (subChoice as? SubChoice.Remote)?.sub == sub,
-                        onClick = { subChoice = SubChoice.Remote(sub) },
-                        label = { Text("Sub ${sub.lang.uppercase()}") },
-                        modifier = Modifier.padding(end = 6.dp),
-                    )
-                }
-                if (readySubs.isNotEmpty() || hardLangs.isNotEmpty()) {
-                    FilterChip(
-                        selected = subChoice == SubChoice.None,
-                        onClick = { subChoice = SubChoice.None },
-                        label = { Text("Tanpa Sub") },
-                        modifier = Modifier.padding(end = 6.dp),
-                    )
-                }
-                if (canTranslate) {
-                    FilterChip(
-                        selected = subChoice is SubChoice.Local,
-                        onClick = {
-                            val base = readySubs.firstOrNull { it.lang == "en" } ?: readySubs.first()
-                            translating = true
-                            note = "Menerjemahkan subtitle ke ${deviceLang.uppercase()}…"
-                            scope.launch {
-                                val uri = translator.translateSubtitle(context, episodeId, base, deviceLang)
-                                translating = false
-                                if (uri != null) {
-                                    subChoice = SubChoice.Local(uri, deviceLang)
-                                    note = null
-                                } else {
-                                    note = "Terjemahan gagal — menampilkan subtitle asli."
-                                }
-                            }
-                        },
-                        label = { Text("Terjemahkan ${deviceLang.uppercase()}") },
-                        modifier = Modifier.padding(end = 6.dp),
-                    )
-                }
-            }
-        }
-        if (note != null) {
-            Text(note!!, color = Color.LightGray, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
-        }
-        if (pb != null && pb.sources.size > 1) {
-            // Pemilih server — penting untuk sumber embed donghua
-            // (Okru, Rumble, Dailymotion, …): tiap chip satu server.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                pb.sources.forEachIndexed { i, s ->
-                    FilterChip(
-                        selected = sourceIdx == i,
-                        onClick = { sourceIdx = i },
-                        label = { Text(s.label ?: "Server ${i + 1}") },
-                        modifier = Modifier.padding(end = 6.dp),
-                    )
-                }
-            }
-        }
-        val curSrc = pb?.sources?.getOrNull(sourceIdx)
-        Box(modifier = Modifier.fillMaxSize()) {
-            if (curSrc != null && isEmbedUrl(curSrc.url)) {
-                androidx.compose.runtime.key(curSrc.url) {
-                    AndroidView(
-                        factory = {
-                            WebView(it).apply {
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                settings.mediaPlaybackRequiresUserGesture = false
-                                settings.userAgentString =
-                                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
-                                webViewClient = WebViewClient()
-                                layoutParams = ViewGroup.LayoutParams(
-                                    ViewGroup.LayoutParams.MATCH_PARENT,
-                                    ViewGroup.LayoutParams.MATCH_PARENT,
-                                )
-                                loadUrl(curSrc.url)
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
+        VideoPlayerContainer(
+            player = player,
+            curSrc = curSrc,
+            error = error,
+            locked = locked,
+            loading = pb == null && locked == null && error == null,
+            fullscreen = fullscreen,
+            onToggleFullscreen = { fullscreen = !fullscreen },
+            onNeedLogin = onNeedLogin,
+            modifier = if (fullscreen) {
+                Modifier.fillMaxSize()
             } else {
+                Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+            },
+        )
+        if (!fullscreen) {
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                item {
+                    VideoInformation(
+                        detail = detail,
+                        playback = pb,
+                        episodeTitle = episodes.getOrNull(curEpIdx)?.title,
+                    )
+                }
+                if (pb != null) {
+                    item {
+                        PlayerActions(
+                            sourceLabel = curSrc?.label
+                                ?: curSrc?.lang?.let { "Video ${it.uppercase()}" }
+                                ?: "Server",
+                            subLabel = when (val sc = subChoice) {
+                                is SubChoice.Remote -> "Sub ${sc.sub.lang.uppercase()}"
+                                is SubChoice.Local -> "Sub ${sc.lang.uppercase()} (terjemahan)"
+                                SubChoice.None -> "Subtitle"
+                            },
+                            canTranslate = canTranslate,
+                            translating = translating,
+                            showParty = repo.isLoggedIn,
+                            partyActive = partyCode != null,
+                            onOpenServer = { sheet = SheetKind.Server },
+                            onOpenSubtitle = { sheet = SheetKind.Subtitle },
+                            onOpenParty = { sheet = SheetKind.Party },
+                            onTranslate = {
+                                val base = readySubs.firstOrNull { it.lang == "en" } ?: readySubs.first()
+                                translating = true
+                                note = "Menerjemahkan subtitle ke ${deviceLang.uppercase()}…"
+                                scope.launch {
+                                    val uri = translator.translateSubtitle(context, epId, base, deviceLang)
+                                    translating = false
+                                    if (uri != null) {
+                                        subChoice = SubChoice.Local(uri, deviceLang)
+                                        note = null
+                                    } else {
+                                        note = "Terjemahan gagal — menampilkan subtitle asli."
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+                if (note != null) {
+                    item {
+                        Text(
+                            note!!,
+                            color = WatchMuted,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+                if (episodes.isNotEmpty()) {
+                    item {
+                        EpisodeSelector(
+                            episodes = episodes,
+                            currentId = epId,
+                            onSelect = { epId = it },
+                            onPrev = episodes.getOrNull(curEpIdx - 1)?.let { prev -> { epId = prev.id } },
+                            onNext = episodes.getOrNull(curEpIdx + 1)?.let { next -> { epId = next.id } },
+                        )
+                    }
+                }
+                val synopsis = detail?.synopsis
+                if (!synopsis.isNullOrBlank()) {
+                    item {
+                        AnimeDescription(
+                            synopsis = synopsis,
+                            expanded = descExpanded,
+                            onToggle = { descExpanded = !descExpanded },
+                        )
+                    }
+                }
+                if (recommendations.isNotEmpty()) {
+                    item {
+                        RecommendedAnime(
+                            titles = recommendations,
+                            onOpen = onOpenTitle,
+                        )
+                    }
+                }
+                item { Spacer(Modifier.height(28.dp)) }
+            }
+        }
+    }
+
+    // ---------- BottomSheet pengaturan ----------
+    when (sheet) {
+        SheetKind.Server -> if (pb != null) {
+            ServerSheet(
+                sources = pb.sources,
+                selected = sourceIdx,
+                onPick = { sourceIdx = it; sheet = null },
+                onDismiss = { sheet = null },
+            )
+        }
+        SheetKind.Subtitle -> if (pb != null) {
+            SubtitleSheet(
+                subs = readySubs,
+                choice = subChoice,
+                onPickRemote = { subChoice = SubChoice.Remote(it); sheet = null },
+                onPickNone = { subChoice = SubChoice.None; sheet = null },
+                onDismiss = { sheet = null },
+            )
+        }
+        SheetKind.Party -> PartySheet(
+            partyCode = partyCode,
+            joinCode = partyJoinCode,
+            onJoinCodeChange = { partyJoinCode = it.uppercase().take(6) },
+            onCreate = { partySocket.value?.partyCreate(epId) },
+            onJoin = { partySocket.value?.partyJoin(partyJoinCode) },
+            onDismiss = { sheet = null },
+        )
+        null -> Unit
+    }
+}
+
+@Composable
+private fun WatchHeader(title: String?, partyCode: String?, onBack: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(onClick = onBack) {
+            Text("←", color = WatchText, style = MaterialTheme.typography.titleLarge)
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "SubSenpai",
+                color = WatchAccent,
+                fontWeight = FontWeight.Black,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (title != null) {
+                Text(
+                    title,
+                    color = WatchMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (partyCode != null) {
+            Surface(shape = RoundedCornerShape(50), color = WatchAccent) {
+                Text(
+                    "Party $partyCode",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun VideoPlayerContainer(
+    player: ExoPlayer,
+    curSrc: PlaybackSource?,
+    error: String?,
+    locked: String?,
+    loading: Boolean,
+    fullscreen: Boolean,
+    onToggleFullscreen: () -> Unit,
+    onNeedLogin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.background(Color.Black)) {
+        if (locked != null) {
+            Column(
+                modifier = Modifier.align(Alignment.Center).padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text("🔒 $locked", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Masuk gratis untuk membuka semua episode — atau Premium untuk tanpa iklan.",
+                    color = Color.LightGray,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+                Button(
+                    onClick = onNeedLogin,
+                    colors = ButtonDefaults.buttonColors(containerColor = WatchAccent),
+                ) { Text("Masuk") }
+            }
+        } else if (curSrc != null && isEmbedUrl(curSrc.url)) {
+            key(curSrc.url) {
                 AndroidView(
                     factory = {
-                        PlayerView(it).apply {
-                            this.player = player
+                        WebView(it).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.mediaPlaybackRequiresUserGesture = false
+                            settings.userAgentString =
+                                "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+                            webViewClient = WebViewClient()
                             layoutParams = ViewGroup.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                             )
+                            loadUrl(curSrc.url)
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-            if (error != null) {
+        } else {
+            AndroidView(
+                factory = {
+                    PlayerView(it).apply {
+                        this.player = player
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        if (loading) {
+            Text(
+                "Memuat video…",
+                color = WatchMuted,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+        if (error != null && locked == null) {
+            Text(
+                error,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+            )
+        }
+        if (locked == null) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0x99000000),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(10.dp)
+                    .clickable { onToggleFullscreen() },
+            ) {
                 Text(
-                    error!!,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(16.dp),
+                    if (fullscreen) "⤢ Keluar Layar Penuh" else "⤢ Layar Penuh",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun VideoInformation(detail: TitleDetail?, playback: Playback?, episodeTitle: String?) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        val card = detail?.card
+        Text(
+            card?.title ?: "Memuat judul…",
+            color = WatchText,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleLarge,
+        )
+        val epNo = playback?.episodeNo
+        if (epNo != null) {
+            Text(
+                "Episode $epNo" + (episodeTitle?.let { " — $it" } ?: ""),
+                color = WatchText,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        val meta = listOfNotNull(
+            card?.rating?.let { "★ $it" },
+            card?.year?.toString(),
+            detail?.durationMin?.let { "$it mnt/ep" },
+            card?.type?.replaceFirstChar { it.uppercase() },
+            card?.status,
+        )
+        if (meta.isNotEmpty()) {
+            Text(
+                meta.joinToString(" · "),
+                color = WatchMuted,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        if (card != null && card.genres.isNotEmpty()) {
+            Row(
+                modifier = Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                card.genres.forEach { g ->
+                    Surface(shape = RoundedCornerShape(50), color = WatchSurface) {
+                        Text(
+                            g,
+                            color = WatchText,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerActions(
+    sourceLabel: String,
+    subLabel: String,
+    canTranslate: Boolean,
+    translating: Boolean,
+    showParty: Boolean,
+    partyActive: Boolean,
+    onOpenServer: () -> Unit,
+    onOpenSubtitle: () -> Unit,
+    onOpenParty: () -> Unit,
+    onTranslate: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ActionButton(text = "Server: $sourceLabel", onClick = onOpenServer)
+        ActionButton(text = subLabel, onClick = onOpenSubtitle)
+        if (canTranslate || translating) {
+            ActionButton(
+                text = if (translating) "Menerjemahkan…" else "Terjemahkan",
+                onClick = onTranslate,
+            )
+        }
+        if (showParty) {
+            ActionButton(
+                text = if (partyActive) "Party Aktif" else "Nonton Bareng",
+                accent = partyActive,
+                onClick = onOpenParty,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ActionButton(text: String, accent: Boolean = false, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = if (accent) WatchAccent else WatchSurface,
+        modifier = Modifier.clickable { onClick() },
+    ) {
+        Text(
+            text,
+            color = Color.White,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+        )
+    }
+}
+
+@Composable
+private fun EpisodeSelector(
+    episodes: List<EpisodeItem>,
+    currentId: String,
+    onSelect: (String) -> Unit,
+    onPrev: (() -> Unit)?,
+    onNext: (() -> Unit)?,
+) {
+    Column(modifier = Modifier.padding(top = 10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Episode",
+                color = WatchText,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { onPrev?.invoke() }, enabled = onPrev != null) {
+                Text("‹ Prev", color = if (onPrev != null) WatchText else WatchMuted)
+            }
+            TextButton(onClick = { onNext?.invoke() }, enabled = onNext != null) {
+                Text("Next ›", color = if (onNext != null) WatchText else WatchMuted)
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            episodes.forEach { ep ->
+                val active = ep.id == currentId
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (active) WatchAccent else WatchSurface,
+                    modifier = Modifier.clickable { onSelect(ep.id) },
+                ) {
+                    Text(
+                        (if (active) "▶ " else "") + "Ep ${ep.episodeNo}",
+                        color = Color.White,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnimeDescription(synopsis: String, expanded: Boolean, onToggle: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = WatchSurface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .clickable { onToggle() },
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(
+                "Sinopsis",
+                color = WatchText,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                synopsis,
+                color = WatchMuted,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = if (expanded) Int.MAX_VALUE else 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                if (expanded) "Tutup" else "Selengkapnya",
+                color = WatchAccent,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecommendedAnime(titles: List<TitleCard>, onOpen: (String) -> Unit) {
+    Column(modifier = Modifier.padding(top = 8.dp)) {
+        Text(
+            "Rekomendasi",
+            color = WatchText,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        LazyRow(
+            modifier = Modifier.padding(top = 8.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(titles) { t ->
+                Column(
+                    modifier = Modifier.width(110.dp).clickable { onOpen(t.id) },
+                ) {
+                    PosterImage(
+                        url = t.posterUrl,
+                        title = t.title,
+                        modifier = Modifier
+                            .width(110.dp)
+                            .height(155.dp)
+                            .background(WatchSurface, RoundedCornerShape(10.dp)),
+                    )
+                    Text(
+                        t.title,
+                        color = WatchText,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ServerSheet(
+    sources: List<PlaybackSource>,
+    selected: Int,
+    onPick: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(),
+        containerColor = WatchSurface,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(
+                "Pilih Server",
+                color = WatchText,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(Modifier.height(8.dp))
+            sources.forEachIndexed { i, s ->
+                val label = s.label ?: "Server ${i + 1}"
+                SheetRow(
+                    text = label + (s.lang?.let { " · Video ${it.uppercase()}" } ?: ""),
+                    active = i == selected,
+                    onClick = { onPick(i) },
+                )
+            }
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SubtitleSheet(
+    subs: List<SubtitleItem>,
+    choice: SubChoice,
+    onPickRemote: (SubtitleItem) -> Unit,
+    onPickNone: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(),
+        containerColor = WatchSurface,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(
+                "Subtitle",
+                color = WatchText,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(Modifier.height(8.dp))
+            SheetRow(
+                text = "Tanpa Subtitle",
+                active = choice == SubChoice.None,
+                onClick = onPickNone,
+            )
+            subs.forEach { sub ->
+                SheetRow(
+                    text = "Subtitle ${sub.lang.uppercase()}",
+                    active = (choice as? SubChoice.Remote)?.sub == sub,
+                    onClick = { onPickRemote(sub) },
+                )
+            }
+            if (choice is SubChoice.Local) {
+                Text(
+                    "Terjemahan perangkat (${choice.lang.uppercase()}) sedang aktif.",
+                    color = WatchMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 6.dp),
+                )
+            }
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PartySheet(
+    partyCode: String?,
+    joinCode: String,
+    onJoinCodeChange: (String) -> Unit,
+    onCreate: () -> Unit,
+    onJoin: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(),
+        containerColor = WatchSurface,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(
+                "Nonton Bareng",
+                color = WatchText,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(Modifier.height(8.dp))
+            if (partyCode == null) {
+                Button(
+                    onClick = onCreate,
+                    colors = ButtonDefaults.buttonColors(containerColor = WatchAccent),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Buat Party Baru") }
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = joinCode,
+                    onValueChange = onJoinCodeChange,
+                    label = { Text("Kode party (6 karakter)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = onJoin,
+                    enabled = joinCode.length == 6,
+                    colors = ButtonDefaults.buttonColors(containerColor = WatchSurface),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Gabung Party") }
+            } else {
+                Text(
+                    "Party aktif — kode: $partyCode",
+                    color = WatchText,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    "Bagikan kodenya ke temanmu; putar/jeda/lompat tersinkron otomatis (pemutar langsung).",
+                    color = WatchMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun SheetRow(text: String, active: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = if (active) WatchAccent else Color.Transparent,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .clickable { onClick() },
+    ) {
+        Text(
+            (if (active) "✓ " else "") + text,
+            color = Color.White,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+        )
     }
 }

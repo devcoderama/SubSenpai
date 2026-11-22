@@ -12,8 +12,8 @@ android {
         applicationId = "com.subsenpai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 15
-        versionName = "0.7.5"
+        versionCode = 16
+        versionName = "0.7.6"
         // Alamat backend bawaan untuk pengembangan (emulator → host).
         // Rilis memakai alamat resmi dari pengaturan aplikasi.
         // Alamat API: bawaan emulator; build produksi menimpa lewat
