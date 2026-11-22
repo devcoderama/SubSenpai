@@ -68,7 +68,8 @@ fun DetailScreen(
     var wlBusy by remember { mutableStateOf(false) }
     var serupa by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     val scope = rememberCoroutineScope()
-    val posterHiRes = remember { SettingsStore(LocalContext.current).posterHiRes }
+    val detailContext = LocalContext.current
+    val posterHiRes = remember { SettingsStore(detailContext).posterHiRes }
 
     // "Judul Serupa" ala Netflix: judul lain berjenis sama.
     LaunchedEffect(detail?.card?.type) {

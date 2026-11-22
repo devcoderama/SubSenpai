@@ -79,7 +79,8 @@ fun HomeScreen(
     onLogin: () -> Unit,
     onOpenMore: () -> Unit,
 ) {
-    val settings = remember { SettingsStore(LocalContext.current) }
+    val homeContext = LocalContext.current
+    val settings = remember { SettingsStore(homeContext) }
     var trending by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var homeLoaded by remember { mutableStateOf(false) }
     var terbaru by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
