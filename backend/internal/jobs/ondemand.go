@@ -10,6 +10,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/url"
 	"regexp"
@@ -111,24 +112,45 @@ func applySeriesMeta(ctx context.Context, pool *pgxpool.Pool, titleID string, me
 	return err
 }
 
+// metaSummary merangkum isi SeriesMeta untuk log diagnosis: cabang
+// enrich yang melewati/menolak meta kini tercatat dengan isi
+// sebenarnya, bukan senyap (temuan produksi 2026-11-22: grep
+// "enrich" di jurnal API kosong total padahal metadata tak terisi).
+func metaSummary(meta *sources.SeriesMeta) string {
+	alt := "tidak"
+	if meta.TitleAlt != "" {
+		alt = "ya"
+	}
+	return fmt.Sprintf("sinopsis=%dB studio=%q genre=%d year=%d season=%q network=%q durasi=%d negara=%q alt=%s",
+		len(meta.Synopsis), meta.Studio, len(meta.Genres), meta.Year,
+		meta.Season, meta.Network, meta.DurationMin, meta.Country, alt)
+}
+
 // EnrichOneTitle memperkaya metadata SATU judul dari sumber server
 // terpetakan pertamanya yang resolvernya mendukung SeriesInfoer.
 // Mengembalikan true bila metadata berhasil ditulis. Kegagalan satu
 // sumber dicoba lanjut ke sumber berikutnya; error terakhir
-// dikembalikan bila tidak ada sumber yang berhasil.
+// dikembalikan bila tidak ada sumber yang berhasil. Semua cabang
+// keluar tercatat di log (instrumentasi 2026-11-22) — perilaku
+// pengisian tidak berubah.
 func EnrichOneTitle(ctx context.Context, pool *pgxpool.Pool, titleID string) (bool, error) {
 	mappings, err := loadTitleMappings(ctx, pool, titleID)
 	if err != nil {
 		return false, err
 	}
+	if len(mappings) == 0 {
+		log.Printf("enrich on-demand %s: tidak ada pemetaan sumber server aktif", titleID)
+	}
 	var lastErr error
 	for _, m := range mappings {
 		resolver, ok := sources.ByKey(m.src.Resolver)
 		if !ok {
+			log.Printf("enrich on-demand %s: resolver %q sumber %s tidak ditemukan, pemetaan dilewati", titleID, m.src.Resolver, m.src.Name)
 			continue
 		}
 		infoer, ok := resolver.(sources.SeriesInfoer)
 		if !ok {
+			log.Printf("enrich on-demand %s: resolver %q sumber %s tidak mendukung SeriesInfoer, pemetaan dilewati", titleID, m.src.Resolver, m.src.Name)
 			continue
 		}
 		meta, err := infoer.SeriesInfo(ctx, m.src, m.url)
@@ -138,9 +160,11 @@ func EnrichOneTitle(ctx context.Context, pool *pgxpool.Pool, titleID string) (bo
 			continue
 		}
 		if meta == nil {
+			log.Printf("enrich on-demand %s dari %s (%s): SeriesInfo mengembalikan meta nil", titleID, m.src.Name, m.url)
 			continue
 		}
 		if meta.Synopsis == "" && meta.Studio == "" && len(meta.Genres) == 0 {
+			log.Printf("enrich on-demand %s dari %s (%s): meta ditolak penjaga kosong: %s", titleID, m.src.Name, m.url, metaSummary(meta))
 			continue // halaman seri tidak memberi apa-apa — coba sumber lain
 		}
 		if err := applySeriesMeta(ctx, pool, titleID, meta); err != nil {

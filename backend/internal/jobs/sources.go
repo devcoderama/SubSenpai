@@ -196,10 +196,12 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 		resolver, ok := sources.ByKey(j.src.Resolver)
 		if !ok {
+			log.Printf("enrich %s: resolver %q sumber %s tidak ditemukan, dilewati", j.titleID, j.src.Resolver, j.src.Name)
 			continue
 		}
 		infoer, ok := resolver.(sources.SeriesInfoer)
 		if !ok {
+			log.Printf("enrich %s: resolver %q sumber %s tidak mendukung SeriesInfoer, dilewati", j.titleID, j.src.Resolver, j.src.Name)
 			continue
 		}
 		meta, err := infoer.SeriesInfo(ctx, j.src, j.url)
@@ -210,9 +212,11 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 			continue
 		}
 		if meta == nil {
+			log.Printf("enrich %s dari %s (%s): SeriesInfo mengembalikan meta nil", j.titleID, j.src.Name, j.url)
 			continue
 		}
 		if meta.Synopsis == "" && meta.Studio == "" && len(meta.Genres) == 0 {
+			log.Printf("enrich %s dari %s (%s): meta ditolak penjaga kosong: %s", j.titleID, j.src.Name, j.url, metaSummary(meta))
 			continue
 		}
 		if err := applySeriesMeta(ctx, pool, j.titleID, meta); err != nil {
