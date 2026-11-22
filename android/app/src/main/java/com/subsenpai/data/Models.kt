@@ -432,8 +432,8 @@ class CatalogRepository(
     suspend fun groupJoinByCode(code: String): JSONObject =
         api.post("/api/v1/groups/join", JSONObject().put("invite_code", code))
 
-    suspend fun watchHistory(): List<WatchHistoryItem> {
-        val o = api.get("/api/v1/history/watch?limit=10")
+    suspend fun watchHistory(limit: Int = 10): List<WatchHistoryItem> {
+        val o = api.get("/api/v1/history/watch?limit=$limit")
         return buildList {
             val arr = o.optJSONArray("items")
             if (arr != null) for (i in 0 until arr.length()) {

@@ -50,6 +50,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.subsenpai.R
 import com.subsenpai.data.CatalogRepository
+import com.subsenpai.data.SettingsStore
 import com.subsenpai.data.TitleCard
 import kotlinx.coroutines.launch
 
@@ -76,7 +77,9 @@ fun HomeScreen(
     onOpenTitle: (String) -> Unit,
     onOpenEpisode: (String) -> Unit,
     onLogin: () -> Unit,
+    onOpenMore: () -> Unit,
 ) {
+    val settings = remember { SettingsStore(LocalContext.current) }
     var trending by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var homeLoaded by remember { mutableStateOf(false) }
     var terbaru by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
@@ -175,6 +178,7 @@ fun HomeScreen(
                             hero = hero,
                             repo = repo,
                             authVersion = authVersion,
+                            hiRes = settings.posterHiRes,
                             onPlay = {
                                 scope.launch {
                                     try {
@@ -280,10 +284,10 @@ fun HomeScreen(
                         tint = Color.White,
                     )
                 }
-                IconButton(onClick = onLogin) {
+                IconButton(onClick = onOpenMore) {
                     Icon(
                         painter = painterResource(R.drawable.ic_person),
-                        contentDescription = "Akun",
+                        contentDescription = "Lainnya",
                         tint = Color.White,
                     )
                 }
@@ -333,6 +337,7 @@ private fun HeroSection(
     hero: TitleCard,
     repo: CatalogRepository,
     authVersion: Int,
+    hiRes: Boolean,
     onPlay: () -> Unit,
     onInfo: () -> Unit,
     onNeedLogin: () -> Unit,
@@ -352,7 +357,7 @@ private fun HeroSection(
     }
     Box(modifier = Modifier.fillMaxWidth().height(540.dp)) {
         PosterImage(
-            url = hiResPosterUrl(hero.posterUrl),
+            url = if (hiRes) hiResPosterUrl(hero.posterUrl) else hero.posterUrl,
             title = hero.title,
             modifier = Modifier.fillMaxSize(),
         )

@@ -51,13 +51,13 @@ class MainActivity : ComponentActivity() {
                 val backEntry by nav.currentBackStackEntryAsState()
                 val route = backEntry?.destination?.route
                 // Bilah bawah ala Netflix: hanya di layar-layar utama.
-                val mainRoutes = setOf("home", "chat", "premium", "watchlist", "login")
+                val mainRoutes = setOf("home", "chat", "premium", "watchlist", "more")
                 val bottomItems = listOf(
                     Triple("home", "Beranda", R.drawable.ic_home),
                     Triple("chat", "Chat", R.drawable.ic_chat),
                     Triple("premium", "Premium", R.drawable.ic_star),
                     Triple("watchlist", "Daftar Saya", R.drawable.ic_bookmark),
-                    Triple("login", "Akun", R.drawable.ic_person),
+                    Triple("more", "Lainnya", R.drawable.ic_menu),
                 )
                 Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -105,6 +105,31 @@ class MainActivity : ComponentActivity() {
                                 onOpenTitle = { nav.navigate("detail/$it") },
                                 onOpenEpisode = { nav.navigate("player/$it") },
                                 onLogin = { nav.navigate("login") },
+                                onOpenMore = { nav.navigate("more") },
+                            )
+                        }
+                        composable("more") {
+                            com.subsenpai.ui.MoreScreen(
+                                onOpenLogin = { nav.navigate("login") },
+                                onOpenHistory = { nav.navigate("history") },
+                                onOpenWatchlist = { nav.navigate("watchlist") },
+                                onOpenPremium = { nav.navigate("premium") },
+                                onOpenFriends = { nav.navigate("friends") },
+                                onOpenGroups = { nav.navigate("groups") },
+                                onOpenSettings = { nav.navigate("settings") },
+                            )
+                        }
+                        composable("history") {
+                            com.subsenpai.ui.HistoryScreen(
+                                repo,
+                                onBack = { nav.popBackStack() },
+                                onOpenEpisode = { nav.navigate("player/$it") },
+                                onNeedLogin = { nav.navigate("login") },
+                            )
+                        }
+                        composable("settings") {
+                            com.subsenpai.ui.SettingsScreen(
+                                onBack = { nav.popBackStack() },
                             )
                         }
                         composable("premium") {

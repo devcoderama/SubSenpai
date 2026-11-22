@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.subsenpai.R
 import com.subsenpai.data.CatalogRepository
+import com.subsenpai.data.SettingsStore
 import com.subsenpai.data.TitleCard
 import com.subsenpai.data.TitleDetail
 import kotlinx.coroutines.launch
@@ -67,6 +68,7 @@ fun DetailScreen(
     var wlBusy by remember { mutableStateOf(false) }
     var serupa by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     val scope = rememberCoroutineScope()
+    val posterHiRes = remember { SettingsStore(LocalContext.current).posterHiRes }
 
     // "Judul Serupa" ala Netflix: judul lain berjenis sama.
     LaunchedEffect(detail?.card?.type) {
@@ -117,7 +119,7 @@ fun DetailScreen(
                 // sama memenuhi lebar layar, poster tajam (varian
                 // resolusi tinggi untuk film) berdiri di tengah,
                 // tombol kembali melayang. Judul & aksi di bawahnya.
-                DetailBackdrop(url = d.card.posterUrl, title = d.card.title, onBack = onBack)
+                DetailBackdrop(url = d.card.posterUrl, title = d.card.title, onBack = onBack, hiRes = posterHiRes)
             }
             item {
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -381,10 +383,11 @@ fun DetailScreen(
  * latar di bawah, dan tombol kembali melayang di kiri atas.
  */
 @Composable
-private fun DetailBackdrop(url: String?, title: String, onBack: () -> Unit) {
+private fun DetailBackdrop(url: String?, title: String, onBack: () -> Unit, hiRes: Boolean) {
+    val shown = if (hiRes) hiResPosterUrl(url) else url
     Box(modifier = Modifier.fillMaxWidth().height(340.dp)) {
         PosterImage(
-            url = hiResPosterUrl(url),
+            url = shown,
             title = title,
             modifier = Modifier.fillMaxSize().blur(30.dp),
         )
@@ -393,7 +396,7 @@ private fun DetailBackdrop(url: String?, title: String, onBack: () -> Unit) {
                 .background(Color(0x59000000)),
         )
         PosterImage(
-            url = hiResPosterUrl(url),
+            url = shown,
             title = title,
             modifier = Modifier.fillMaxHeight().aspectRatio(2f / 3f)
                 .align(Alignment.Center),
