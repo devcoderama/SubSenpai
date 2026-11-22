@@ -152,6 +152,35 @@ func TestMirrorCandidatesAnichin(t *testing.T) {
 	}
 }
 
+func TestWPBases(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		// wp-json .moe mati (Cloudflare 403) → cadangan .my wajib ada.
+		{"https://anichin.moe", []string{"https://anichin.moe", "https://anichin.my"}},
+		{"https://anichin.my", []string{"https://anichin.my", "https://anichin.moe"}},
+		// Host lain tidak diberi basis silang.
+		{"https://kuronime.sbs", []string{"https://kuronime.sbs"}},
+		// Garis miring akhir dibuang; path pada base dipertahankan
+		// apa adanya di kedua basis.
+		{"https://anichin.moe/", []string{"https://anichin.moe", "https://anichin.my"}},
+		{"https://anichin.my/sub/", []string{"https://anichin.my/sub", "https://anichin.moe/sub"}},
+	}
+	for _, c := range cases {
+		got := wpBases(c.in)
+		if len(got) != len(c.want) {
+			t.Errorf("wpBases(%q) = %v, mau %v", c.in, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("wpBases(%q)[%d] = %q, mau %q", c.in, i, got[i], c.want[i])
+			}
+		}
+	}
+}
+
 func TestParseDurationMin(t *testing.T) {
 	cases := []struct {
 		in   string

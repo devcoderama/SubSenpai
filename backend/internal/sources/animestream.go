@@ -84,21 +84,56 @@ type wpCategoryFull struct {
 // adalah indeks seri situs ini. URL seri dibangun sebagai
 // <base>/series/<slug>/ sesuai pola permalink tema.
 func (a *animestreamResolver) Discover(ctx context.Context, src Source, limit int) ([]DiscoveredTitle, error) {
-	base := strings.TrimRight(src.BaseURL, "/")
-	out := []DiscoveredTitle{}
-	for page := 1; page <= 20 && len(out) < limit; page++ {
+	// Halaman pertama dicoba ke tiap basis wpBases sampai ada yang
+	// menjawab dengan kategori (wp-json anichin.moe kena Cloudflare
+	// 403 — lihat wpBases); basis pemenang dipakai untuk seluruh
+	// halaman berikutnya. Semua basis gagal di halaman pertama →
+	// error, sama seperti perilaku gagal sebelumnya.
+	var base string
+	var firstCats []wpCategoryFull
+	var lastErr error
+	for _, b := range wpBases(src.BaseURL) {
 		u := fmt.Sprintf("%s/wp-json/wp/v2/categories?per_page=100&page=%d&orderby=count&order=desc&_fields=name,slug,count",
-			base, page)
+			b, 1)
 		raw, err := Fetch(ctx, u)
 		if err != nil {
-			if page == 1 {
-				return nil, err
-			}
-			break
+			lastErr = err
+			continue
 		}
 		var cats []wpCategoryFull
 		if err := json.Unmarshal([]byte(raw), &cats); err != nil {
-			return nil, fmt.Errorf("daftar kategori WP tidak terbaca: %w", err)
+			lastErr = fmt.Errorf("daftar kategori WP tidak terbaca: %w", err)
+			continue
+		}
+		if len(cats) == 0 {
+			continue
+		}
+		base, firstCats = b, cats
+		break
+	}
+	if base == "" {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return []DiscoveredTitle{}, nil
+	}
+	out := []DiscoveredTitle{}
+	// URL seri tetap dibangun dari base sumber yang dikonfigurasi —
+	// basis WP pemenang hanya soal transport wp-json, bukan alamat
+	// kanonis serinya.
+	srcBase := strings.TrimRight(src.BaseURL, "/")
+	for page := 1; page <= 20 && len(out) < limit; page++ {
+		cats := firstCats
+		if page > 1 {
+			u := fmt.Sprintf("%s/wp-json/wp/v2/categories?per_page=100&page=%d&orderby=count&order=desc&_fields=name,slug,count",
+				base, page)
+			raw, err := Fetch(ctx, u)
+			if err != nil {
+				break
+			}
+			if err := json.Unmarshal([]byte(raw), &cats); err != nil {
+				return nil, fmt.Errorf("daftar kategori WP tidak terbaca: %w", err)
+			}
 		}
 		for _, c := range cats {
 			if c.Count <= 0 || c.Slug == "" {
@@ -111,7 +146,7 @@ func (a *animestreamResolver) Discover(ctx context.Context, src Source, limit in
 			out = append(out, DiscoveredTitle{
 				Title: name,
 				Slug:  c.Slug,
-				URL:   seriesURL(base, c.Slug),
+				URL:   seriesURL(srcBase, c.Slug),
 			})
 			if len(out) >= limit {
 				break
@@ -346,6 +381,34 @@ func seriesPathForHost(path, host string) string {
 		}
 	}
 	return path
+}
+
+// wpBases mengembalikan basis-basi yang dicoba untuk panggilan
+// WP-JSON (Discover & jalur WP Episodes), basis sumber lebih dulu
+// lalu pasangan mirror Anichin-nya: wp-json di anichin.moe mati kena
+// Cloudflare 403 "Attention Required" (terbukti 2026-11-22) sementara
+// HTML-nya sehat, dan anichin.my menjawab wp-json dengan data asli —
+// jadi base hasil override env (DONGHUA_ID=anichin.moe) tidak boleh
+// mematikan jalur WP. Host di luar pasangan Anichin hanya memakai
+// base-nya sendiri.
+func wpBases(base string) []string {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	u, err := url.Parse(base)
+	if err != nil || u.Host == "" {
+		return []string{base}
+	}
+	var other string
+	switch u.Host {
+	case "anichin.moe":
+		other = "anichin.my"
+	case "anichin.my":
+		other = "anichin.moe"
+	default:
+		return []string{base}
+	}
+	u.Host = other
+	u.Scheme = "https"
+	return []string{base, u.String()}
 }
 
 // mirrorCandidates mengembalikan URL halaman apa adanya plus pasangan
@@ -620,7 +683,6 @@ func (a *animestreamResolver) SeriesInfo(ctx context.Context, src Source, titleU
 }
 
 func (a *animestreamResolver) episodesWP(ctx context.Context, src Source, titleURL string) ([]EpisodeRef, error) {
-	base := strings.TrimRight(src.BaseURL, "/")
 	u, err := url.Parse(titleURL)
 	if err != nil {
 		return nil, err
@@ -628,6 +690,22 @@ func (a *animestreamResolver) episodesWP(ctx context.Context, src Source, titleU
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 	slug := parts[len(parts)-1]
 
+	// Tiap basis wpBases dicoba utuh: id kategori dan daftar pos
+	// harus berasal dari basis yang sama (wp-json anichin.moe kena
+	// Cloudflare 403 — lihat wpBases). Semua basis gagal → error
+	// terakhir, dan cadangan eplister pemanggil berjalan seperti biasa.
+	var lastErr error
+	for _, base := range wpBases(src.BaseURL) {
+		eps, err := a.episodesWPBase(ctx, base, slug)
+		if err == nil {
+			return eps, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
+func (a *animestreamResolver) episodesWPBase(ctx context.Context, base, slug string) ([]EpisodeRef, error) {
 	raw, err := Fetch(ctx, base+"/wp-json/wp/v2/categories?slug="+url.QueryEscape(slug)+"&_fields=id")
 	if err != nil {
 		return nil, err
