@@ -66,6 +66,45 @@ func TestParseSeriesPageHomepageBoilerplate(t *testing.T) {
 	}
 }
 
+func TestMetaComplete(t *testing.T) {
+	lengkap := func() *SeriesMeta {
+		return &SeriesMeta{
+			Synopsis: "Dua puluh tahun sebelum Pertempuran Akhir di Benua Douluo, Aula Wuhun diam-diam merancang konspirasi besar.",
+			Studio:   "Sparkly Key Animation Studio",
+			Network:  "Tencent Penguin Pictures",
+			Genres:   []string{"Action", "Fantasy"},
+		}
+	}
+	if !metaComplete(lengkap()) {
+		t.Error("meta dengan sinopsis sah + studio + network + genre harus lengkap")
+	}
+	if !metaComplete(parseSeriesPage(soulLandSeriesPage)) {
+		t.Error("hasil urai halaman Soul Land Movie harus lengkap")
+	}
+	kurang := map[string]func(*SeriesMeta){
+		"sinopsis kosong": func(m *SeriesMeta) { m.Synopsis = "" },
+		"studio kosong":   func(m *SeriesMeta) { m.Studio = "" },
+		"network kosong":  func(m *SeriesMeta) { m.Network = "" },
+		"genre kosong":    func(m *SeriesMeta) { m.Genres = nil },
+		"sinopsis boilerplate": func(m *SeriesMeta) {
+			m.Synopsis = "Adtival Network (Main Shortlink) LANGKAH SINGKAT : Pilih Server Filehosting (ex. Mirrored) & Click here to Continue"
+		},
+	}
+	for nama, ubah := range kurang {
+		m := lengkap()
+		ubah(m)
+		if metaComplete(m) {
+			t.Errorf("kasus %q tidak boleh lengkap", nama)
+		}
+	}
+	if metaComplete(nil) {
+		t.Error("meta nil tidak boleh lengkap")
+	}
+	if metaComplete(parseSeriesPage(anichinHomepage)) {
+		t.Error("hasil urai beranda tidak boleh lengkap")
+	}
+}
+
 func TestIsBoilerplateSynopsis(t *testing.T) {
 	if !IsBoilerplateSynopsis("Adtival Network (Main Shortlink) LANGKAH SINGKAT : Pilih Server Filehosting (ex. Mirrored) - Isi Captcha (kalo ada) & Click here to Continue") {
 		t.Error("teks Adtival harus terdeteksi boilerplate")

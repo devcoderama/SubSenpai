@@ -568,11 +568,29 @@ func seriesMetaScore(m *SeriesMeta) int {
 	return score
 }
 
+// metaComplete melaporkan apakah satu hasil urai halaman seri sudah
+// LENGKAP untuk keperluan katalog: sinopsis sah (bukan boilerplate),
+// studio, network, dan minimal satu genre terisi. Dipakai SeriesInfo
+// sebagai syarat berhenti dini — kandidat yang sudah lengkap tidak
+// perlu dibandingkan lagi dengan kandidat berikutnya.
+func metaComplete(m *SeriesMeta) bool {
+	if m == nil {
+		return false
+	}
+	return m.Synopsis != "" && !IsBoilerplateSynopsis(m.Synopsis) &&
+		m.Studio != "" && m.Network != "" && len(m.Genres) > 0
+}
+
 // SeriesInfo membaca metadata seri dari halaman serinya (mirror
 // HTML statis dipakai sebagai cadangan seperti daftar episode).
-// SEMUA kandidat dinilai dan hasil urai terlengkap yang dikembalikan
-// — bukan kandidat pertama yang sekadar punya sinopsis, karena
-// halaman salah alamat bisa memberi sinopsis boilerplate saja.
+// Kandidat dinilai satu per satu; kandidat pertama yang hasil urainya
+// LENGKAP (metaComplete) langsung dikembalikan — menunggu kandidat
+// berikutnya hanya membuang waktu bila kandidat itu lambat/mati
+// (anichin.my dari VPS hampir selalu timeout). Bila tidak ada yang
+// lengkap, SEMUA kandidat tetap dinilai dan hasil urai terlengkap
+// yang dikembalikan — bukan kandidat pertama yang sekadar punya
+// sinopsis, karena halaman salah alamat bisa memberi sinopsis
+// boilerplate saja.
 func (a *animestreamResolver) SeriesInfo(ctx context.Context, src Source, titleURL string) (*SeriesMeta, error) {
 	candidates := mirrorCandidates(titleURL)
 	if a.key == "anichin" {
@@ -587,8 +605,12 @@ func (a *animestreamResolver) SeriesInfo(ctx context.Context, src Source, titleU
 			lastErr = err
 			continue
 		}
-		if meta := parseSeriesPage(page); seriesMetaScore(meta) > bestScore {
-			best, bestScore = meta, seriesMetaScore(meta)
+		meta := parseSeriesPage(page)
+		if metaComplete(meta) {
+			return meta, nil
+		}
+		if s := seriesMetaScore(meta); s > bestScore {
+			best, bestScore = meta, s
 		}
 	}
 	if best == nil {
