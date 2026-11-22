@@ -22,8 +22,10 @@ data class FeedAuthor(
 }
 
 data class FeedPost(
-    val id: String,
+    val id: String, // id baris feed (baris repost bila ini repost)
+    val postId: String, // id postingan konten (asli) — target like/komentar/repost
     val author: FeedAuthor,
+    val repostedBy: FeedAuthor?,
     val body: String?,
     val imageUrl: String?,
     val category: String,
@@ -31,16 +33,21 @@ data class FeedPost(
     val groupName: String?,
     val likeCount: Int,
     val commentCount: Int,
+    val repostCount: Int,
     val shareCount: Int,
     val liked: Boolean,
     val bookmarked: Boolean,
+    val reposted: Boolean,
     val mine: Boolean,
     val createdAtMs: Long,
+    val commentsPreview: List<FeedComment>,
 ) {
     companion object {
         fun fromJson(o: JSONObject) = FeedPost(
             id = o.getString("id"),
+            postId = o.optString("post_id").ifBlank { o.getString("id") },
             author = FeedAuthor.fromJson(o.getJSONObject("author")),
+            repostedBy = if (o.isNull("reposted_by")) null else FeedAuthor.fromJson(o.getJSONObject("reposted_by")),
             body = o.optString("body").ifBlank { null },
             imageUrl = o.optString("image_url").ifBlank { null },
             category = o.optString("category", "umum"),
@@ -48,11 +55,17 @@ data class FeedPost(
             groupName = o.optString("group_name").ifBlank { null },
             likeCount = o.optInt("like_count"),
             commentCount = o.optInt("comment_count"),
+            repostCount = o.optInt("repost_count"),
             shareCount = o.optInt("share_count"),
             liked = o.optBoolean("liked"),
             bookmarked = o.optBoolean("bookmarked"),
+            reposted = o.optBoolean("reposted"),
             mine = o.optBoolean("mine"),
             createdAtMs = parseIsoMs(o.optString("created_at")),
+            commentsPreview = buildList {
+                val arr = o.optJSONArray("comments_preview")
+                if (arr != null) for (i in 0 until arr.length()) add(FeedComment.fromJson(arr.getJSONObject(i)))
+            },
         )
     }
 }

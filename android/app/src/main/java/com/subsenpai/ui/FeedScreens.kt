@@ -9,6 +9,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -52,12 +55,19 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -81,9 +91,49 @@ import kotlin.math.min
 /** Aksen ungu komunitas SubSenpai (feed sosial). */
 val FeedPurple = Color(0xFF8B5CF6)
 
+private val urlRegex = Regex("""(https?://[^\s]+|www\.[^\s]+)""")
+
+/** Teks dengan tautan yang bisa diketuk (feed membolehkan tautan). */
+@Composable
+fun LinkText(text: String, color: Color, style: TextStyle, modifier: Modifier = Modifier) {
+    if (!urlRegex.containsMatchIn(text)) {
+        Text(text, color = color, style = style, modifier = modifier)
+        return
+    }
+    val context = LocalContext.current
+    val annotated = buildAnnotatedString {
+        var last = 0
+        for (m in urlRegex.findAll(text)) {
+            append(text.substring(last, m.range.first))
+            pushStringAnnotation("URL", m.value)
+            withStyle(SpanStyle(color = Color(0xFF6EA8FE), textDecoration = TextDecoration.Underline)) {
+                append(m.value)
+            }
+            pop()
+            last = m.range.last + 1
+        }
+        append(text.substring(last))
+    }
+    ClickableText(
+        text = annotated,
+        style = style.copy(color = color),
+        modifier = modifier,
+        onClick = { offset ->
+            annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { ann ->
+                val url = if (ann.item.startsWith("http")) ann.item else "https://" + ann.item
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                } catch (e: Exception) {
+                    // Abaikan tautan yang tidak bisa dibuka.
+                }
+            }
+        },
+    )
+}
+
 private val feedCategories = listOf(
-    null to "Semua", "umum" to "Umum", "anime" to "Anime", "donghua" to "Donghua",
-    "film" to "Film", "manga" to "Manga", "rekomendasi" to "Rekomendasi",
+    null to "Semua", "umum" to "Umum", "rekomendasi" to "Rekomendasi",
+    "anime" to "Anime", "donghua" to "Donghua", "film" to "Film",
 )
 
 private val avatarColors = listOf(
@@ -157,6 +207,7 @@ fun FeedScreen(
     onNeedLogin: () -> Unit,
     onOpenComments: (String) -> Unit,
     onOpenNotifications: () -> Unit,
+    onBack: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -243,10 +294,66 @@ fun FeedScreen(
         updatePost(post.copy(liked = !post.liked, likeCount = post.likeCount + if (post.liked) -1 else 1))
         scope.launch {
             try {
-                val (liked, count) = repo.feedLike(post.id)
+                val (liked, count) = repo.feedLike(post.postId)
                 updatePost(before.copy(liked = liked, likeCount = count))
             } catch (e: Exception) {
                 updatePost(before)
+            }
+        }
+    }
+
+    fun toggleRepost(post: FeedPost) {
+        val before = post
+        updatePost(post.copy(reposted = !post.reposted, repostCount = post.repostCount + if (post.reposted) -1 else 1))
+        scope.launch {
+            try {
+                val (reposted, count) = repo.feedRepost(post.postId)
+                updatePost(before.copy(reposted = reposted, repostCount = count))
+            } catch (e: Exception) {
+                updatePost(before)
+            }
+        }
+    }
+
+    fun togglePreviewCommentLike(post: FeedPost, comment: FeedComment) {
+        fun mapComment(c: FeedComment, liked: Boolean, count: Int) = c.copy(liked = liked, likeCount = count)
+        updatePost(
+            post.copy(
+                commentsPreview = post.commentsPreview.map {
+                    if (it.id == comment.id) mapComment(it, !comment.liked, comment.likeCount + if (comment.liked) -1 else 1) else it
+                }
+            )
+        )
+        scope.launch {
+            try {
+                val (liked, count) = repo.feedCommentLike(comment.id)
+                val current = posts.firstOrNull { it.id == post.id } ?: return@launch
+                updatePost(
+                    current.copy(
+                        commentsPreview = current.commentsPreview.map {
+                            if (it.id == comment.id) mapComment(it, liked, count) else it
+                        }
+                    )
+                )
+            } catch (e: Exception) {
+                updatePost(post)
+            }
+        }
+    }
+
+    fun sendInlineComment(post: FeedPost, text: String) {
+        scope.launch {
+            try {
+                val created = repo.feedCommentCreate(post.postId, text, null)
+                val current = posts.firstOrNull { it.id == post.id } ?: return@launch
+                updatePost(
+                    current.copy(
+                        commentCount = current.commentCount + 1,
+                        commentsPreview = current.commentsPreview + created,
+                    )
+                )
+            } catch (e: Exception) {
+                feedError = e.message
             }
         }
     }
@@ -256,26 +363,10 @@ fun FeedScreen(
         updatePost(post.copy(bookmarked = !post.bookmarked))
         scope.launch {
             try {
-                val saved = repo.feedBookmark(post.id)
+                val saved = repo.feedBookmark(post.postId)
                 updatePost(before.copy(bookmarked = saved))
             } catch (e: Exception) {
                 updatePost(before)
-            }
-        }
-    }
-
-    fun sharePost(post: FeedPost) {
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, (post.body ?: "") + "\n\n— dibagikan dari SubSenpai")
-        }
-        context.startActivity(Intent.createChooser(send, "Bagikan postingan"))
-        scope.launch {
-            try {
-                val count = repo.feedShare(post.id)
-                updatePost(post.copy(shareCount = count))
-            } catch (e: Exception) {
-                // Penghitung bagikan boleh gagal diam-diam.
             }
         }
     }
@@ -321,35 +412,42 @@ fun FeedScreen(
         }
     }
 
+    val composerFocus = remember { FocusRequester() }
+    Box(modifier = Modifier.fillMaxSize()) {
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Chat", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = {
-                    searchOpen = !searchOpen
-                    if (!searchOpen) query = ""
-                }) {
-                    Icon(painterResource(R.drawable.ic_search), contentDescription = "Cari", tint = Color.White)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onBack) {
+                    Text("← Kembali", color = Color(0xFFE50914), fontWeight = FontWeight.Bold)
                 }
-                Box {
-                    IconButton(onClick = onOpenNotifications) {
-                        Icon(painterResource(R.drawable.ic_bell), contentDescription = "Notifikasi", tint = Color.White)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Chat", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = {
+                        searchOpen = !searchOpen
+                        if (!searchOpen) query = ""
+                    }) {
+                        Icon(painterResource(R.drawable.ic_search), contentDescription = "Cari", tint = Color.White)
                     }
-                    if (unread > 0) {
-                        Box(
-                            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
-                                .background(Color(0xFFE50914), CircleShape)
-                                .padding(horizontal = 5.dp, vertical = 1.dp),
-                        ) {
-                            Text(unread.coerceAtMost(99).toString(), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Box {
+                        IconButton(onClick = onOpenNotifications) {
+                            Icon(painterResource(R.drawable.ic_bell), contentDescription = "Notifikasi", tint = Color.White)
+                        }
+                        if (unread > 0) {
+                            Box(
+                                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                                    .background(Color(0xFFE50914), CircleShape)
+                                    .padding(horizontal = 5.dp, vertical = 1.dp),
+                            ) {
+                                Text(unread.coerceAtMost(99).toString(), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -385,13 +483,23 @@ fun FeedScreen(
                             )
                         }
                         Spacer(Modifier.width(10.dp))
-                        OutlinedTextField(
+                        TextField(
                             value = draft,
                             onValueChange = { draft = it },
-                            placeholder = { Text("Apa yang kamu pikirkan?") },
+                            placeholder = { Text("Apa yang kamu pikirkan?", color = Color(0xFF9E9EA7)) },
                             minLines = 1,
                             maxLines = 5,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).focusRequester(composerFocus),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = FeedPurple,
+                            ),
                         )
                     }
                     if (imageUri != null) {
@@ -492,8 +600,8 @@ fun FeedScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                TabPill("Teman", tab == "teman", Modifier.weight(1f)) { tab = "teman" }
-                TabPill("Grup", tab == "grup", Modifier.weight(1f)) { tab = "grup" }
+                TabPill(R.drawable.ic_person, "Teman", tab == "teman", Modifier.weight(1f)) { tab = "teman" }
+                TabPill(R.drawable.ic_groups, "Grup", tab == "grup", Modifier.weight(1f)) { tab = "grup" }
             }
         }
         if (tab == "grup") {
@@ -560,10 +668,13 @@ fun FeedScreen(
         items(posts.filter { it.id !in hiddenIds }, key = { it.id }) { post ->
             FeedPostCard(
                 post = post,
+                myName = auth.displayName ?: "Saya",
                 onLike = { toggleLike(post) },
                 onBookmark = { toggleBookmark(post) },
-                onShare = { sharePost(post) },
-                onComments = { onOpenComments(post.id) },
+                onRepost = { toggleRepost(post) },
+                onComments = { onOpenComments(post.postId) },
+                onCommentLike = { c -> togglePreviewCommentLike(post, c) },
+                onInlineComment = { text -> sendInlineComment(post, text) },
                 onDelete = {
                     scope.launch {
                         try {
@@ -586,21 +697,45 @@ fun FeedScreen(
         }
         item { Spacer(Modifier.height(16.dp)) }
     }
+        // Tombol tulis melayang (ala referensi): kembali ke composer.
+        Box(
+            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
+                .size(56.dp).background(FeedPurple, CircleShape)
+                .clickable {
+                    scope.launch {
+                        listState.animateScrollToItem(0)
+                        composerFocus.requestFocus()
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(painterResource(R.drawable.ic_edit), contentDescription = "Buat postingan", tint = Color.White)
+        }
+    }
 }
 
 @Composable
-private fun TabPill(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun TabPill(icon: Int, label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         modifier = modifier.height(40.dp)
             .background(if (selected) FeedPurple else Color(0xFF1F1F1F), RoundedCornerShape(20.dp))
             .clickable { onClick() },
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            label,
-            color = Color.White,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                painterResource(icon),
+                contentDescription = null,
+                tint = if (selected) Color.White else Color(0xFF9E9EA7),
+                modifier = Modifier.size(19.dp),
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(
+                label,
+                color = if (selected) Color.White else Color(0xFF9E9EA7),
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            )
+        }
     }
 }
 
@@ -647,20 +782,44 @@ private fun CategoryMenu(selected: String, onSelect: (String) -> Unit) {
 @Composable
 fun FeedPostCard(
     post: FeedPost,
+    myName: String,
     onLike: () -> Unit,
     onBookmark: () -> Unit,
-    onShare: () -> Unit,
+    onRepost: () -> Unit,
     onComments: () -> Unit,
+    onCommentLike: (FeedComment) -> Unit,
+    onInlineComment: (String) -> Unit,
     onDelete: () -> Unit,
     onHide: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    var inlineText by remember(post.id) { mutableStateOf("") }
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1E)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1B26)),
         shape = RoundedCornerShape(16.dp),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
+            if (post.repostedBy != null) {
+                Row(
+                    modifier = Modifier.padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_repeat),
+                        contentDescription = null,
+                        tint = FeedPurple,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "${post.repostedBy.displayName} memposting ulang",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF9E9EA7),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 FeedAvatar(post.author, 44)
                 Spacer(Modifier.width(10.dp))
@@ -682,8 +841,7 @@ fun FeedPostCard(
                     Text(
                         listOfNotNull(
                             relativeTimeId(post.createdAtMs),
-                            post.groupName?.let { "Grup $it" }
-                                ?: feedCategories.firstOrNull { it.first == post.category }?.second,
+                            post.groupName?.let { "Grup $it" } ?: "Teman",
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF9E9EA7),
@@ -708,10 +866,10 @@ fun FeedPostCard(
                 }
             }
             if (!post.body.isNullOrBlank()) {
-                Text(
+                LinkText(
                     post.body,
-                    style = MaterialTheme.typography.bodyLarge,
                     color = Color.White,
+                    style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(top = 10.dp),
                 )
             }
@@ -743,10 +901,10 @@ fun FeedPostCard(
                 )
                 Spacer(Modifier.width(22.dp))
                 ActionItem(
-                    icon = R.drawable.ic_share,
-                    count = post.shareCount,
-                    tint = Color(0xFFB3B3B3),
-                    onClick = onShare,
+                    icon = R.drawable.ic_repeat,
+                    count = post.repostCount,
+                    tint = if (post.reposted) FeedPurple else Color(0xFFB3B3B3),
+                    onClick = onRepost,
                 )
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = onBookmark) {
@@ -756,6 +914,137 @@ fun FeedPostCard(
                         tint = if (post.bookmarked) FeedPurple else Color(0xFFB3B3B3),
                     )
                 }
+            }
+            // Komentar tampil sebaris di dalam kartu (gaya referensi).
+            if (post.commentsPreview.isNotEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+                        .background(Color(0xFF17141F), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    Column {
+                        post.commentsPreview.forEach { c ->
+                            InlineCommentRow(
+                                comment = c,
+                                onLike = { onCommentLike(c) },
+                                onReply = onComments,
+                            )
+                        }
+                        if (post.commentCount > post.commentsPreview.size) {
+                            Text(
+                                "Lihat semua ${post.commentCount} komentar",
+                                color = FeedPurple,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable { onComments() }
+                                    .padding(vertical = 8.dp),
+                            )
+                        }
+                    }
+                }
+            }
+            // Input balasan sebaris di kaki kartu.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier.size(32.dp).background(FeedPurple, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(myName.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+                Spacer(Modifier.width(8.dp))
+                TextField(
+                    value = inlineText,
+                    onValueChange = { inlineText = it },
+                    placeholder = { Text("Tulis balasan...", color = Color(0xFF9E9EA7)) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFF17141F),
+                        unfocusedContainerColor = Color(0xFF17141F),
+                        disabledContainerColor = Color(0xFF17141F),
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = FeedPurple,
+                    ),
+                )
+                IconButton(
+                    enabled = inlineText.isNotBlank(),
+                    onClick = {
+                        onInlineComment(inlineText.trim())
+                        inlineText = ""
+                    },
+                ) {
+                    Icon(painterResource(R.drawable.ic_send), contentDescription = "Kirim", tint = FeedPurple)
+                }
+            }
+        }
+    }
+}
+
+/** Satu komentar di pratinjau sebaris kartu feed. */
+@Composable
+private fun InlineCommentRow(
+    comment: FeedComment,
+    onLike: () -> Unit,
+    onReply: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .padding(start = if (comment.parentId != null) 26.dp else 0.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        FeedAvatar(comment.author, 30)
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    comment.author.displayName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (comment.author.isPremium) {
+                    Spacer(Modifier.width(4.dp))
+                    VerifiedBadge()
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    relativeTimeId(comment.createdAtMs),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF9E9EA7),
+                )
+            }
+            LinkText(comment.body, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.clickable { onLike() }.padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_thumb_up),
+                        contentDescription = "Suka",
+                        tint = if (comment.liked) FeedPurple else Color(0xFF9E9EA7),
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(comment.likeCount.toString(), style = MaterialTheme.typography.bodySmall, color = Color(0xFF9E9EA7))
+                }
+                Spacer(Modifier.width(16.dp))
+                Text(
+                    "Balas",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF9E9EA7),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { onReply() }.padding(vertical = 3.dp),
+                )
             }
         }
     }
@@ -889,7 +1178,12 @@ fun CommentsScreen(
                             Text(relativeTimeId(p.createdAtMs), color = Color(0xFF9E9EA7), style = MaterialTheme.typography.bodySmall)
                         }
                         if (!p.body.isNullOrBlank()) {
-                            Text(p.body, color = Color.White, modifier = Modifier.padding(top = 8.dp))
+                            LinkText(
+                                p.body,
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
                         }
                         if (p.imageUrl != null) {
                             AsyncImage(
@@ -948,16 +1242,16 @@ fun CommentsScreen(
                                     color = Color(0xFF9E9EA7),
                                 )
                             }
-                            Text(c.body, color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                            LinkText(c.body, color = Color.White, style = MaterialTheme.typography.bodyLarge)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Row(
                                     modifier = Modifier.clickable { toggleCommentLike(c) }.padding(vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(
-                                        painterResource(R.drawable.ic_heart),
+                                        painterResource(R.drawable.ic_thumb_up),
                                         contentDescription = "Suka",
-                                        tint = if (c.liked) Color(0xFFE50914) else Color(0xFF9E9EA7),
+                                        tint = if (c.liked) FeedPurple else Color(0xFF9E9EA7),
                                         modifier = Modifier.size(15.dp),
                                     )
                                     Spacer(Modifier.width(4.dp))

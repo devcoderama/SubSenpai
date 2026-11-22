@@ -530,6 +530,12 @@ class CatalogRepository(
     suspend fun feedShare(id: String): Int =
         api.post("/api/v1/feed/posts/$id/share").optInt("share_count")
 
+    /** Toggle posting ulang; mengembalikan (reposted, jumlah repost). */
+    suspend fun feedRepost(id: String): Pair<Boolean, Int> {
+        val o = api.post("/api/v1/feed/posts/$id/repost")
+        return o.optBoolean("reposted") to o.optInt("repost_count")
+    }
+
     suspend fun feedComments(postId: String): List<FeedComment> {
         val o = api.get("/api/v1/feed/posts/$postId/comments")
         return buildList {

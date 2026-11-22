@@ -143,6 +143,7 @@ class MainActivity : ComponentActivity() {
                                 onNeedLogin = { nav.navigate("login") },
                                 onOpenComments = { postId -> nav.navigate("comments/$postId") },
                                 onOpenNotifications = { nav.navigate("feednotif") },
+                                onBack = { nav.popBackStack() },
                             )
                         }
                         composable(

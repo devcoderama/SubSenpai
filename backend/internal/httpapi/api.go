@@ -129,6 +129,7 @@ func (a *API) Router() http.Handler {
 			r.Get("/api/v1/feed/posts/{id}", a.handleFeedGetPost)
 			r.Delete("/api/v1/feed/posts/{id}", a.handleFeedDelete)
 			r.Post("/api/v1/feed/posts/{id}/like", a.handleFeedLike)
+			r.Post("/api/v1/feed/posts/{id}/repost", a.handleFeedRepost)
 			r.Post("/api/v1/feed/posts/{id}/bookmark", a.handleFeedBookmark)
 			r.Post("/api/v1/feed/posts/{id}/share", a.handleFeedShare)
 			r.Get("/api/v1/feed/posts/{id}/comments", a.handleFeedComments)

@@ -17,7 +17,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"subsenpai/backend/internal/auth"
-	"subsenpai/backend/internal/chat"
 )
 
 // ---------- Feed komunitas (redesain Chat 2026-11-22) ----------
@@ -25,12 +24,14 @@ import (
 // Postingan adalah model baru (feed_posts) di samping chat kanal:
 // kanal tetap untuk ruang obrolan grup/DM, feed untuk postingan
 // sosial bergaya Threads/Facebook dengan like, komentar berjenjang,
-// bookmark, dan notifikasi sosial. Aturan komunitas yang sama
-// berlaku: tautan luar dilarang (chat.ContainsLink).
+// bookmark, repost, dan notifikasi sosial. Berbeda dari ruang chat,
+// feed MEMBOLEHKAN tautan di postingan/komentar (keputusan Rams
+// 2026-11-22 mengikuti desain referensi); larangan tautan tetap
+// berlaku di ruang chat.
 
 var feedCategories = map[string]bool{
-	"umum": true, "anime": true, "donghua": true,
-	"film": true, "manga": true, "rekomendasi": true,
+	"umum": true, "rekomendasi": true, "anime": true,
+	"donghua": true, "film": true,
 }
 
 type feedAuthor struct {
@@ -41,8 +42,10 @@ type feedAuthor struct {
 }
 
 type feedPost struct {
-	ID           string     `json:"id"`
-	Author       feedAuthor `json:"author"`
+	ID string `json:"id"` // id baris feed (baris repost bila ini repost)
+	PostID string `json:"post_id"` // id postingan konten (asli)
+	Author feedAuthor `json:"author"`
+	RepostedBy *feedAuthor `json:"reposted_by,omitempty"`
 	Body         *string    `json:"body,omitempty"`
 	ImageURL     *string    `json:"image_url,omitempty"`
 	Category     string     `json:"category"`
@@ -50,35 +53,66 @@ type feedPost struct {
 	GroupName    *string    `json:"group_name,omitempty"`
 	LikeCount    int        `json:"like_count"`
 	CommentCount int        `json:"comment_count"`
+	RepostCount  int        `json:"repost_count"`
 	ShareCount   int        `json:"share_count"`
 	Liked        bool       `json:"liked"`
 	Bookmarked   bool       `json:"bookmarked"`
+	Reposted     bool       `json:"reposted"`
 	Mine         bool       `json:"mine"`
-	CreatedAt    time.Time  `json:"created_at"`
+	CreatedAt    time.Time   `json:"created_at"`
+	CommentsPreview []feedComment `json:"comments_preview"`
 }
 
+// feedPostCols: fp = baris feed, op = postingan konten (asli). Like,
+// komentar, bookmark, dan repost selalu menunjuk op agar baris repost
+// menampilkan & mengubah konten yang sama dengan aslinya.
 const feedPostCols = `
-	fp.id, fp.body, fp.image_url, fp.category, fp.group_id, g.name,
-	fp.share_count, fp.created_at,
-	fp.user_id, coalesce(pr.display_name, pr.email, 'Pengguna'), pr.avatar_url, pr.is_premium,
-	(select count(*) from feed_post_likes l where l.post_id = fp.id),
-	(select count(*) from feed_comments c where c.post_id = fp.id and c.deleted_at is null),
-	exists(select 1 from feed_post_likes l where l.post_id = fp.id and l.user_id = $ME),
-	exists(select 1 from feed_bookmarks b where b.post_id = fp.id and b.user_id = $ME)`
+	fp.id, op.id, op.body, op.image_url, op.category, op.group_id, g.name,
+	op.share_count, fp.created_at,
+	op.user_id, coalesce(pr.display_name, pr.email, 'Pengguna'), pr.avatar_url, pr.is_premium,
+	fp.user_id,
+	fp.repost_of_id is not null,
+	coalesce(rp.display_name, rp.email, ''), rp.avatar_url, coalesce(rp.is_premium, false),
+	(select count(*) from feed_post_likes l where l.post_id = op.id),
+	(select count(*) from feed_comments c where c.post_id = op.id and c.deleted_at is null),
+	(select count(*) from feed_posts x where x.repost_of_id = op.id and x.deleted_at is null),
+	exists(select 1 from feed_post_likes l where l.post_id = op.id and l.user_id = $ME),
+	exists(select 1 from feed_bookmarks b where b.post_id = op.id and b.user_id = $ME),
+	exists(select 1 from feed_posts x where x.repost_of_id = op.id and x.user_id = $ME and x.deleted_at is null)`
+
+const feedPostJoins = ` from feed_posts fp
+	join feed_posts op on op.id = coalesce(fp.repost_of_id, fp.id)
+	join profiles pr on pr.id = op.user_id
+	left join profiles rp on rp.id = fp.user_id and fp.repost_of_id is not null
+	left join groups g on g.id = op.group_id`
 
 func scanFeedPost(rows interface {
 	Scan(dest ...any) error
 }, me string) (feedPost, time.Time, string, error) {
 	var p feedPost
-	var authorID string
+	var authorID, rowAuthorID string
+	var isRepost bool
+	var rpName string
+	var rpAvatar *string
+	var rpPremium bool
 	err := rows.Scan(
-		&p.ID, &p.Body, &p.ImageURL, &p.Category, &p.GroupID, &p.GroupName,
+		&p.ID, &p.PostID, &p.Body, &p.ImageURL, &p.Category, &p.GroupID, &p.GroupName,
 		&p.ShareCount, &p.CreatedAt,
 		&authorID, &p.Author.DisplayName, &p.Author.AvatarURL, &p.Author.IsPremium,
-		&p.LikeCount, &p.CommentCount, &p.Liked, &p.Bookmarked,
+		&rowAuthorID, &isRepost, &rpName, &rpAvatar, &rpPremium,
+		&p.LikeCount, &p.CommentCount, &p.RepostCount, &p.Liked, &p.Bookmarked, &p.Reposted,
 	)
 	p.Author.ID = authorID
-	p.Mine = authorID == me
+	p.Mine = rowAuthorID == me
+	if isRepost {
+		p.RepostedBy = &feedAuthor{
+			ID: rowAuthorID, DisplayName: rpName,
+			AvatarURL: rpAvatar, IsPremium: rpPremium,
+		}
+	}
+	if p.CommentsPreview == nil {
+		p.CommentsPreview = []feedComment{}
+	}
 	return p, p.CreatedAt, p.ID, err
 }
 
@@ -86,11 +120,11 @@ func scanFeedPost(rows interface {
 // postingan. $1 selalu id pemanggil.
 func feedWhere(tab, category, q, groupID string) (string, []any) {
 	args := []any{nil} // $1 diisi pemanggil
-	where := `fp.deleted_at is null
+	where := `fp.deleted_at is null and op.deleted_at is null
 		and not exists (
 			select 1 from user_blocks b
-			where (b.blocker_id = $1::uuid and b.blocked_id = fp.user_id)
-			   or (b.blocker_id = fp.user_id and b.blocked_id = $1::uuid))`
+			where (b.blocker_id = $1::uuid and b.blocked_id in (fp.user_id, op.user_id))
+			   or (b.blocker_id in (fp.user_id, op.user_id) and b.blocked_id = $1::uuid))`
 	if tab == "grup" {
 		where += ` and fp.group_id is not null and exists (
 			select 1 from group_members gm
@@ -108,11 +142,11 @@ func feedWhere(tab, category, q, groupID string) (string, []any) {
 	}
 	if category != "" && category != "semua" {
 		args = append(args, category)
-		where += " and fp.category = $" + strconv.Itoa(len(args))
+		where += " and op.category = $" + strconv.Itoa(len(args))
 	}
 	if q != "" {
 		args = append(args, "%"+q+"%")
-		where += " and fp.body ilike $" + strconv.Itoa(len(args))
+		where += " and op.body ilike $" + strconv.Itoa(len(args))
 	}
 	return where, args
 }
@@ -126,9 +160,7 @@ func (a *API) queryFeedPosts(ctx context.Context, me, tab, category, q, groupID 
 		where += " and (fp.created_at, fp.id) < ($" + strconv.Itoa(len(args)-1) + ", $" + strconv.Itoa(len(args)) + "::uuid)"
 	}
 	args = append(args, limit+1)
-	sql := "select " + cols + ` from feed_posts fp
-		join profiles pr on pr.id = fp.user_id
-		left join groups g on g.id = fp.group_id
+	sql := "select " + cols + feedPostJoins + `
 		where ` + where + `
 		order by fp.created_at desc, fp.id desc limit $` + strconv.Itoa(len(args))
 	rows, err := a.pool.Query(ctx, sql, args...)
@@ -184,6 +216,7 @@ func (a *API) handleFeedList(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "kesalahan server")
 		return
 	}
+	a.attachCommentPreviews(r.Context(), p.ID, posts)
 	nextStr := ""
 	if next != nil {
 		nextStr = encodeCursor(*next)
@@ -193,12 +226,111 @@ func (a *API) handleFeedList(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) feedPostByID(ctx context.Context, me, id string) (feedPost, error) {
 	cols := strings.ReplaceAll(feedPostCols, "$ME", "$1")
-	row := a.pool.QueryRow(ctx, "select "+cols+` from feed_posts fp
-		join profiles pr on pr.id = fp.user_id
-		left join groups g on g.id = fp.group_id
+	row := a.pool.QueryRow(ctx, "select "+cols+feedPostJoins+`
 		where fp.id = $2::uuid and fp.deleted_at is null`, me, id)
 	p, _, _, err := scanFeedPost(row, me)
 	return p, err
+}
+
+// attachCommentPreviews mengisi sampai 3 komentar pertama tiap
+// postingan agar bisa dirender sebaris di kartu feed (gaya
+// referensi: komentar tampil di dalam kartu, bukan halaman lain).
+func (a *API) attachCommentPreviews(ctx context.Context, me string, posts []feedPost) {
+	if len(posts) == 0 {
+		return
+	}
+	ids := []string{}
+	seen := map[string]bool{}
+	for _, p := range posts {
+		if !seen[p.PostID] {
+			seen[p.PostID] = true
+			ids = append(ids, p.PostID)
+		}
+	}
+	args := []any{me}
+	placeholders := make([]string, len(ids))
+	for i, id := range ids {
+		args = append(args, id)
+		placeholders[i] = "$" + strconv.Itoa(len(args)) + "::uuid"
+	}
+	rows, err := a.pool.Query(ctx, `
+		select c.id, c.post_id, c.parent_id, c.body, c.created_at,
+		       c.user_id, coalesce(pr.display_name, pr.email, 'Pengguna'), pr.avatar_url, pr.is_premium,
+		       (select count(*) from feed_comment_likes l where l.comment_id = c.id),
+		       exists(select 1 from feed_comment_likes l where l.comment_id = c.id and l.user_id = $1::uuid)
+		from (
+			select *, row_number() over (partition by post_id order by created_at asc) as rn
+			from feed_comments
+			where post_id in (`+strings.Join(placeholders, ",")+`) and deleted_at is null
+		) c
+		join profiles pr on pr.id = c.user_id
+		where c.rn <= 3
+		order by c.post_id, c.created_at asc`, args...)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	byPost := map[string][]feedComment{}
+	for rows.Next() {
+		var c feedComment
+		var authorID string
+		if err := rows.Scan(&c.ID, &c.PostID, &c.ParentID, &c.Body, &c.CreatedAt,
+			&authorID, &c.Author.DisplayName, &c.Author.AvatarURL, &c.Author.IsPremium,
+			&c.LikeCount, &c.Liked); err != nil {
+			return
+		}
+		c.Author.ID = authorID
+		c.Mine = authorID == me
+		byPost[c.PostID] = append(byPost[c.PostID], c)
+	}
+	for i := range posts {
+		if prev, ok := byPost[posts[i].PostID]; ok {
+			posts[i].CommentsPreview = prev
+		}
+	}
+}
+
+// handleFeedRepost: posting ulang (🔁). Toggle — repost kedua
+// membatalkan. Repost selalu menunjuk postingan asli, tidak bisa
+// memposting ulang postingan sendiri.
+func (a *API) handleFeedRepost(w http.ResponseWriter, r *http.Request) {
+	p := auth.FromContext(r.Context())
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+	var origID, authorID, category string
+	var groupID *string
+	if err := a.pool.QueryRow(ctx, `
+		select op.id, op.user_id, op.category, op.group_id
+		from feed_posts fp
+		join feed_posts op on op.id = coalesce(fp.repost_of_id, fp.id)
+		where fp.id = $1::uuid and fp.deleted_at is null and op.deleted_at is null`,
+		id).Scan(&origID, &authorID, &category, &groupID); err != nil {
+		writeErr(w, http.StatusNotFound, "postingan tidak ditemukan")
+		return
+	}
+	tag, _ := a.pool.Exec(ctx, `
+		delete from feed_posts
+		where repost_of_id = $1::uuid and user_id = $2::uuid and deleted_at is null`,
+		origID, p.ID)
+	reposted := false
+	if tag.RowsAffected() == 0 {
+		if authorID == p.ID {
+			writeErr(w, http.StatusBadRequest, "tidak bisa memposting ulang postingan sendiri")
+			return
+		}
+		if _, err := a.pool.Exec(ctx, `
+			insert into feed_posts (user_id, category, group_id, repost_of_id)
+			values ($1::uuid, $2, $3::uuid, $4::uuid)`,
+			p.ID, category, groupID, origID); err == nil {
+			reposted = true
+			a.notifySocial(ctx, authorID, p.ID, "memposting ulang postinganmu", &origID)
+		}
+	}
+	var count int
+	_ = a.pool.QueryRow(ctx, `
+		select count(*) from feed_posts
+		where repost_of_id = $1::uuid and deleted_at is null`, origID).Scan(&count)
+	writeJSON(w, http.StatusOK, map[string]any{"reposted": reposted, "repost_count": count})
 }
 
 func (a *API) handleFeedGetPost(w http.ResponseWriter, r *http.Request) {
@@ -232,10 +364,7 @@ func (a *API) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "postingan kosong — tulis sesuatu atau lampirkan gambar")
 		return
 	}
-	if body != "" && chat.ContainsLink(body) {
-		writeErr(w, http.StatusBadRequest, "tautan luar dilarang di komunitas — bagikan lewat kartu berbagi aplikasi")
-		return
-	}
+
 	category := strings.ToLower(req.Category)
 	if category == "" {
 		category = "umum"
@@ -437,10 +566,6 @@ func (a *API) handleFeedCommentCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(body) > 500 {
 		writeErr(w, http.StatusBadRequest, "komentar maksimal 500 karakter")
-		return
-	}
-	if chat.ContainsLink(body) {
-		writeErr(w, http.StatusBadRequest, "tautan luar dilarang di komunitas")
 		return
 	}
 	ctx := r.Context()
