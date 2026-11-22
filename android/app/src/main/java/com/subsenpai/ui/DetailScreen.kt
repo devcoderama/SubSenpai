@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,15 +36,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.subsenpai.R
 import com.subsenpai.data.CatalogRepository
+import com.subsenpai.data.TitleCard
 import com.subsenpai.data.TitleDetail
 import kotlinx.coroutines.launch
 
@@ -53,12 +59,24 @@ fun DetailScreen(
     onPlay: (String) -> Unit,
     onBack: () -> Unit,
     onNeedLogin: () -> Unit,
+    onOpenTitle: (String) -> Unit,
 ) {
     var detail by remember { mutableStateOf<TitleDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var inWatchlist by remember { mutableStateOf(false) }
     var wlBusy by remember { mutableStateOf(false) }
+    var serupa by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     val scope = rememberCoroutineScope()
+
+    // "Judul Serupa" ala Netflix: judul lain berjenis sama.
+    LaunchedEffect(detail?.card?.type) {
+        val t = detail?.card?.type ?: return@LaunchedEffect
+        try {
+            serupa = repo.titles(t, null).filter { it.id != titleId }.take(9)
+        } catch (e: Exception) {
+            // Bagian ini hiasan — abaikan bila gagal.
+        }
+    }
 
     LaunchedEffect(titleId) {
         try {
@@ -95,37 +113,11 @@ fun DetailScreen(
         val d = detail
         if (d != null) {
             item {
-                // Kepala ala Netflix: gambar penuh dengan tombol
-                // kembali melayang; judul & aksi pindah ke bawah
-                // gambar di atas latar pekat.
-                Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-                    PosterImage(
-                        url = d.card.posterUrl,
-                        title = d.card.title,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    Box(
-                        modifier = Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color(0x66000000), Color.Transparent, MaterialTheme.colorScheme.background),
-                                startY = 0f,
-                            )
-                        )
-                    )
-                    Box(
-                        modifier = Modifier.padding(12.dp).size(36.dp)
-                            .background(Color(0x99000000), CircleShape)
-                            .clickable { onBack() },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_arrow_back),
-                            contentDescription = "Kembali",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
+                // Kepala ala Netflix: latar buram dari poster yang
+                // sama memenuhi lebar layar, poster tajam (varian
+                // resolusi tinggi untuk film) berdiri di tengah,
+                // tombol kembali melayang. Judul & aksi di bawahnya.
+                DetailBackdrop(url = d.card.posterUrl, title = d.card.title, onBack = onBack)
             }
             item {
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -145,9 +137,19 @@ fun DetailScreen(
                         listOfNotNull(
                             d.card.rating?.let { "★ $it" },
                             d.card.year?.toString(),
-                            d.durationMin?.let { "$it mnt/ep" },
+                            d.durationMin?.let { m ->
+                                when {
+                                    d.card.type == "film" && m >= 60 -> "${m / 60}j ${m % 60}mnt"
+                                    d.card.type == "film" -> "$m mnt"
+                                    else -> "$m mnt/ep"
+                                }
+                            },
                             d.card.type.replaceFirstChar { it.uppercase() },
-                            d.card.status,
+                            when (d.card.status) {
+                                "completed" -> "Tamat"
+                                "ongoing" -> "Berlanjut"
+                                else -> d.card.status
+                            },
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color(0xFFDDDDDD),
@@ -270,7 +272,9 @@ fun DetailScreen(
                     }
                 }
             }
-            if (d.episodes.isNotEmpty()) {
+            // Film tidak butuh daftar episode — tombol Putar di atas
+            // sudah cukup (Netflix pun begitu untuk film).
+            if (d.episodes.isNotEmpty() && d.card.type != "film") {
                 item {
                     Text(
                         "Episode",
@@ -328,7 +332,92 @@ fun DetailScreen(
                     }
                 }
             }
+            if (serupa.isNotEmpty()) {
+                item {
+                    Text(
+                        "Judul Serupa",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+                items(serupa.chunked(3)) { rowTitles ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        for (t in rowTitles) {
+                            Column(
+                                modifier = Modifier.weight(1f).clickable { onOpenTitle(t.id) },
+                            ) {
+                                PosterImage(
+                                    url = t.posterUrl,
+                                    title = t.title,
+                                    modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                )
+                                Text(
+                                    t.title,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(top = 6.dp),
+                                )
+                            }
+                        }
+                        repeat(3 - rowTitles.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
             item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+}
+
+/**
+ * Kepala halaman detail: poster yang sama diburamkan memenuhi latar
+ * (menutupi keterbatasan resolusi sumber kecil seperti 225px),
+ * poster tajamnya berdiri di tengah setinggi kepala, gradasi ke
+ * latar di bawah, dan tombol kembali melayang di kiri atas.
+ */
+@Composable
+private fun DetailBackdrop(url: String?, title: String, onBack: () -> Unit) {
+    Box(modifier = Modifier.fillMaxWidth().height(340.dp)) {
+        PosterImage(
+            url = hiResPosterUrl(url),
+            title = title,
+            modifier = Modifier.fillMaxSize().blur(30.dp),
+        )
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .background(Color(0x59000000)),
+        )
+        PosterImage(
+            url = hiResPosterUrl(url),
+            title = title,
+            modifier = Modifier.fillMaxHeight().aspectRatio(2f / 3f)
+                .align(Alignment.Center),
+        )
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    colors = listOf(Color(0x4D000000), Color.Transparent, MaterialTheme.colorScheme.background),
+                    startY = 0f,
+                )
+            )
+        )
+        Box(
+            modifier = Modifier.padding(12.dp).size(36.dp)
+                .background(Color(0x99000000), CircleShape)
+                .clickable { onBack() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_arrow_back),
+                contentDescription = "Kembali",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }

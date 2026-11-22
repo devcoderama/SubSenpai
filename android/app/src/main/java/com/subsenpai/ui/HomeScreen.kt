@@ -315,6 +315,18 @@ fun HomeScreen(
     }
 }
 
+/**
+ * URL poster resolusi lebih tinggi untuk permukaan besar (hero
+ * Beranda & kepala halaman detail): poster film TMDB disimpan
+ * sebagai w500 (500px) yang terlihat burik saat direntangkan
+ * selebar layar, jadi khusus permukaan besar diganti varian w780.
+ * Kartu-kartu kecil tetap memakai w500 yang ringan. Sumber lain
+ * (Kuronime/Anichin) tidak punya varian lebih besar — berkas
+ * aslinya memang kecil — jadi URL-nya dikembalikan apa adanya.
+ */
+fun hiResPosterUrl(url: String?): String? =
+    url?.replace("image.tmdb.org/t/p/w500", "image.tmdb.org/t/p/w780")
+
 /** Hero layar penuh ala Netflix dengan aksi Daftar Saya/Putar/Info. */
 @Composable
 private fun HeroSection(
@@ -340,7 +352,7 @@ private fun HeroSection(
     }
     Box(modifier = Modifier.fillMaxWidth().height(540.dp)) {
         PosterImage(
-            url = hero.posterUrl,
+            url = hiResPosterUrl(hero.posterUrl),
             title = hero.title,
             modifier = Modifier.fillMaxSize(),
         )

@@ -171,6 +171,7 @@ class MainActivity : ComponentActivity() {
                                 onPlay = { nav.navigate("player/$it") },
                                 onBack = { nav.popBackStack() },
                                 onNeedLogin = { nav.navigate("login") },
+                                onOpenTitle = { nav.navigate("detail/$it") },
                             )
                         }
                         composable(
