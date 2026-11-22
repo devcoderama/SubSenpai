@@ -1,0 +1,18 @@
+[Unit]
+Description=SubSenpai API (Go)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=subsenpai
+WorkingDirectory=/opt/subsenpai
+EnvironmentFile=/etc/subsenpai/backend.env
+ExecStart=/opt/subsenpai/subsenpai-server
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

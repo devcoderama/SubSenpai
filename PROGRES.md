@@ -24,7 +24,7 @@
 ## Alur Pembangunan
 
 ✓ Fase 0 → sinkronisasi final DATABASE.md selesai (52 tabel) — pembangunan bisa dimulai
-- Fase 1 → katalog multi-konten + halaman detail + player HLS
+✓ Fase 1 → katalog multi-konten + halaman detail + player HLS (backend Go + aplikasi Android terbangun & terverifikasi: migrasi 52 tabel jalan, endpoint katalog terenkripsi xdata terbukti hidup, APK debug terkompilasi)
 - Fase 2 → worker subtitle bahasa asal (caption/Whisper → SRT asal) + terjemahan subtitle di perangkat user
 - Fase 3 → login Google + JWT backend + watchlist + riwayat
 - Fase 4 → gerbang freemium + pembayaran + voucher + chat global + teman & grup + DM + nonton bareng

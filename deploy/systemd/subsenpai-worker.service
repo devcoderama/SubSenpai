@@ -1,0 +1,18 @@
+[Unit]
+Description=SubSenpai Worker (job latar)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=subsenpai
+WorkingDirectory=/opt/subsenpai
+EnvironmentFile=/etc/subsenpai/backend.env
+ExecStart=/opt/subsenpai/subsenpai-worker
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

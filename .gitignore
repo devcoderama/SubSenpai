@@ -1,0 +1,12 @@
+# Android
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+
+# Go
+backend/subsenpai-server
+backend/subsenpai-worker
+
+# Env asli tidak pernah masuk repo
+backend/.env

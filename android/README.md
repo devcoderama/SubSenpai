@@ -1,6 +1,6 @@
 # android/ — Aplikasi Android SubSenpai
 
-Folder ini adalah rumah **aplikasi Android SubSenpai (Kotlin)** — satu-satunya klien SubSenpai, berjalan di perangkat user (tidak ada versi web). Status saat ini: folder ini baru berisi README rancangan ini; kode aplikasinya dibuat pada fase pembangunan (lihat [PROGRES.md](../PROGRES.md)).
+Folder ini adalah rumah **aplikasi Android SubSenpai (Kotlin)** — satu-satunya klien SubSenpai, berjalan di perangkat user (tidak ada versi web). Status: **Fase 1 terbangun** — kerangka aplikasi + layar beranda (tren & terbaru, cari, saring tipe), detail judul, player HLS Media3 dengan failover sumber & trek subtitle, dan reader chapter vertikal; klien API dengan handshake ECDH + dekripsi xdata sudah jalan dan APK debug terkompilasi (lihat [PROGRES.md](../PROGRES.md)).
 
 Aplikasi didistribusikan sebagai APK lewat **website resmi & GitHub Releases** (keputusan distribusi: [NOTE.md](../NOTE.md)). Backend-nya adalah layanan Go di VPS — aplikasi hanya berbicara ke API backend, tidak pernah langsung ke database.
 
