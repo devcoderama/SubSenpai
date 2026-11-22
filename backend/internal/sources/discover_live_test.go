@@ -93,3 +93,34 @@ func TestDiscoverManhuarmtlLive(t *testing.T) {
 		t.Fatalf("hasil penemuan komik terlalu tipis: %d judul", len(found))
 	}
 }
+
+func TestDiscoverHashflixLive(t *testing.T) {
+	if os.Getenv("SUBSENPAI_LIVE_TEST") != "1" {
+		t.Skip("live test nonaktif")
+	}
+	r, ok := ByKey("hashflix")
+	if !ok {
+		t.Fatal("resolver hashflix tidak terdaftar")
+	}
+	disc, ok := r.(Discoverer)
+	if !ok {
+		t.Fatal("hashflix tidak mendukung Discover")
+	}
+	src := Source{Name: "Hashflix", ContentType: "film", Lang: "multi", BaseURL: "https://hashflix.top", Resolver: "hashflix", FetchMode: "server"}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	items, err := disc.Discover(ctx, src, 60)
+	if err != nil {
+		t.Fatalf("discover hashflix: %v", err)
+	}
+	posters := 0
+	for _, it := range items {
+		if it.Poster != "" {
+			posters++
+		}
+	}
+	t.Logf("hashflix: %d film, %d berposter; contoh: %+v", len(items), posters, items[0])
+	if len(items) < 20 || posters < 15 {
+		t.Fatalf("hasil terlalu sedikit: %d film, %d poster", len(items), posters)
+	}
+}

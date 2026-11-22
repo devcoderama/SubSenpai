@@ -150,6 +150,7 @@ func init() {
 	register(NewAnichin())
 	register(NewHiAnime())
 	register(NewManhuarmtl())
+	register(NewHashflix())
 	register(NewGeneric())
 }
 
