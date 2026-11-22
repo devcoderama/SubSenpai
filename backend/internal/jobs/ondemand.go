@@ -90,19 +90,25 @@ func applySeriesMeta(ctx context.Context, pool *pgxpool.Pool, titleID string, me
 	if meta.Season != "" {
 		season = meta.Season
 	}
+	// Cast ::text WAJIB pada parameter teks nullable: nullIfEmpty
+	// bertipe `any` sehingga pgx mengirimnya tanpa OID tipe, dan
+	// Postgres gagal menebak tipe parameter yang hanya dipakai dalam
+	// ekspresi (error 42P08 "could not determine data type of
+	// parameter") — seluruh UPDATE gagal dan tidak ada metadata yang
+	// pernah tertulis (pelajaran produksi 2026-11-22).
 	_, err := pool.Exec(ctx, `
 		update titles set
 			synopsis = case
-				when $2 is not null and (synopsis is null or lower(synopsis) like any ($11))
-				then $2 else synopsis end,
-			title_alt = coalesce(title_alt, $3),
+				when $2::text is not null and (synopsis is null or lower(synopsis) like any ($11))
+				then $2::text else synopsis end,
+			title_alt = coalesce(title_alt, $3::text),
 			genres = case when coalesce(cardinality(genres), 0) = 0 then $4 else genres end,
 			year = coalesce(year, $5),
-			season = coalesce(season, $6),
-			network = coalesce(network, $7),
-			studio = coalesce(studio, $8),
+			season = coalesce(season, $6::text),
+			network = coalesce(network, $7::text),
+			studio = coalesce(studio, $8::text),
 			duration_min = coalesce(duration_min, $9),
-			country = coalesce(country, $10),
+			country = coalesce(country, $10::text),
 			updated_at = now()
 		where id = $1::uuid`,
 		titleID, nullIfEmpty(synopsis), nullIfEmpty(meta.TitleAlt),
