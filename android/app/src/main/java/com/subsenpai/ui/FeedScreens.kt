@@ -641,13 +641,19 @@ fun FeedScreen(
                                 postError = null
                                 scope.launch {
                                     try {
-                                        val url = mediaBytes?.let {
-                                            val name = if (mediaIsVideo) {
-                                                "feed-${System.currentTimeMillis()}.mp4"
+                                        val url = mediaBytes?.let { bytes ->
+                                            if (mediaIsVideo) {
+                                                // Video diunggah LANGSUNG dari
+                                                // perangkat ke image2url agar
+                                                // kuota per-IP tidak menumpuk di
+                                                // IP server; URL-nya saja yang
+                                                // disimpan ke database. Gagal →
+                                                // jatuh ke unggahan lewat backend.
+                                                repo.feedUploadVideoDirect(bytes)
+                                                    ?: repo.feedUpload(bytes, "feed-${System.currentTimeMillis()}.mp4")
                                             } else {
-                                                "feed-${System.currentTimeMillis()}.jpg"
+                                                repo.feedUpload(bytes, "feed-${System.currentTimeMillis()}.jpg")
                                             }
-                                            repo.feedUpload(it, name)
                                         }
                                         val created = repo.feedCreate(
                                             draft.trim(), url, draftCategory, draftVisibility,

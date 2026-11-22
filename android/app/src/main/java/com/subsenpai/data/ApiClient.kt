@@ -6,6 +6,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -28,6 +29,13 @@ class ApiClient(
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    /** Klien khusus unggahan besar (video) dengan batas waktu longgar. */
+    private val httpUpload = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(300, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
         .build()
 
     /** Penyedia JWT backend; diisi CatalogRepository dari AuthStore. */
@@ -124,6 +132,45 @@ class ApiClient(
      * Unggah gambar multipart (feed komunitas). Respons tetap berupa
      * envelope xdata seperti panggilan lain dan dibuka di sini.
      */
+    /**
+     * Unggah video LANGSUNG dari perangkat ke image2url.com
+     * (permintaan Rams 2026-11-22): kuota tamu image2url dihitung
+     * per IP, jadi unggahan dari IP HP pengguna tidak berbagi kuota
+     * dengan IP server. Mengembalikan URL publik R2, atau null bila
+     * gagal — pemanggil jatuh ke unggahan lewat backend.
+     * Content-Type bagian berkas wajib tipe video (selain itu ditolak).
+     */
+    suspend fun uploadImage2UrlDirect(bytes: ByteArray): String? = withContext(Dispatchers.IO) {
+        try {
+            val form = MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart(
+                    "file", "video.mp4",
+                    bytes.toRequestBody("video/mp4".toMediaType()),
+                )
+                .build()
+            val req = Request.Builder()
+                .url("https://www.image2url.com/api/upload-video")
+                .header(
+                    "User-Agent",
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36",
+                )
+                .post(form)
+                .build()
+            httpUpload.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val text = resp.body?.string() ?: return@withContext null
+                val o = org.json.JSONObject(text)
+                if (o.optBoolean("success")) {
+                    o.optString("url").ifBlank { null }
+                } else {
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     suspend fun uploadImage(path: String, bytes: ByteArray, filename: String): JSONObject {
         val media = when {
             filename.endsWith(".png", true) -> "image/png"

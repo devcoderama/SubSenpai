@@ -566,6 +566,10 @@ class CatalogRepository(
     suspend fun feedUpload(bytes: ByteArray, filename: String): String =
         api.uploadImage("/api/v1/feed/upload", bytes, filename).getString("url")
 
+    /** Unggah video langsung dari perangkat ke image2url (null = gagal). */
+    suspend fun feedUploadVideoDirect(bytes: ByteArray): String? =
+        api.uploadImage2UrlDirect(bytes)
+
     suspend fun feedNotifications(): Pair<List<FeedNotification>, Int> {
         val o = api.get("/api/v1/feed/notifications")
         val items = buildList {
