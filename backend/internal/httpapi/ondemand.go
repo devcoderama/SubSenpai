@@ -5,7 +5,8 @@ package httpapi
 // dari sumber saat itu juga (lewat fungsi per-judul paket jobs),
 // menyimpan ke DB, dan mengembalikan detail lengkap — tanpa
 // menunggu siklus worker. Pencarian yang kosong di DB juga jatuh
-// ke pencarian live sumber. Pengaman: kunci per judul di memori
+// ke pencarian live sumber, dan daftar per tipe yang masih kosong
+// memicu discovery katalog tipe itu saat itu juga. Pengaman: kunci per judul di memori
 // (permintaan bersamaan hanya memicu satu tarikan), timeout pendek
 // untuk percobaan di depan user, penyelesaian latar belakang bila
 // percobaan depan gagal/timeout, dan cooldown percobaan gagal agar
@@ -36,6 +37,12 @@ const (
 	// onDemandCooldown adalah jeda sebelum judul (atau kata
 	// pencarian) yang tarikannya gagal boleh dicoba lagi.
 	onDemandCooldown = 10 * time.Minute
+	// discoverTimeout membatasi percobaan discovery katalog yang
+	// dilakukan selagi user menunggu respons daftar.
+	discoverTimeout = 12 * time.Second
+	// discoverBackgroundTimeout membatasi penyelesaian discovery
+	// di latar belakang setelah percobaan depan gagal/timeout.
+	discoverBackgroundTimeout = 3 * time.Minute
 )
 
 // fillGuard adalah kunci per kunci + cooldown percobaan gagal,
@@ -105,6 +112,24 @@ func needsOnDemand(fetchMode, typ, synopsis string, episodeCount int) (needMeta,
 	return needMeta, needEps
 }
 
+// shouldDiscoverEmpty menentukan apakah halaman daftar yang kosong
+// layak memicu discovery katalog on-demand: hanya halaman pertama
+// (tanpa cursor), tanpa hasil, dan tipenya dispesifikkan serta
+// termasuk video mode server. Tipe komik dibaca di perangkat (F39)
+// dan tipe kosong berarti daftar gabungan — keduanya tidak memicu
+// apa-apa. Dipakai juga sebagai pra-cek kelayakan dengan count 0
+// sebelum kueri berjalan.
+func shouldDiscoverEmpty(typ, cursor string, count int) bool {
+	if count > 0 || cursor != "" {
+		return false
+	}
+	switch typ {
+	case "anime", "donghua", "film":
+		return true
+	}
+	return false
+}
+
 var errNoProgress = errors.New("on-demand: sumber tidak memberi kemajuan")
 
 // fillTitle menjalankan pengisian satu judul sesuai aspek yang
@@ -168,6 +193,35 @@ func (a *API) fillOnDemand(r *http.Request, titleID string, needMeta, needEps bo
 		defer bcancel()
 		berr := a.fillTitle(bctx, titleID, needMeta, needEps)
 		a.guard.finish(titleID, berr != nil)
+	}()
+	return true
+}
+
+// discoverOnDemand mencoba mengisi katalog satu tipe yang masih
+// kosong lewat jobs.DiscoverType selagi user menunggu (timeout
+// pendek). Mengembalikan true bila pemanggil sebaiknya mengueri
+// ulang daftar (ada kemungkinan kemajuan). Bila percobaan depan
+// gagal/timeout tanpa kemajuan, discovery dilanjutkan di goroutine
+// latar dengan konteks sendiri — tetap di bawah klaim guard yang
+// sama (kunci "discover|<tipe>"), dan cooldown hanya dipasang bila
+// latar pun gagal/tanpa kemajuan.
+func (a *API) discoverOnDemand(r *http.Request, typ string) bool {
+	key := "discover|" + typ
+	if !a.guard.tryStart(key) {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), discoverTimeout)
+	n, _ := jobs.DiscoverType(ctx, a.pool, typ)
+	cancel()
+	if n > 0 {
+		a.guard.finish(key, false)
+		return true
+	}
+	go func() {
+		bctx, bcancel := context.WithTimeout(context.Background(), discoverBackgroundTimeout)
+		defer bcancel()
+		bn, _ := jobs.DiscoverType(bctx, a.pool, typ)
+		a.guard.finish(key, bn == 0)
 	}()
 	return true
 }

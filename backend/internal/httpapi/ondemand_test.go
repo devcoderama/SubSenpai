@@ -51,6 +51,30 @@ func TestFillGuardCooldown(t *testing.T) {
 	}
 }
 
+func TestShouldDiscoverEmpty(t *testing.T) {
+	cases := []struct {
+		name   string
+		typ    string
+		cursor string
+		count  int
+		want   bool
+	}{
+		{"donghua kosong halaman pertama", "donghua", "", 0, true},
+		{"anime kosong halaman pertama", "anime", "", 0, true},
+		{"film kosong halaman pertama", "film", "", 0, true},
+		{"ada cursor tidak memicu", "donghua", "Y3Vyc29y", 0, false},
+		{"sudah ada hasil tidak memicu", "donghua", "", 15, false},
+		{"komik manga tidak memicu", "manga", "", 0, false},
+		{"komik manhwa tidak memicu", "manhwa", "", 0, false},
+		{"tipe kosong tidak memicu", "", "", 0, false},
+	}
+	for _, c := range cases {
+		if got := shouldDiscoverEmpty(c.typ, c.cursor, c.count); got != c.want {
+			t.Errorf("%s: shouldDiscoverEmpty(%q,%q,%d) = %v, mau %v", c.name, c.typ, c.cursor, c.count, got, c.want)
+		}
+	}
+}
+
 func TestNeedsOnDemand(t *testing.T) {
 	cases := []struct {
 		name              string

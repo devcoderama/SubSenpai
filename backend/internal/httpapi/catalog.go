@@ -212,6 +212,26 @@ func (a *API) handleTitles(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, payload)
 		return
 	}
+	if cur == nil && search == "" && q.Get("genre") == "" && shouldDiscoverEmpty(typ, "", 0) {
+		// Halaman pertama per tipe video server tanpa filter TIDAK
+		// lewat cache: katalog tipe yang masih kosong harus langsung
+		// memicu discovery on-demand (bukan menunggu siklus worker)
+		// dan hasilnya — termasuk yang diselesaikan goroutine
+		// latar — harus langsung terlihat, bukan tertahan TTL
+		// cache. Pola yang sama seperti pencarian di atas.
+		payload, n, err := a.titlesPage(r.Context(), typ, "", "", nil, limit)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "kesalahan server")
+			return
+		}
+		if shouldDiscoverEmpty(typ, "", n) && a.discoverOnDemand(r, typ) {
+			if p2, _, err := a.titlesPage(r.Context(), typ, "", "", nil, limit); err == nil {
+				payload = p2
+			}
+		}
+		writeJSON(w, http.StatusOK, payload)
+		return
+	}
 	key := "titles?" + r.URL.RawQuery
 	a.serveCached(w, key, func() (any, error) {
 		payload, _, err := a.titlesPage(r.Context(), typ, q.Get("genre"), search, cur, limit)

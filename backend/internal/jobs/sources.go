@@ -228,13 +228,36 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
+	_, err := discoverTitles(ctx, pool, "")
+	return err
+}
+
+// DiscoverType menjalankan penemuan katalog untuk SATU jenis konten
+// saja — titik masuk jalur on-demand API (katalog per jenis masih
+// kosong → diisi saat itu juga, tanpa menunggu siklus worker). Inti
+// dan perilakunya sama persis dengan bagian per-jenis DiscoverTitles
+// (sumber dimuat lewat loadDiscoverySources yang sama, termasuk
+// override base URL env). Mengembalikan jumlah judul baru yang
+// masuk katalog.
+func DiscoverType(ctx context.Context, pool *pgxpool.Pool, contentType string) (int, error) {
+	return discoverTitles(ctx, pool, contentType)
+}
+
+// discoverTitles adalah inti penemuan katalog: onlyType kosong =
+// semua jenis (worker), terisi = hanya jenis itu (on-demand API).
+// Mengembalikan jumlah judul baru yang masuk katalog.
+func discoverTitles(ctx context.Context, pool *pgxpool.Pool, onlyType string) (int, error) {
+	total := 0
 	posters := 0
 	devicePosters := 0        // percobaan HTTP backfill poster judul perangkat
 	seen := map[string]bool{} // resolver+base yang sudah ditemukan putaran ini
 	for _, ct := range []string{"anime", "donghua", "film", "manga", "manhua", "manhwa"} {
+		if onlyType != "" && ct != onlyType {
+			continue
+		}
 		srcs, err := loadDiscoverySources(ctx, pool, ct)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		for _, src := range srcs {
 			key := src.Resolver + "|" + src.BaseURL
@@ -365,10 +388,11 @@ func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
 				// sumbernya. Jenis komik tidak diubah perilakunya.
 				backfillDevicePosters(ctx, pool, src, pmap, &devicePosters)
 			}
+			total += baru
 			log.Printf("penemuan %s: %d judul ditemukan, %d baru masuk katalog", src.Name, len(found), baru)
 		}
 	}
-	return nil
+	return total, nil
 }
 
 // backfillPosters melengkapi poster judul terpetakan ke sumber ini yang
