@@ -53,6 +53,7 @@ import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.SettingsStore
 import com.subsenpai.data.TitleCard
 import com.subsenpai.data.TitleDetail
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -68,6 +69,8 @@ fun DetailScreen(
 ) {
     var detail by remember { mutableStateOf<TitleDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    // Episode masih ditarik server dari sumber di latar belakang.
+    var epLoading by remember { mutableStateOf(false) }
     var inWatchlist by remember { mutableStateOf(false) }
     var wlBusy by remember { mutableStateOf(false) }
     var serupa by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
@@ -87,7 +90,31 @@ fun DetailScreen(
 
     LaunchedEffect(titleId) {
         try {
-            detail = repo.titleDetail(titleId)
+            var d = repo.titleDetail(titleId)
+            detail = d
+            // Episode kosong untuk judul video: server menariknya
+            // dari sumber saat detail dibuka (bisa selesai di latar
+            // beberapa detik sesudah respons pertama) — muat ulang
+            // beberapa kali sampai episode muncul, agar halaman
+            // detail yang terbuka langsung berisi episode
+            // (permintaan Rams 2026-11-22).
+            if (d.episodes.isEmpty() &&
+                (d.card.type == "anime" || d.card.type == "donghua" || d.card.type == "film")
+            ) {
+                epLoading = true
+                var tries = 0
+                while (d.episodes.isEmpty() && tries < 4) {
+                    delay(if (tries == 0) 4000 else 7000)
+                    tries++
+                    try {
+                        d = repo.titleDetail(titleId)
+                        detail = d
+                    } catch (e: Exception) {
+                        // Abaikan — percobaan berikutnya / keadaan terakhir dipakai.
+                    }
+                }
+                epLoading = false
+            }
         } catch (e: Exception) {
             error = e.message
         }
@@ -306,6 +333,22 @@ fun DetailScreen(
                             }
                         }
                     }
+                }
+            }
+            if (d.episodes.isEmpty() &&
+                (d.card.type == "anime" || d.card.type == "donghua" || d.card.type == "film")
+            ) {
+                item {
+                    Text(
+                        if (epLoading) {
+                            "Sedang memuat episode dari sumber…"
+                        } else {
+                            "Episode belum tersedia di sumber untuk judul ini."
+                        },
+                        color = Color(0xFFB3B3B3),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
                 }
             }
             // Film tidak butuh daftar episode — tombol Putar di atas

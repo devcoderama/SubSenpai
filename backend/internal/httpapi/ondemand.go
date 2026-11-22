@@ -31,6 +31,13 @@ const (
 	// onDemandTimeout membatasi percobaan pengisian yang dilakukan
 	// selagi user menunggu respons detail.
 	onDemandTimeout = 10 * time.Second
+	// titleFillTimeout khusus pengisian detail judul (episode dari
+	// sumber): scraping halaman seri sumber kerap butuh lebih dari
+	// 10 detik, dan batas baca klien aplikasi 30 detik — 25 detik
+	// membuat episode umumnya sudah ada pada respons pertama
+	// (keluhan Rams 2026-11-22: detail dari pencarian tampil tanpa
+	// episode karena tarikan depan keburu timeout).
+	titleFillTimeout = 25 * time.Second
 	// onDemandBackgroundTimeout membatasi penyelesaian latar
 	// belakang setelah percobaan depan gagal/timeout.
 	onDemandBackgroundTimeout = 2 * time.Minute
@@ -181,7 +188,7 @@ func (a *API) fillOnDemand(r *http.Request, titleID string, needMeta, needEps bo
 	if !a.guard.tryStart(titleID) {
 		return false
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), onDemandTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), titleFillTimeout)
 	err := a.fillTitle(ctx, titleID, needMeta, needEps)
 	cancel()
 	if err == nil {
