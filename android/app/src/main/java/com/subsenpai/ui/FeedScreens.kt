@@ -43,6 +43,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -79,6 +80,9 @@ import com.subsenpai.data.FeedAuthor
 import com.subsenpai.data.FeedComment
 import com.subsenpai.data.FeedNotification
 import com.subsenpai.data.FeedPost
+import com.subsenpai.data.FeedUploadManager
+import com.subsenpai.data.FeedUploadState
+import com.subsenpai.data.PendingPost
 import com.subsenpai.data.GroupItem
 import com.subsenpai.data.isVideo
 import com.subsenpai.data.relativeTimeId
@@ -216,19 +220,35 @@ fun socialEmbedUrl(url: String): String? {
     return null
 }
 
-/** Kotak pemutar embed media sosial di dalam kartu postingan. */
+/**
+ * Kotak pemutar embed media sosial di dalam kartu postingan.
+ * Embed dimuat sebagai iframe di dalam halaman pembungkus yang
+ * base URL-nya domain platform itu sendiri: memuat URL embed
+ * langsung sebagai halaman utama membuat TikTok menolak tampil
+ * (kotak hitam — temuan lapangan Rams 2026-11-22), karena pemutar
+ * embed memeriksa asal/referer halaman induknya.
+ */
 @Composable
 fun MediaEmbed(embedUrl: String) {
+    val base = when {
+        embedUrl.contains("tiktok.com") -> "https://www.tiktok.com/"
+        embedUrl.contains("instagram.com") -> "https://www.instagram.com/"
+        embedUrl.contains("facebook.com") -> "https://www.facebook.com/"
+        else -> "https://www.youtube.com/"
+    }
     AndroidView(
         factory = { ctx ->
             android.webkit.WebView(ctx).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.mediaPlaybackRequiresUserGesture = false
+                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                 settings.userAgentString =
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+                android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 webViewClient = android.webkit.WebViewClient()
-                loadUrl(embedUrl)
+                val html = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body style="margin:0;padding:0;background:#000"><iframe src="$embedUrl" style="border:0;width:100%;height:100%;position:absolute;top:0;left:0" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe></body></html>"""
+                loadDataWithBaseURL(base, html, "text/html", "utf-8", null)
             }
         },
         modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
@@ -319,8 +339,8 @@ fun FeedScreen(
     var mediaUri by remember { mutableStateOf<Uri?>(null) }
     var mediaBytes by remember { mutableStateOf<ByteArray?>(null) }
     var mediaIsVideo by remember { mutableStateOf(false) }
-    var posting by remember { mutableStateOf(false) }
     var postError by remember { mutableStateOf<String?>(null) }
+    val uploadState by FeedUploadManager.state.collectAsState()
 
     // OpenDocument (bukan Photo Picker): di beberapa perangkat
     // (HyperOS) Photo Picker hanya menampilkan gambar walau diminta
@@ -403,6 +423,15 @@ fun FeedScreen(
         if (repo.isLoggedIn && searchOpen) {
             delay(500)
             loadFirst()
+        }
+    }
+    // Unggahan latar belakang selesai → muat ulang feed, lalu
+    // spanduk keberhasilan hilang sendiri.
+    LaunchedEffect(uploadState) {
+        if (uploadState is FeedUploadState.Done) {
+            loadFirst()
+            delay(3000)
+            FeedUploadManager.dismiss()
         }
     }
 
@@ -672,53 +701,31 @@ fun FeedScreen(
                         VisibilityMenu(selected = draftVisibility, onSelect = { draftVisibility = it })
                         Spacer(Modifier.weight(1f))
                         Button(
-                            enabled = !posting && (draft.isNotBlank() || mediaBytes != null) &&
+                            enabled = (draft.isNotBlank() || mediaBytes != null) &&
                                 (tab != "grup" || groupId != null),
                             onClick = {
-                                posting = true
+                                // Unggah di latar belakang (ala FB/IG):
+                                // composer langsung bebas, statusnya
+                                // tampil sebagai spanduk di atas feed.
+                                FeedUploadManager.enqueue(
+                                    repo,
+                                    PendingPost(
+                                        body = draft.trim(),
+                                        category = draftCategory,
+                                        visibility = draftVisibility,
+                                        groupId = if (tab == "grup") groupId else null,
+                                        mediaBytes = mediaBytes,
+                                        isVideo = mediaIsVideo,
+                                    ),
+                                )
+                                draft = ""
+                                mediaUri = null
+                                mediaBytes = null
                                 postError = null
-                                scope.launch {
-                                    try {
-                                        val url = mediaBytes?.let { bytes ->
-                                            if (mediaIsVideo) {
-                                                // Video diunggah LANGSUNG dari
-                                                // perangkat ke image2url agar
-                                                // kuota per-IP tidak menumpuk di
-                                                // IP server; URL-nya saja yang
-                                                // disimpan ke database. Gagal →
-                                                // jatuh ke unggahan lewat backend.
-                                                repo.feedUploadVideoDirect(bytes)
-                                                    ?: repo.feedUpload(bytes, "feed-${System.currentTimeMillis()}.mp4")
-                                            } else {
-                                                repo.feedUpload(bytes, "feed-${System.currentTimeMillis()}.jpg")
-                                            }
-                                        }
-                                        val created = repo.feedCreate(
-                                            draft.trim(), url, draftCategory, draftVisibility,
-                                            if (tab == "grup") groupId else null,
-                                        )
-                                        draft = ""
-                                        mediaUri = null
-                                        mediaBytes = null
-                                        if (tab == "teman") {
-                                            posts = listOf(created) + posts
-                                        } else {
-                                            loadFirst()
-                                        }
-                                    } catch (e: Exception) {
-                                        postError = e.message
-                                    } finally {
-                                        posting = false
-                                    }
-                                }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = FeedPurple),
                             shape = RoundedCornerShape(20.dp),
                         ) {
-                            if (posting) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                Spacer(Modifier.width(6.dp))
-                            }
                             Text("Posting")
                             Spacer(Modifier.width(4.dp))
                             Icon(painterResource(R.drawable.ic_send), contentDescription = null, modifier = Modifier.size(15.dp))
@@ -731,6 +738,57 @@ fun FeedScreen(
                             color = Color(0xFFB3B3B3),
                             modifier = Modifier.padding(top = 6.dp),
                         )
+                    }
+                }
+            }
+        }
+        if (uploadState !is FeedUploadState.Idle) {
+            item {
+                // Spanduk status unggahan latar belakang.
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF262033)),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        when (val st = uploadState) {
+                            is FeedUploadState.Uploading -> {
+                                CircularProgressIndicator(color = FeedPurple, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    "Mengunggah postingan… kamu bisa lanjut scroll",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            is FeedUploadState.Done -> {
+                                Text(
+                                    "Postingan terbit ✓",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            is FeedUploadState.Failed -> {
+                                Text(
+                                    "Unggahan gagal: ${st.message}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color(0xFFFF8A80),
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = { FeedUploadManager.retry(repo) }) {
+                                    Text("Coba lagi", color = FeedPurple)
+                                }
+                                TextButton(onClick = { FeedUploadManager.dismiss() }) {
+                                    Text("Buang", color = Color(0xFFB3B3B3))
+                                }
+                            }
+                            else -> {}
+                        }
                     }
                 }
             }
