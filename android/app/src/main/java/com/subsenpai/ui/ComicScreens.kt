@@ -58,6 +58,7 @@ import com.subsenpai.data.ManhuarmPage
 import com.subsenpai.data.ManhuarmReader
 import com.subsenpai.data.ManhuarmSession
 import com.subsenpai.data.ManhuarmtlApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -175,9 +176,8 @@ fun ComicReaderScreen(
     var reading by remember { mutableStateOf<ComicChapter?>(null) }
     var pages by remember { mutableStateOf<List<String>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
-    var status by remember {
-        mutableStateOf("Memuat sumber… lewati verifikasi bila muncul di bawah — chapter terbuka otomatis.")
-    }
+    var webExpanded by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("Menyiapkan bacaan…") }
     val opened = remember { mutableSetOf<String>() }
     val listState = rememberLazyListState()
 
@@ -212,22 +212,54 @@ fun ComicReaderScreen(
         }
     }
 
+    fun isCfChallenge(html: String): Boolean =
+        html.contains("challenges.cloudflare") || html.contains("cf-chl") ||
+            html.contains("Melakukan verifikasi") || html.contains("Just a moment") ||
+            html.contains("Verifying you are human") || html.contains("Attention Required")
+
     /** Jalur cadangan lama: ekstrak URL gambar dari HTML di WebView. */
     fun openChapterLegacy(ch: ComicChapter) {
-        pendingExtract = { html ->
-            val found = DeviceSourceParser.parsePages(html)
-            busy = false
-            if (found.isEmpty()) {
-                status = "Halaman belum terbaca — tunggu panel sumber di bawah termuat penuh, " +
-                    "gulir sedikit, lalu ketuk Coba Lagi."
+        var cfWaits = 0
+        lateinit var cb: (String) -> Unit
+        cb = { html ->
+            if (isCfChallenge(html) && cfWaits < 10) {
+                // Halaman perantara Cloudflare — ia memuat ulang sendiri
+                // sesudah pemeriksaan; pasang lagi pengekstraknya dan tunggu.
+                cfWaits++
+                status = "Menunggu verifikasi keamanan selesai…"
+                pendingExtract = cb
             } else {
-                opened.add(ch.url)
-                pages = found
-                reading = ch
-                status = ""
+                val found = DeviceSourceParser.parsePages(html)
+                busy = false
+                if (found.isEmpty()) {
+                    status = if (isCfChallenge(html)) {
+                        "Verifikasi belum selesai — ketuk Verifikasi Manual di bawah, " +
+                            "selesaikan pemeriksaannya, lalu ketuk Coba Lagi."
+                    } else {
+                        "Halaman terbuka tapi gambar belum terbaca — ketuk Coba Lagi."
+                    }
+                } else {
+                    opened.add(ch.url)
+                    pages = found
+                    reading = ch
+                    status = ""
+                }
             }
         }
+        pendingExtract = cb
         webView?.loadUrl(ch.url)
+    }
+
+    /** Tunggu kuki cf_clearance muncul dari WebView (verifikasi di latar). */
+    suspend fun waitForClearance(url: String, timeoutMs: Long) {
+        val step = 1200L
+        var waited = 0L
+        while (waited < timeoutMs) {
+            val cookie = CookieManager.getInstance().getCookie(url) ?: ""
+            if (cookie.contains("cf_clearance")) return
+            delay(step)
+            waited += step
+        }
     }
 
     fun openChapter(ch: ComicChapter) {
@@ -244,33 +276,50 @@ fun ComicReaderScreen(
         translated = false
         scope.launch {
             val ua = webView?.settings?.userAgentString ?: ""
-            try {
-                val html = ManhuarmReader.fetchChapterHtml(ch.url, ua)
-                val sess = ManhuarmReader.openChapter(html, ch.url, ua)
-                session = sess
-                opened.add(ch.url)
-                reading = ch
-                busy = false
-                status = ""
-                val sem = Semaphore(3)
-                sess.pages.forEach { page ->
-                    launch {
-                        sem.withPermit {
-                            try {
-                                val bytes = ManhuarmReader.fetchImage(sess, page, ua)
-                                rawPages[page.index] = bytes
-                                composeFor(sess, page, bytes, false)?.let { bitmaps[page.index] = it }
-                            } catch (e: Exception) {
-                                // Halaman gagal: biarkan penampung kosong.
-                            }
+            var sess: ManhuarmSession? = null
+            var lastErr: Exception? = null
+            for (round in 0..2) {
+                try {
+                    val html = ManhuarmReader.fetchChapterHtml(ch.url, ua)
+                    if (isCfChallenge(html)) throw IllegalStateException("halaman masih tertahan verifikasi")
+                    sess = ManhuarmReader.openChapter(html, ch.url, ua)
+                    break
+                } catch (e: Exception) {
+                    lastErr = e
+                    sess = null
+                    if (round < 2) {
+                        // Verifikasi Cloudflare berjalan di WebView latar —
+                        // tunggu kukinya, lalu ambil HTML segar & coba lagi.
+                        status = "Menunggu verifikasi keamanan selesai…"
+                        webView?.reload()
+                        waitForClearance(ch.url, 15_000)
+                    }
+                }
+            }
+            val openedSess = sess
+            if (openedSess == null) {
+                status = "Sesi baca gagal (${lastErr?.message ?: "tidak diketahui"}) — mencoba cara lama…"
+                openChapterLegacy(ch)
+                return@launch
+            }
+            session = openedSess
+            opened.add(ch.url)
+            reading = ch
+            busy = false
+            status = ""
+            val sem = Semaphore(3)
+            openedSess.pages.forEach { page ->
+                launch {
+                    sem.withPermit {
+                        try {
+                            val bytes = ManhuarmReader.fetchImage(openedSess, page, ua)
+                            rawPages[page.index] = bytes
+                            composeFor(openedSess, page, bytes, false)?.let { bitmaps[page.index] = it }
+                        } catch (e: Exception) {
+                            // Halaman gagal: biarkan penampung kosong.
                         }
                     }
                 }
-            } catch (e: Exception) {
-                // Sesi v9 gagal (mis. verifikasi Cloudflare belum lewat) —
-                // kembali ke jalur WebView lama.
-                session = null
-                openChapterLegacy(ch)
             }
         }
     }
@@ -335,8 +384,9 @@ fun ComicReaderScreen(
         if (status.isNotBlank()) {
             Text(status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
         }
-        // Panel WebView sumber: untuk verifikasi Cloudflare + kuki baca.
-        // Menyusut saat membaca agar halaman komik leluasa.
+        // WebView sumber berjalan DI LATAR (1dp, tak terlihat): hanya untuk
+        // melewati verifikasi Cloudflare + menyimpan kukinya. Panel hanya
+        // membesar bila user memilih verifikasi manual.
         AndroidView(
             factory = { ctx ->
                 WebView(ctx).apply {
@@ -344,6 +394,7 @@ fun ComicReaderScreen(
                     settings.domStorageEnabled = true
                     settings.loadWithOverviewMode = true
                     settings.useWideViewPort = true
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
                             val cb = pendingExtract ?: run {
@@ -367,7 +418,7 @@ fun ComicReaderScreen(
                     loadUrl(series.url)
                 }
             },
-            modifier = Modifier.fillMaxWidth().height(if (reading == null) 280.dp else 1.dp),
+            modifier = Modifier.fillMaxWidth().height(if (webExpanded) 420.dp else 1.dp),
         )
         val ch = reading
         val sess = session
@@ -380,9 +431,18 @@ fun ComicReaderScreen(
                     enabled = !busy,
                     onClick = { ComicNav.startChapter?.let { openChapter(it) } },
                 ) { Text("Coba Lagi") }
+                TextButton(onClick = { webExpanded = !webExpanded }) {
+                    Text(if (webExpanded) "Tutup Verifikasi" else "Verifikasi Manual")
+                }
                 if (!repo.isLoggedIn) {
                     OutlinedButton(onClick = onNeedLogin) { Text("Masuk") }
                 }
+            }
+            if (busy) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                    contentAlignment = androidx.compose.ui.Alignment.Center,
+                ) { BrandLoading() }
             }
         } else if (sess != null) {
             val idx = chapters.indexOfFirst { it.url == ch.url }
