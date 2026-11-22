@@ -2,6 +2,8 @@ package com.subsenpai.player
 
 import android.net.Uri
 import android.view.ViewGroup
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -52,6 +54,19 @@ private fun mimeOf(format: String): String = when (format) {
     "vtt" -> MimeTypes.TEXT_VTT
     "ass" -> "text/x-ssa"
     else -> MimeTypes.APPLICATION_SUBRIP
+}
+
+/**
+ * Sumber donghua (Anichin) dan sebagian sumber lain adalah halaman
+ * embed (ok.ru/videoembed, Rumble, pemutar pihak ketiga) — bukan
+ * berkas media langsung, jadi ExoPlayer tidak bisa memutarnya;
+ * sumber seperti itu dirender dengan WebView. Berkas media langsung
+ * (m3u8/mp4/mkv/webm) tetap di ExoPlayer.
+ */
+private fun isEmbedUrl(url: String): Boolean {
+    val path = url.substringBefore('?').lowercase()
+    return !(path.endsWith(".m3u8") || path.endsWith(".mp4") || path.endsWith(".mkv") ||
+        path.endsWith(".webm") || path.endsWith(".mov") || path.contains(".m3u8"))
 }
 
 /**
@@ -109,6 +124,13 @@ fun PlayerScreen(
         val pb = playback ?: return@LaunchedEffect
         val src = pb.sources.getOrNull(sourceIdx) ?: run {
             error = "Semua sumber video gagal diputar."
+            return@LaunchedEffect
+        }
+        if (isEmbedUrl(src.url)) {
+            // Sumber embed diputar WebView (lihat area video di bawah);
+            // kosongkan ExoPlayer agar tidak ikut berbunyi.
+            player.clearMediaItems()
+            player.stop()
             return@LaunchedEffect
         }
         val builder = MediaItem.Builder().setUri(Uri.parse(src.url))
@@ -350,19 +372,62 @@ fun PlayerScreen(
         if (note != null) {
             Text(note!!, color = Color.LightGray, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
         }
+        if (pb != null && pb.sources.size > 1) {
+            // Pemilih server — penting untuk sumber embed donghua
+            // (Okru, Rumble, Dailymotion, …): tiap chip satu server.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                pb.sources.forEachIndexed { i, s ->
+                    FilterChip(
+                        selected = sourceIdx == i,
+                        onClick = { sourceIdx = i },
+                        label = { Text(s.label ?: "Server ${i + 1}") },
+                        modifier = Modifier.padding(end = 6.dp),
+                    )
+                }
+            }
+        }
+        val curSrc = pb?.sources?.getOrNull(sourceIdx)
         Box(modifier = Modifier.fillMaxSize()) {
-            AndroidView(
-                factory = {
-                    PlayerView(it).apply {
-                        this.player = player
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
+            if (curSrc != null && isEmbedUrl(curSrc.url)) {
+                androidx.compose.runtime.key(curSrc.url) {
+                    AndroidView(
+                        factory = {
+                            WebView(it).apply {
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.mediaPlaybackRequiresUserGesture = false
+                                settings.userAgentString =
+                                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+                                webViewClient = WebViewClient()
+                                layoutParams = ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                )
+                                loadUrl(curSrc.url)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            } else {
+                AndroidView(
+                    factory = {
+                        PlayerView(it).apply {
+                            this.player = player
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             if (error != null) {
                 Text(
                     error!!,
