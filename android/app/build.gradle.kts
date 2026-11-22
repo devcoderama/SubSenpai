@@ -12,11 +12,14 @@ android {
         applicationId = "com.subsenpai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         // Alamat backend bawaan untuk pengembangan (emulator → host).
         // Rilis memakai alamat resmi dari pengaturan aplikasi.
         buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"")
+        // OAuth client ID (tipe web) untuk Google Sign-In; diisi saat
+        // proyek Google Cloud dibuat. Kosong = tombol masuk nonaktif.
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"\"")
     }
 
     buildTypes {
@@ -63,4 +66,9 @@ dependencies {
 
     // Gambar (poster & halaman)
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // Google Sign-In (Credential Manager) — Fase 3
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 }

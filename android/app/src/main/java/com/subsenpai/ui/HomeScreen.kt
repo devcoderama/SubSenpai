@@ -19,6 +19,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,14 +40,23 @@ private val typeFilters = listOf(
 )
 
 @Composable
-fun HomeScreen(repo: CatalogRepository, onOpenTitle: (String) -> Unit) {
+fun HomeScreen(
+    repo: CatalogRepository,
+    authVersion: Int,
+    onOpenTitle: (String) -> Unit,
+    onOpenEpisode: (String) -> Unit,
+    onLogin: () -> Unit,
+    onOpenWatchlist: () -> Unit,
+) {
     var trending by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var terbaru by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var hasil by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
+    var lanjut by remember { mutableStateOf<List<com.subsenpai.data.WatchHistoryItem>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var type by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
     val browsing = type != null || query.isNotBlank()
+    val loggedIn = repo.isLoggedIn
 
     LaunchedEffect(Unit) {
         try {
@@ -55,6 +65,17 @@ fun HomeScreen(repo: CatalogRepository, onOpenTitle: (String) -> Unit) {
             terbaru = te
         } catch (e: Exception) {
             error = e.message
+        }
+    }
+    LaunchedEffect(authVersion) {
+        lanjut = if (repo.isLoggedIn) {
+            try {
+                repo.watchHistory()
+            } catch (e: Exception) {
+                emptyList()
+            }
+        } else {
+            emptyList()
         }
     }
     LaunchedEffect(type, query) {
@@ -71,7 +92,15 @@ fun HomeScreen(repo: CatalogRepository, onOpenTitle: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("SubSenpai", style = MaterialTheme.typography.headlineMedium)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("SubSenpai", style = MaterialTheme.typography.headlineMedium)
+                Row {
+                    if (loggedIn) {
+                        TextButton(onClick = onOpenWatchlist) { Text("Watchlist") }
+                    }
+                    TextButton(onClick = onLogin) { Text(if (loggedIn) "Akun" else "Masuk") }
+                }
+            }
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = query,
@@ -101,6 +130,29 @@ fun HomeScreen(repo: CatalogRepository, onOpenTitle: (String) -> Unit) {
                 item { Text("Belum ada judul yang cocok.") }
             }
         } else {
+            if (lanjut.isNotEmpty()) {
+                item { Text("Lanjutkan", style = MaterialTheme.typography.titleMedium) }
+                items(lanjut) { h ->
+                    Card(modifier = Modifier.fillMaxWidth().clickable { onOpenEpisode(h.episodeId) }) {
+                        Row(modifier = Modifier.padding(12.dp)) {
+                            AsyncImage(
+                                model = h.posterUrl,
+                                contentDescription = h.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.width(56.dp).aspectRatio(3f / 4f),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(h.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    "Episode ${h.episodeNo} · posisi ${h.positionSec / 60}:${(h.positionSec % 60).toString().padStart(2, '0')}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             if (trending.isNotEmpty()) {
                 item { Text("Sedang Tren", style = MaterialTheme.typography.titleMedium) }
                 item {
@@ -137,7 +189,7 @@ private fun TitlePosterCard(t: TitleCard, onOpen: (String) -> Unit) {
 }
 
 @Composable
-private fun TitleRow(t: TitleCard, onOpen: (String) -> Unit) {
+fun TitleRow(t: TitleCard, onOpen: (String) -> Unit) {
     Card(modifier = Modifier.fillMaxWidth().clickable { onOpen(t.id) }) {
         Row(modifier = Modifier.padding(12.dp)) {
             AsyncImage(

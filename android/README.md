@@ -1,6 +1,6 @@
 # android/ — Aplikasi Android SubSenpai
 
-Folder ini adalah rumah **aplikasi Android SubSenpai (Kotlin)** — satu-satunya klien SubSenpai, berjalan di perangkat user (tidak ada versi web). Status: **Fase 2 terbangun** (v0.2.0) — Fase 1 (kerangka aplikasi + layar beranda, detail judul, player HLS Media3 dengan failover sumber, reader chapter vertikal, klien API handshake ECDH + dekripsi xdata) ditambah pemilih bahasa F40 di player: chip aliran hardsub per bahasa, chip trek subtitle softsub siap pakai, dan chip Terjemahkan (cadangan gtx di perangkat, hasil di-cache lokal); APK debug terkompilasi (lihat [PROGRES.md](../PROGRES.md)).
+Folder ini adalah rumah **aplikasi Android SubSenpai (Kotlin)** — satu-satunya klien SubSenpai, berjalan di perangkat user (tidak ada versi web). Status: **Fase 3 terbangun** (v0.3.0) — Fase 2 (pemilih bahasa F40 di player: chip aliran hardsub per bahasa, chip trek subtitle softsub, chip Terjemahkan gtx) ditambah akun: layar Akun dengan Google Sign-In (Credential Manager) yang menukar token ID Google menjadi JWT backend (disimpan di perangkat), tombol watchlist di halaman detail, layar Watchlist Saya, blok Lanjutkan di beranda dari riwayat tonton, dan pelaporan progres putar dari player; APK debug terkompilasi (lihat [PROGRES.md](../PROGRES.md)).
 
 Aplikasi didistribusikan sebagai APK lewat **website resmi & GitHub Releases** (keputusan distribusi: [NOTE.md](../NOTE.md)). Backend-nya adalah layanan Go di VPS — aplikasi hanya berbicara ke API backend, tidak pernah langsung ke database.
 

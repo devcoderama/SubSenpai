@@ -125,6 +125,23 @@ fun PlayerScreen(repo: CatalogRepository, episodeId: String, onBack: () -> Unit)
         player.prepare()
     }
 
+    // Lapor progres tonton berkala (Fase 3) agar "Lanjutkan" akurat.
+    LaunchedEffect(episodeId) {
+        while (true) {
+            kotlinx.coroutines.delay(15_000)
+            val pos = (player.currentPosition / 1000).toInt()
+            if (pos > 0) repo.reportWatch(episodeId, pos)
+        }
+    }
+    DisposableEffect(episodeId) {
+        onDispose {
+            val pos = (player.currentPosition / 1000).toInt()
+            if (pos > 0) {
+                scope.launch { repo.reportWatch(episodeId, pos) }
+            }
+        }
+    }
+
     DisposableEffect(player, playback) {
         val listener = object : Player.Listener {
             override fun onPlayerError(e: PlaybackException) {

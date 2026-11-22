@@ -32,7 +32,7 @@ func main() {
 	log.Println("migrasi skema beres")
 
 	sessions := middleware.NewSessions(time.Duration(cfg.SessionTTLHours) * time.Hour)
-	api := httpapi.New(pool, sessions)
+	api := httpapi.New(pool, sessions, cfg)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

@@ -2,7 +2,8 @@
 //
 // Semua endpoint JSON di /api/v1/* (kecuali handshake) dibungkus envelope
 // terenkripsi xdata oleh middleware. Katalog bersifat bacaan publik;
-// gerbang freemium & kepemilikan user ditegakkan mulai Fase 3–4.
+// endpoint user (watchlist, riwayat, /me) wajib JWT backend sejak Fase 3;
+// gerbang freemium ditegakkan mulai Fase 4.
 package httpapi
 
 import (
@@ -14,17 +15,34 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"subsenpai/backend/internal/auth"
+	"subsenpai/backend/internal/config"
 	"subsenpai/backend/internal/middleware"
 )
 
 type API struct {
-	pool     *pgxpool.Pool
-	sessions *middleware.Sessions
-	cache    *ttlCache
+	pool      *pgxpool.Pool
+	sessions  *middleware.Sessions
+	cache     *ttlCache
+	verifier  *auth.GoogleVerifier
+	jwtSecret string
+	jwtTTL    time.Duration
+	authn     *auth.Authenticator
 }
 
-func New(pool *pgxpool.Pool, sessions *middleware.Sessions) *API {
-	return &API{pool: pool, sessions: sessions, cache: newTTLCache(5 * time.Minute)}
+func New(pool *pgxpool.Pool, sessions *middleware.Sessions, cfg config.Config) *API {
+	a := &API{
+		pool:      pool,
+		sessions:  sessions,
+		cache:     newTTLCache(5 * time.Minute),
+		jwtSecret: cfg.JWTSecret,
+		jwtTTL:    time.Duration(cfg.JWTTTLHours) * time.Hour,
+		authn:     &auth.Authenticator{Pool: pool, JWTSecret: cfg.JWTSecret},
+	}
+	if cfg.GoogleClientID != "" {
+		a.verifier = auth.NewGoogleVerifier(cfg.GoogleClientID, cfg.GoogleCertsURL)
+	}
+	return a
 }
 
 func (a *API) Router() http.Handler {
@@ -42,6 +60,20 @@ func (a *API) Router() http.Handler {
 		r.Get("/api/v1/titles/{id}", a.handleTitleDetail)
 		r.Get("/api/v1/episodes/{id}/playback", a.handlePlayback)
 		r.Get("/api/v1/chapters/{id}", a.handleChapter)
+		r.With(middleware.RateLimit(30)).Post("/api/v1/auth/google", a.handleGoogleLogin)
+		// Endpoint khusus user login (Fase 3).
+		r.Group(func(r chi.Router) {
+			r.Use(a.authn.Require)
+			r.Get("/api/v1/me", a.handleMe)
+			r.Get("/api/v1/watchlist", a.handleWatchlistList)
+			r.Get("/api/v1/watchlist/{titleId}", a.handleWatchlistCheck)
+			r.Post("/api/v1/watchlist/{titleId}", a.handleWatchlistAdd)
+			r.Delete("/api/v1/watchlist/{titleId}", a.handleWatchlistRemove)
+			r.Post("/api/v1/history/watch", a.handleHistoryWatchReport)
+			r.Get("/api/v1/history/watch", a.handleHistoryWatchList)
+			r.Post("/api/v1/history/read", a.handleHistoryReadReport)
+			r.Get("/api/v1/history/read", a.handleHistoryReadList)
+		})
 	})
 	return r
 }

@@ -160,8 +160,105 @@ data class ChapterPage(
     val lightUrl: String?,
 )
 
-/** Repositori katalog — satu-satunya jalan UI ke API. */
-class CatalogRepository(private val api: ApiClient = ApiClient()) {
+/** Repositori katalog & akun — satu-satunya jalan UI ke API. */
+class CatalogRepository(
+    private val api: ApiClient = ApiClient(),
+    val auth: AuthStore? = null,
+) {
+    init {
+        if (auth != null) {
+            api.tokenProvider = { auth.token }
+        }
+    }
+
+    val isLoggedIn: Boolean get() = auth?.isLoggedIn == true
+
+    // ---------- Akun (Fase 3) ----------
+
+    /** Tukar token ID Google dengan JWT backend; sesi disimpan di AuthStore. */
+    suspend fun loginGoogle(idToken: String): UserProfile {
+        val o = api.post("/api/v1/auth/google", JSONObject().put("id_token", idToken))
+        val token = o.getString("token")
+        val p = o.getJSONObject("profile")
+        val profile = UserProfile(
+            id = p.getString("id"),
+            email = p.getString("email"),
+            displayName = p.optString("display_name").ifBlank { null },
+            avatarUrl = p.optString("avatar_url").ifBlank { null },
+            role = p.optString("role", "user"),
+            isPremium = p.optBoolean("is_premium"),
+            appLanguage = p.optString("app_language", "id"),
+            friendCode = p.optString("friend_code").ifBlank { null },
+        )
+        auth?.save(
+            token = token,
+            viewingProfileId = o.optString("viewing_profile_id").ifBlank { null },
+            email = profile.email,
+            displayName = profile.displayName,
+            friendCode = profile.friendCode,
+        )
+        return profile
+    }
+
+    fun logout() {
+        auth?.clear()
+    }
+
+    // ---------- Watchlist (Fase 3) ----------
+
+    suspend fun watchlistCheck(titleId: String): Boolean =
+        api.get("/api/v1/watchlist/$titleId").optBoolean("in_watchlist")
+
+    suspend fun watchlistAdd(titleId: String) {
+        api.post("/api/v1/watchlist/$titleId", JSONObject().put("notify", false))
+    }
+
+    suspend fun watchlistRemove(titleId: String) {
+        api.delete("/api/v1/watchlist/$titleId")
+    }
+
+    suspend fun watchlist(): List<TitleCard> {
+        val o = api.get("/api/v1/watchlist")
+        return buildList {
+            val arr = o.optJSONArray("items")
+            if (arr != null) for (i in 0 until arr.length()) add(TitleCard.fromJson(arr.getJSONObject(i)))
+        }
+    }
+
+    // ---------- Riwayat (Fase 3) ----------
+
+    /** Lapor progres tonton; kegagalan diabaikan (bukan fungsi kritis). */
+    suspend fun reportWatch(episodeId: String, positionSec: Int) {
+        if (!isLoggedIn) return
+        try {
+            api.post(
+                "/api/v1/history/watch",
+                JSONObject().put("episode_id", episodeId).put("position_sec", positionSec),
+            )
+        } catch (e: Exception) {
+            // Abaikan — progres dicoba lagi pada laporan berikutnya.
+        }
+    }
+
+    suspend fun watchHistory(): List<WatchHistoryItem> {
+        val o = api.get("/api/v1/history/watch?limit=10")
+        return buildList {
+            val arr = o.optJSONArray("items")
+            if (arr != null) for (i in 0 until arr.length()) {
+                val it = arr.getJSONObject(i)
+                add(
+                    WatchHistoryItem(
+                        episodeId = it.getString("episode_id"),
+                        titleId = it.getString("title_id"),
+                        title = it.getString("title"),
+                        posterUrl = it.optString("poster_url").ifBlank { null },
+                        episodeNo = it.getInt("episode_no"),
+                        positionSec = it.optInt("position_sec"),
+                    )
+                )
+            }
+        }
+    }
 
     suspend fun home(): Pair<List<TitleCard>, List<TitleCard>> {
         val o = api.get("/api/v1/home")

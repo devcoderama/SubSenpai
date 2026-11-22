@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.TitleDetail
+import kotlinx.coroutines.launch
 
 @Composable
 fun DetailScreen(
@@ -37,15 +38,26 @@ fun DetailScreen(
     onPlay: (String) -> Unit,
     onRead: (String) -> Unit,
     onBack: () -> Unit,
+    onNeedLogin: () -> Unit,
 ) {
     var detail by remember { mutableStateOf<TitleDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var inWatchlist by remember { mutableStateOf(false) }
+    var wlBusy by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     LaunchedEffect(titleId) {
         try {
             detail = repo.titleDetail(titleId)
         } catch (e: Exception) {
             error = e.message
+        }
+        if (repo.isLoggedIn) {
+            try {
+                inWatchlist = repo.watchlistCheck(titleId)
+            } catch (e: Exception) {
+                // Abaikan — tombol tetap bisa dicoba.
+            }
         }
     }
 
@@ -85,6 +97,40 @@ fun DetailScreen(
                 d.synopsis?.let {
                     Spacer(Modifier.height(10.dp))
                     Text(it, style = MaterialTheme.typography.bodyMedium)
+                }
+                Spacer(Modifier.height(10.dp))
+                androidx.compose.material3.OutlinedButton(
+                    enabled = !wlBusy,
+                    onClick = {
+                        if (!repo.isLoggedIn) {
+                            onNeedLogin()
+                        } else {
+                            wlBusy = true
+                            scope.launch {
+                                try {
+                                    if (inWatchlist) {
+                                        repo.watchlistRemove(titleId)
+                                        inWatchlist = false
+                                    } else {
+                                        repo.watchlistAdd(titleId)
+                                        inWatchlist = true
+                                    }
+                                } catch (e: Exception) {
+                                    error = e.message
+                                } finally {
+                                    wlBusy = false
+                                }
+                            }
+                        }
+                    },
+                ) {
+                    Text(
+                        when {
+                            !repo.isLoggedIn -> "＋ Watchlist (masuk dulu)"
+                            inWatchlist -> "✓ Di Watchlist — ketuk untuk hapus"
+                            else -> "＋ Tambah ke Watchlist"
+                        }
+                    )
                 }
             }
             if (d.episodes.isNotEmpty()) {
