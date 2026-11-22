@@ -1,8 +1,17 @@
 package sources
 
 import (
+	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/md5"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"regexp"
 	"sort"
@@ -28,11 +37,16 @@ import (
 //     <h4>Episode …</h4> sebagai tautan /nonton-<slug>-episode-N/
 //     yang slug-nya bisa berbeda dari slug seri (seri
 //     "one-piece-op" → episode "one-piece-episode-1180").
-//   - Halaman episode: TANPA <select class="mirror"> — pemutarnya
-//     satu <iframe id="iframedc"> yang URL embed-nya ada di
-//     data-src (player.animeku.org, token terenkripsi), src-nya
-//     kosong. Iframe lain di halaman itu (chat cbox.ws) bukan
-//     pemutar dan harus disingkirkan.
+//   - Halaman episode: TANPA <select class="mirror"> di HTML
+//     mentah — <iframe id="iframedc"> hanya placeholder
+//     data-src='about:blank'. Aliran aslinya datang dari API
+//     Animeku: script pintar.js situs mem-POST blob per-episode
+//     (var _0xa100d42aa di halaman) ke
+//     https://animeku.org/api/v9/sources dan menerima token
+//     player (src/src_sd) + peta embed mirror terenkripsi
+//     CryptoJS (kunci di pintar.js). Resolver meniru persis
+//     alur itu di resolveKuro. Iframe lain di halaman (chat
+//     cbox.ws) bukan pemutar dan harus disingkirkan.
 //
 // Seperti pembangunan ulang donghua (anichin.moe), semua jalur
 // Kuronime kini HTML-first; jalur WP REST lama tetap menjadi
@@ -539,15 +553,269 @@ func parseKuroEmbed(html string) string {
 	return ""
 }
 
-// resolveKuro adalah Resolve Kuronime: pemutar tunggal
-// player.animeku.org dari iframe#iframedc (label "Animeku").
-// Bila iframe itu tidak ditemukan, halaman yang sama diurai
-// dengan pengurai mirror/iframe umum (resolveMirrorPage) sebagai
-// cadangan — iframe chat cbox.ws disingkirkan dari hasil umum.
+// --- API sumber Animeku (alur pintar.js situs) -----------------
+//
+// Halaman episode Kuronime tidak memuat URL aliran sama sekali:
+// script pintar.js mem-POST {"id": <blob>} — blob per-episode dari
+// var _0xa100d42aa di halaman — ke API di bawah, lalu memasang
+// https://player.animeku.org/?data=<src> sebagai aliran utama.
+// Field mirror respons adalah base64 dari dokumen JSON CryptoJS
+// {ct, iv, s} yang terenkripsi AES-256-CBC dengan passphrase di
+// bawah (EVP_BytesToKey/MD5 ala OpenSSL, garam dari field s,
+// IV dari field iv) dan berisi peta embed per kualitas/host.
+
+const (
+	kuroAPIURL     = "https://animeku.org/api/v9/sources"
+	kuroPlayerBase = "https://player.animeku.org/?data="
+	kuroBlogBase   = "https://blog.animeku.org/player2.php?id="
+	kuroMirrorPass = "3&!Z0M,VIZ;dZW=="
+)
+
+var (
+	kuroBlobRe = regexp.MustCompile(`var _0xa100d42aa = "([^"]+)"`)
+	kuroXenRe  = regexp.MustCompile(`var xenHash = "([^"]*)"`)
+)
+
+// parseKuroBlob mengambil blob id episode + nilai xenHash dari
+// HTML mentah halaman episode.
+func parseKuroBlob(page string) (blob, xen string) {
+	if m := kuroBlobRe.FindStringSubmatch(page); m != nil {
+		blob = m[1]
+	}
+	if m := kuroXenRe.FindStringSubmatch(page); m != nil {
+		xen = m[1]
+	}
+	return blob, xen
+}
+
+// kuroAPIResp adalah respons API sumber Animeku.
+type kuroAPIResp struct {
+	Status int    `json:"status"`
+	Src    string `json:"src"`
+	SrcSD  string `json:"src_sd"`
+	Blog   string `json:"blog"`
+	Mirror string `json:"mirror"`
+}
+
+// fetchKuroSources memanggil API sumber Animeku persis seperti
+// pintar.js: POST JSON {"id": blob} dari halaman episode.
+func fetchKuroSources(ctx context.Context, blob, pageURL string) (*kuroAPIResp, error) {
+	payload, err := json.Marshal(map[string]string{"id": blob})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, kuroAPIURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", browserUA)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json,*/*")
+	if u, err := url.Parse(pageURL); err == nil && u.Host != "" {
+		req.Header.Set("Origin", u.Scheme+"://"+u.Host)
+		req.Header.Set("Referer", pageURL)
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API Animeku HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, err
+	}
+	var out kuroAPIResp
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("respons API Animeku tidak terbaca: %w", err)
+	}
+	if out.Status != 200 {
+		return nil, fmt.Errorf("API Animeku status %d", out.Status)
+	}
+	return &out, nil
+}
+
+// evpBytesToKey menurunkan kunci ala OpenSSL EVP_BytesToKey
+// (rantai MD5) seperti yang dipakai CryptoJS untuk passphrase.
+func evpBytesToKey(password, salt []byte, keyLen int) []byte {
+	var out, prev []byte
+	for len(out) < keyLen {
+		h := md5.New()
+		h.Write(prev)
+		h.Write(password)
+		h.Write(salt)
+		prev = h.Sum(nil)
+		out = append(out, prev...)
+	}
+	return out[:keyLen]
+}
+
+// kuroMirrorData adalah hasil dekripsi field mirror API.
+type kuroMirrorData struct {
+	Embed     map[string]map[string]*string `json:"embed"`
+	Filelions string                        `json:"filelions"`
+}
+
+// decryptKuroMirror mendekripsi field mirror: base64 → JSON
+// CryptoJS {ct, iv, s} → AES-256-CBC (kunci EVP dari passphrase,
+// IV dari field iv) → JSON peta embed.
+func decryptKuroMirror(mirrorB64 string) (*kuroMirrorData, error) {
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(mirrorB64))
+	if err != nil {
+		return nil, fmt.Errorf("mirror bukan base64: %w", err)
+	}
+	var doc struct {
+		CT string `json:"ct"`
+		IV string `json:"iv"`
+		S  string `json:"s"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, fmt.Errorf("mirror bukan JSON CryptoJS: %w", err)
+	}
+	ct, err := base64.StdEncoding.DecodeString(doc.CT)
+	if err != nil {
+		return nil, fmt.Errorf("ct mirror rusak: %w", err)
+	}
+	salt, err := hex.DecodeString(doc.S)
+	if err != nil {
+		return nil, fmt.Errorf("salt mirror rusak: %w", err)
+	}
+	iv, err := hex.DecodeString(doc.IV)
+	if err != nil {
+		return nil, fmt.Errorf("iv mirror rusak: %w", err)
+	}
+	if len(ct) == 0 || len(ct)%aes.BlockSize != 0 {
+		return nil, fmt.Errorf("ct mirror tidak sejajar blok AES")
+	}
+	key := evpBytesToKey([]byte(kuroMirrorPass), salt, 32)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	plain := make([]byte, len(ct))
+	cipher.NewCBCDecrypter(block, iv).CryptBlocks(plain, ct)
+	if len(plain) == 0 {
+		return nil, fmt.Errorf("hasil dekripsi mirror kosong")
+	}
+	pad := int(plain[len(plain)-1])
+	if pad < 1 || pad > aes.BlockSize || pad > len(plain) {
+		return nil, fmt.Errorf("padding mirror tidak sah")
+	}
+	plain = plain[:len(plain)-pad]
+	var data kuroMirrorData
+	if err := json.Unmarshal(plain, &data); err != nil {
+		return nil, fmt.Errorf("isi mirror tidak terbaca: %w", err)
+	}
+	return &data, nil
+}
+
+// kuroHostLabel merapikan nama host mirror untuk label aliran.
+func kuroHostLabel(host string) string {
+	switch host {
+	case "doodstream":
+		return "Doodstream"
+	case "mp4upload":
+		return "Mp4Upload"
+	case "krakenfiles":
+		return "KrakenFiles"
+	case "pixeldrain":
+		return "Pixeldrain"
+	case "filelions":
+		return "Filelions"
+	}
+	if host == "" {
+		return host
+	}
+	return strings.ToUpper(host[:1]) + host[1:]
+}
+
+// kuroQualityRank mengurutkan kunci kualitas v360p < v480p < …
+// (kunci tak dikenal di belakang, menurut abjad).
+func kuroQualityRank(q string) int {
+	n, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(q, "v"), "p"))
+	if err != nil {
+		return 1 << 30
+	}
+	return n
+}
+
+// kuroStreamsFromAPI menyusun daftar aliran dari respons API
+// Animeku: token player utama (HD + SD), player blog khusus
+// situs xenHash "rawa", lalu peta embed mirror terdekripsi
+// (per kualitas menaik, host menurut abjad) dan Filelions.
+func kuroStreamsFromAPI(resp *kuroAPIResp, xen, lang string) []Stream {
+	var out []Stream
+	seen := map[string]bool{}
+	add := func(u, label string) {
+		u = strings.TrimSpace(u)
+		if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+			return
+		}
+		if seen[u] {
+			return
+		}
+		seen[u] = true
+		out = append(out, Stream{URL: u, Label: label, Lang: lang})
+	}
+	if resp.Src != "" {
+		add(kuroPlayerBase+resp.Src, "Animeku")
+	}
+	if resp.SrcSD != "" {
+		add(kuroPlayerBase+resp.SrcSD, "Animeku SD")
+	}
+	if xen == "rawa" && resp.Blog != "" {
+		add(kuroBlogBase+resp.Blog, "Blog")
+	}
+	if resp.Mirror != "" {
+		if data, err := decryptKuroMirror(resp.Mirror); err == nil {
+			qualities := make([]string, 0, len(data.Embed))
+			for q := range data.Embed {
+				qualities = append(qualities, q)
+			}
+			sort.Slice(qualities, func(i, j int) bool {
+				ri, rj := kuroQualityRank(qualities[i]), kuroQualityRank(qualities[j])
+				if ri != rj {
+					return ri < rj
+				}
+				return qualities[i] < qualities[j]
+			})
+			for _, q := range qualities {
+				hosts := make([]string, 0, len(data.Embed[q]))
+				for h := range data.Embed[q] {
+					hosts = append(hosts, h)
+				}
+				sort.Strings(hosts)
+				qlabel := strings.TrimPrefix(q, "v")
+				for _, h := range hosts {
+					if u := data.Embed[q][h]; u != nil {
+						add(*u, kuroHostLabel(h)+" "+qlabel)
+					}
+				}
+			}
+			add(data.Filelions, "Filelions")
+		}
+	}
+	return out
+}
+
+// resolveKuro adalah Resolve Kuronime. Jalur utama meniru
+// pintar.js: blob episode dari halaman → API sumber Animeku →
+// token player + mirror terdekripsi. Cadangan lama (embed yang
+// tertulis langsung di halaman / pengurai umum) dipertahankan
+// untuk berjaga bila API tidak menjawab.
 func (a *animestreamResolver) resolveKuro(ctx context.Context, src Source, ep EpisodeRef) (Resolved, error) {
 	page, err := Fetch(ctx, ep.URL)
 	if err != nil {
 		return Resolved{}, err
+	}
+	if blob, xen := parseKuroBlob(page); blob != "" {
+		if resp, err := fetchKuroSources(ctx, blob, ep.URL); err == nil {
+			if streams := kuroStreamsFromAPI(resp, xen, src.Lang); len(streams) > 0 {
+				return Resolved{Streams: streams}, nil
+			}
+		}
 	}
 	if u := parseKuroEmbed(page); u != "" {
 		return Resolved{Streams: []Stream{{URL: u, Label: "Animeku", Lang: src.Lang}}}, nil

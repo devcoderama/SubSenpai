@@ -294,3 +294,93 @@ func TestKuronimeLive(t *testing.T) {
 		t.Fatal("aliran kosong")
 	}
 }
+
+// --- API sumber Animeku (alur pintar.js) ------------------------
+
+// Blob + xenHash asli dari halaman episode Fate/Apocrypha ep 1
+// (dijaring dari HTML mentah produksi 2026-11-22).
+const kuroFateBlob = "dXl1RHBYeXlpcW1GWEMzb29Fb3ZCSWZsUUcyTEdPb3lISkNiV0hLTjErc2tGb1MyNkxJMnpnSlhXWmt4YndKUW9wTnE5U1M1aWd1eEgrSEovUnJraVB0bC9UZkZxWU9mZWdJZG4zbkh4aTZTUi9NMlZpclFCNWllUDRGQWVqNDJWQXZVQXV1ZDJ2cm10OW5aQnArNjgvUXgzMmgvbHlOcUo1QXNGN3orMm5ZbHpydnBuM3gzdDYrUW1XUCtPZHh3anpYWnlQcTQ5alBQd25JZm1UOXVlNDdyL05DRk9yRTJmME1hQmlzbnlZcz0="
+
+const kuroFatePageSnippet = `<script>var xenHash = "awar";  var is_singular = true; var _0xa100d42aa = "` + kuroFateBlob + `";</script>`
+
+func TestParseKuroBlob(t *testing.T) {
+	blob, xen := parseKuroBlob(kuroFatePageSnippet)
+	if blob != kuroFateBlob {
+		t.Fatalf("blob salah: %q", blob)
+	}
+	if xen != "awar" {
+		t.Fatalf("xenHash salah: %q", xen)
+	}
+	if b, _ := parseKuroBlob("<html>tanpa blob</html>"); b != "" {
+		t.Fatalf("halaman tanpa blob harus kosong, dapat %q", b)
+	}
+}
+
+// Payload mirror ASLI dari API Animeku untuk Fate ep 1
+// (respons hidup 2026-11-22) — dekripsi harus menghasilkan
+// peta embed yang sama seperti yang dilihat browser.
+const kuroFateMirror = "eyJjdCI6IkMwUHlmaFMzeU5kRGJIWVZQVEJ6RnIxSDVSSDc2TXh4RWtCQ2JHRExDWDQwVGxrbTV3L1A1VmFYZDBpcTB0bEVrNmFQQWJORFFzckw0UkdqSEZRY1daWm43eW9tYzZpQmIvUjJlbWlseStPT0pBMzZoNXk0WUozZUxRNWNwaCtTM0RicnRJZVpvYVBBWjE3OW9MVnh6cGR2ZkszZEttLzNpRDlOK2FxMTZMcVQ4bEFJb1BmMmlLdmlsSVN2WkNpQnVUUGpXSW5JOER2UitzSTB3Wm9BRzM3Sit2eHdPYU1rZWZtY0l0eHRxOCt3UU4rL20zR1BRaGdkM0ZwalFmTWJHeXdJRWUzZ1VqRGxEYUJtTmR1ektScy9Ga2VGdVRaQi9WeXpNTHBsUm5qd2pkRXk2cXVnNDkweTlwM2xoTEhCYlM3T3IreXJOb0QrMkxNc0dIeE1YT01aWFQrcnd6VDROZUFYaHY1S1pJQjlPWHdCZ1A4MjJhZnRuaWptWGphYm41RlVYNmVRU285Z3hURW5ON09NNzZDYUVBTWtLQlpDejZqUG1hWmNSd2xJUlVnTEtTOElKUm96Y2JYME1sUS9oV1I2ZEhmVmJ1ZVJBemo0ZGJnbkhLR3ZYbSszaGRLclhYMk1lZHovN3B1RGtVWXpueVNGUWY2Y1NsTXE0ZmxCQk01eWtlUDJaVEJ3aG8zS0RBRVBrVWg4STVzcHlvNHRoMUtmSmxLZ04xeGtsM2lkR2hlSEN3T2pUOHNXeWUwUjJWTm5xZGZVSFlTdEFoaU9YYW5sYVZJdXNHREdDRStwbnRIeG1zQnVsOTBHSVMyTmZycVQ5dTNmZ1p0V2Y4OXE5U2NvblptWVZSemIwMWROd1RXN0pVTWM2WTBOOFQxcEQya290VjFJejZWcTlocWQzY09ac1JUNDFpVmtnUTBCYm44NzRiTnZucXZsNWV0TElRbkcrTHBDNTlkaFYxeDJ2dXByUHY5azRRaEJGNmNmYzZzeVdBMXRzaW9menJOT1J5R2hTdmpmTUw2N2oxdVpFcDhhTEIwT1hmaktZOGxiYVNZODQ4Z0RHdm5jL090c2p6aW9Cb1c0b21NTGZPT2VRbkxGVUZyeU9vSmFNdkR3QjRTTisyZW45WVFOZTRaZVhMT3UxazJ6QWxqc1g1MEtFSDZrWm9BUC85K1pXN1pLS3BBQi8zNFNIbUptaXhob1A2allMVi9CZjM5NDJiZUJPeDNpTlpSWitlNElNakdqUkdTNDlNUktkSG5ONHN2bW11aEhmVmF1Z2lKMmN0aUpCaC9EVVNsQ2dXbWJwZFcrN294WGx5dURxU1lCTkZIcDhVdDhFY2NSNTRONkRHaHZtMUQrUWhrWWd0ajhvdVF0c3RiazRwVUlpaGI1TlB6cGV1b01icnFCOER2RXFoeGNwamhvYXZYRFN6ZndOSFUydWZmMUErdlFzdm95VWZnZmd4WVpPeWxCZ0JVRjRLV2F5MUJtWkFCK2xybEJpSStDNXdzUEVVRjdNblF5YXpZdW5BWUpNZVdzRWgrQ0tucXVXci9FamVMWlc5NTIzZU9FcUJCMVVXSDdqUFZHRVA5R1hETm9XMEZzOGQ1blhYbFkvSTROV250Z3pORU03ZU9kellhaVBTMjBnZXpUcmtyVWtya1BjZ1RCSGNVaDZMeStPc0YyTXRKTCs2UUxJQmxyVVBxc0QzYjhINEhFRkRJY1U3Z2k1dkdzVmxtc1N0WHh1d2Y3RUpWdVkvdHdvOFJwbk9HcFYvWWtLTWIrZmwyZlV6MjZpUVZudEtXb1pETk9PNmdYU2J1THFWNk10MEhBaXhrUWp6cG5sY1Qray9IbnN6SEQrcDhsNnlsZnA2ZGxpQ2xPMklnd3JRbGV5Y3R5R245ekFQL2lKV0VOWU5JdEpGN0V2L2VpUU5mVWw1MjRTWE9TcTVPUzJZRjNDUHlvM0FQWlgyTWtma2ttUlBaVVNqSGxvcmhtcnRLWWFoNGtocS9mRXovK3hWK3lSL2VaWlpoUCtWM3hBQWZDaGhiRjczcFFPRXcvaHBidURzVkk1MWxlcGhmNTlNWVBFUlRBcldCWVN3aTZoRGJGNmw2SGNOR09CeHEzekdxSHp0MGthZ21hMFlId1BrQ0VKQUsyVmVXUXozTXBQNWg3b29QMHlpcFV2UlRTdkVONmYwWmIyaTNneGE0bC9LRVUvR3c2UWNMRFpVcVI1Q0lWRUFKcTJRU1lCUVRKdkVZYjZXeDhMcjAvU3RXYUY0N0Y2cE43VnJMbUgyVEdsaU9SMWxDdXRJOTZSMGc3SDZsTnZWZzFMaHJVamdSSGZKbjV6MWVkVzFybG85K0dMa2NNUm5laDEvNUxEcUY2OTRnMi9xSkVrY2dmUUlqMVQ5V0cxZzV6RE1XbzNNOHFIOXVublA3eHpSN0RHckJ1a1VNMk5BejREUDhKR1U1R0FCUU95ZGZndHJidVVjWkxuWThiUGx0VUtnT0RkQmNoNzhPZ1hoU0U4TU1sZ1JvTUYrbm92c05FZDcyQ042Vy9YMDVLZS9EcW1XU1RZckhuUVhpOERWM3gzZEkvdGhYY1RGbi9oNk9vNzVidWxmdG0zVXVjaU1UdDFIcXEwU0NyV0p3TitCUGhPOExodlV1SGpLZnpOVlByc0FwV1JuRFl6WFFjQmU1OVd2T05rWjJMRVdwSzlkcHRsa29FazRrbmt2OEFtSG43b2FUUlJVUG5VSnQwMGRLZTl5U1JKV2xodzJQWUhocHJMOXI2bVdhRzRYdUU4Zmg4KzB0aFVISDViTnN4d08wVUFleU04MVlkbFp5TzloSExtdHBOK1NWcXhRbURzT0Y2eTlaUEIzcVFwTUVXait4YXBXR1kzdVJVN3ZncjREMzZGN0VjWWJ4cWRYNElBemw1bE9zSW1JME1PbWJ6eERHZGZjQ2ZJY0pmM3JUMHgzVGNmMGVoaUFLa1gvSWk5LzZKM1htZDFrdXk4eXVQWnloekdXbXZkS1FxU3N1dUNBc1RKTHR3TTl2cWk5MjA4M1hzMFczZlFnZ3orZkp0WWZJRHJIWWd3M3pURlhEUk5ZWjRmdlZiN2c9PSIsIml2IjoiMmQ3NzlmOTMxYjM1NTdmNDYwNDNlZWI4MWFmYWUyMjAiLCJzIjoiODUwOTk0Zjg5ZjNkMGZjZiJ9"
+
+func TestDecryptKuroMirrorReal(t *testing.T) {
+	data, err := decryptKuroMirror(kuroFateMirror)
+	if err != nil {
+		t.Fatalf("dekripsi mirror gagal: %v", err)
+	}
+	if got := data.Embed["v720p"]["mp4upload"]; got == nil || *got != "https://www.mp4upload.com/embed-fs6922bqzi5g.html" {
+		t.Fatalf("embed mp4upload 720p salah: %v", got)
+	}
+	if got := data.Embed["v360p"]["doodstream"]; got == nil || *got != "https://dooood.com/e/lpase1uayf99nj1yhhx91xmjpu5mchf3" {
+		t.Fatalf("embed doodstream 360p salah: %v", got)
+	}
+}
+
+func TestKuroStreamsFromAPI(t *testing.T) {
+	resp := &kuroAPIResp{Status: 200, Src: "TOKENHD", SrcSD: "TOKENSD", Mirror: kuroFateMirror}
+	streams := kuroStreamsFromAPI(resp, "awar", "id")
+	if len(streams) < 5 {
+		t.Fatalf("aliran terlalu sedikit: %d", len(streams))
+	}
+	if streams[0].URL != kuroPlayerBase+"TOKENHD" || streams[0].Label != "Animeku" {
+		t.Fatalf("aliran pertama salah: %+v", streams[0])
+	}
+	if streams[1].URL != kuroPlayerBase+"TOKENSD" || streams[1].Label != "Animeku SD" {
+		t.Fatalf("aliran kedua salah: %+v", streams[1])
+	}
+	found := false
+	for _, s := range streams {
+		if s.URL == "https://www.mp4upload.com/embed-fs6922bqzi5g.html" && s.Label == "Mp4Upload 720p" && s.Lang == "id" {
+			found = true
+		}
+		if strings.Contains(s.URL, "about:blank") {
+			t.Fatalf("aliran placeholder ikut: %+v", s)
+		}
+	}
+	if !found {
+		t.Fatalf("aliran Mp4Upload 720p tidak ada: %+v", streams)
+	}
+	// Blog hanya untuk situs xenHash "rawa".
+	rawa := kuroStreamsFromAPI(&kuroAPIResp{Status: 200, Blog: "BLOGID"}, "rawa", "id")
+	if len(rawa) != 1 || rawa[0].URL != kuroBlogBase+"BLOGID" {
+		t.Fatalf("aliran blog rawa salah: %+v", rawa)
+	}
+}
+
+// Uji hidup API Animeku dengan blob Fate ep 1 yang tertangkap:
+// hanya jalan bila SUBSENPAI_LIVE_TEST=1. API ini dapat dijangkau
+// dari lingkungan dev (beda dengan kuronime.sbs yang ber-403).
+func TestKuronimeSourcesLive(t *testing.T) {
+	if os.Getenv("SUBSENPAI_LIVE_TEST") != "1" {
+		t.Skip("uji langsung dilewati (SUBSENPAI_LIVE_TEST != 1)")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	resp, err := fetchKuroSources(ctx, kuroFateBlob, "https://kuronime.sbs/nonton-fate-apocrypha-episode-1/")
+	if err != nil {
+		t.Fatalf("API Animeku gagal: %v", err)
+	}
+	streams := kuroStreamsFromAPI(resp, "awar", "id")
+	if len(streams) == 0 || !strings.HasPrefix(streams[0].URL, kuroPlayerBase) {
+		t.Fatalf("aliran hidup tidak sah: %+v", streams)
+	}
+	t.Logf("aliran hidup: %d (pertama %s)", len(streams), streams[0].Label)
+}
