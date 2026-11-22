@@ -34,7 +34,7 @@ echo "================================================"
 # --- 1. Paket dasar + PostgreSQL -------------------------------------
 if ! command -v psql >/dev/null 2>&1; then
   say "Memasang PostgreSQL…"
-  apt-get update -qq
+  apt-get update -qq --allow-releaseinfo-change
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq postgresql git curl ca-certificates openssl >/dev/null
 else
   say "PostgreSQL sudah ada — dilewati."
