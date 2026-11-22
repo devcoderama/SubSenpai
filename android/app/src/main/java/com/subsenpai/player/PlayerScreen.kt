@@ -3,9 +3,13 @@ package com.subsenpai.player
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -585,6 +589,22 @@ private fun VideoPlayerContainer(
     var webLoading by remember(curSrc?.url) {
         mutableStateOf(curSrc != null && isEmbedUrl(curSrc.url))
     }
+    // Tombol Layar Penuh ala YouTube: muncul sesaat saat sumber baru
+    // dimuat dan setiap kali video disentuh, lalu sembunyi sendiri —
+    // dulu tombolnya diam permanen di pojok kanan bawah menutupi
+    // jam/progres embed dan teksnya tidak pernah hilang (keluhan
+    // Rams 2026-11-22). Sentuhan diamati lewat OnTouchListener yang
+    // mengembalikan false, jadi ketukan tetap diteruskan ke video.
+    var controlsTick by remember { mutableStateOf(0) }
+    var controlsVisible by remember { mutableStateOf(true) }
+    val pokeControls = remember { { controlsTick++ } }
+    LaunchedEffect(controlsTick, curSrc?.url, locked) {
+        controlsVisible = true
+        if (locked == null) {
+            kotlinx.coroutines.delay(3000)
+            controlsVisible = false
+        }
+    }
     Box(modifier = modifier.background(Color.Black)) {
         if (locked != null) {
             Column(
@@ -612,6 +632,13 @@ private fun VideoPlayerContainer(
                             // berwarna putih sampai halaman embed
                             // selesai dilukis (kedip putih).
                             setBackgroundColor(0xFF0D0D0F.toInt())
+                            // Amati ketukan untuk memunculkan tombol
+                            // Layar Penuh; false = ketukan diteruskan
+                            // ke halaman embed seperti biasa.
+                            setOnTouchListener { _, e ->
+                                if (e.action == MotionEvent.ACTION_DOWN) pokeControls()
+                                false
+                            }
                             // Halaman embed tidak boleh bisa digeser
                             // dari sisi WebView.
                             isVerticalScrollBarEnabled = false
@@ -672,6 +699,10 @@ private fun VideoPlayerContainer(
                 factory = {
                     PlayerView(it).apply {
                         this.player = player
+                        setOnTouchListener { _, e ->
+                            if (e.action == MotionEvent.ACTION_DOWN) pokeControls()
+                            false
+                        }
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -703,20 +734,26 @@ private fun VideoPlayerContainer(
             )
         }
         if (locked == null) {
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0x99000000),
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(10.dp)
-                    .clickable { onToggleFullscreen() },
+            AnimatedVisibility(
+                visible = controlsVisible,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.BottomEnd),
             ) {
-                Text(
-                    if (fullscreen) "⤢ Keluar Layar Penuh" else "⤢ Layar Penuh",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0x99000000),
+                    modifier = Modifier
+                        .padding(end = 10.dp, bottom = 30.dp)
+                        .clickable { onToggleFullscreen() },
+                ) {
+                    Text(
+                        if (fullscreen) "⤢ Keluar Layar Penuh" else "⤢ Layar Penuh",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
             }
         }
     }
