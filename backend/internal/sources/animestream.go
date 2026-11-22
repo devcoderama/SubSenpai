@@ -79,20 +79,27 @@ type wpCategoryFull struct {
 	Count int    `json:"count"`
 }
 
-// Discover menemukan seri untuk katalog, dua jalur menurut resolver:
+// Discover menemukan seri untuk katalog, menurut resolver:
 //   - Anichin: scraping arsip HTML anichin.moe (discoverArchive) —
 //     arahan Rams 2026-11-22: anichin.my adalah situs kloningan
 //     berbahaya dan tidak boleh dipakai sama sekali, dan wp-json
 //     anichin.moe mati kena Cloudflare 403.
-//   - Resolver Animestream lain (Kuronime): indeks kategori
-//     WordPress — di tema ini tiap seri adalah satu kategori (slug
-//     kategori = slug seri) dan semua post episodenya berkategori
-//     itu, jadi daftar kategori terurut jumlah post terbanyak adalah
-//     indeks seri situs ini. URL seri dibangun sebagai
-//     <base>/series/<slug>/ sesuai pola permalink tema.
+//   - Kuronime: scraping arsip HTML kuronime.sbs (discoverKuroArchive
+//     di kuronime.go) — pembangunan ulang mengikuti pola donghua:
+//     kartu arsip membawa poster + judul langsung, tidak lagi
+//     bergantung pada indeks kategori WP yang tanpa poster.
+//   - Resolver Animestream lain: indeks kategori WordPress — di
+//     tema ini tiap seri adalah satu kategori (slug kategori =
+//     slug seri) dan semua post episodenya berkategori itu, jadi
+//     daftar kategori terurut jumlah post terbanyak adalah indeks
+//     seri situs ini. URL seri dibangun sebagai <base>/series/<slug>/
+//     sesuai pola permalink tema.
 func (a *animestreamResolver) Discover(ctx context.Context, src Source, limit int) ([]DiscoveredTitle, error) {
 	if a.key == "anichin" {
 		return a.discoverArchive(ctx, src, limit)
+	}
+	if a.key == "kuronime" {
+		return a.discoverKuroArchive(ctx, src, limit)
 	}
 	base := strings.TrimRight(src.BaseURL, "/")
 	out := []DiscoveredTitle{}
@@ -343,6 +350,20 @@ func (a *animestreamResolver) Posters(ctx context.Context, src Source) (map[stri
 			out[k] = v
 		}
 	}
+	if a.key == "kuronime" {
+		// Kartu Kuronime tidak memakai img.ts-post-image: lengkapi
+		// peta dari kartu arsip + kartu episode beranda (poster seri
+		// dari kartu arsip menimpa hasil kartu episode).
+		for _, u := range []string{mirror + "/", mirror + "/anime/"} {
+			page, err := Fetch(ctx, u)
+			if err != nil {
+				continue
+			}
+			for k, v := range parseKuroPosterMap(page, mirror) {
+				out[k] = v
+			}
+		}
+	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("tidak ada poster terbaca dari %s", mirror)
 	}
@@ -371,6 +392,15 @@ func (a *animestreamResolver) Episodes(ctx context.Context, src Source, titleURL
 	// Animestream lain tetap WP dulu.
 	if a.key == "anichin" {
 		if htmlEps, herr := a.episodesHTML(ctx, titleURL); herr == nil && len(htmlEps) > 0 {
+			return htmlEps, nil
+		}
+		return a.episodesWP(ctx, src, titleURL)
+	}
+	if a.key == "kuronime" {
+		// Kuronime: daftar episode HTML di halaman seri DIDAHULUKAN
+		// (pola yang sama dengan donghua) — tautan /nonton-…-episode-N/
+		// di article seri; jalur kategori WP menjadi cadangan.
+		if htmlEps, herr := a.episodesKuroHTML(ctx, titleURL); herr == nil && len(htmlEps) > 0 {
 			return htmlEps, nil
 		}
 		return a.episodesWP(ctx, src, titleURL)
@@ -750,6 +780,15 @@ func metaComplete(m *SeriesMeta) bool {
 // bila semua fetch berhasil tapi skornya 0 semua, error deskriptif
 // dikembalikan (bukan (nil, nil)) agar kegagalan tidak senyap.
 func (a *animestreamResolver) SeriesInfo(ctx context.Context, src Source, titleURL string) (*SeriesMeta, error) {
+	if a.key == "kuronime" {
+		// Kuronime: markup serinya berbeda total (label teks +
+		// sinopsis h3), jadi pengurai khusus DIDAHULUKAN; jalur
+		// kandidat umum di bawah menjadi cadangan bila uraiannya
+		// kosong (mis. halaman berubah bentuk).
+		if meta, err := a.seriesInfoKuro(ctx, titleURL); err == nil && seriesMetaScore(meta) > 0 {
+			return meta, nil
+		}
+	}
 	candidates := mirrorCandidates(titleURL)
 	if a.key == "anichin" {
 		candidates = moeFirstCandidates(titleURL)
@@ -869,10 +908,24 @@ var (
 )
 
 func (a *animestreamResolver) Resolve(ctx context.Context, src Source, ep EpisodeRef) (Resolved, error) {
+	if a.key == "kuronime" {
+		// Kuronime: pemutarnya iframe#iframedc (data-src), bukan
+		// <select class="mirror"> — jalur khusus di kuronime.go,
+		// dengan pengurai umum di bawah sebagai cadangan di dalamnya.
+		return a.resolveKuro(ctx, src, ep)
+	}
 	page, err := Fetch(ctx, ep.URL)
 	if err != nil {
 		return Resolved{}, err
 	}
+	return resolveMirrorPage(page, src, ep.URL)
+}
+
+// resolveMirrorPage mengurai aliran dari HTML halaman episode yang
+// sudah diambil: opsi <select class="mirror"> (HTML embed ter-base64)
+// plus iframe bawaan halaman. Dipakai Resolve umum dan sebagai
+// cadangan Resolve Kuronime.
+func resolveMirrorPage(page string, src Source, epURL string) (Resolved, error) {
 	res := Resolved{}
 	seen := map[string]bool{}
 	add := func(raw, label string) {
@@ -915,7 +968,7 @@ func (a *animestreamResolver) Resolve(ctx context.Context, src Source, ep Episod
 		add(m[1], "")
 	}
 	if len(res.Streams) == 0 {
-		return res, fmt.Errorf("tidak ada embed video ditemukan di %s", ep.URL)
+		return res, fmt.Errorf("tidak ada embed video ditemukan di %s", epURL)
 	}
 	return res, nil
 }
