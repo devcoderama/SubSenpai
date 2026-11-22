@@ -168,8 +168,10 @@ func EnrichOneTitle(ctx context.Context, pool *pgxpool.Pool, titleID string) (bo
 			continue // halaman seri tidak memberi apa-apa — coba sumber lain
 		}
 		if err := applySeriesMeta(ctx, pool, titleID, meta); err != nil {
+			log.Printf("enrich on-demand %s dari %s: tulis metadata gagal: %v", titleID, m.src.Name, err)
 			return false, err
 		}
+		log.Printf("enrich on-demand %s: metadata tertulis dari %s", titleID, m.src.Name)
 		return true, nil
 	}
 	return false, lastErr
