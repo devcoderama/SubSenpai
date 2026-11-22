@@ -95,7 +95,7 @@ export PATH="/usr/local/go/bin:$PATH"
 # --- 5. Sumber + build ---------------------------------------------------
 if [ -d "$SRC_DIR/.git" ]; then
   say "Memperbarui sumber…"
-  git -C "$SRC_DIR" pull --ff-only
+  git -c safe.directory="$SRC_DIR" -C "$SRC_DIR" pull --ff-only
 else
   say "Mengkloning repo…"
   git clone --depth 50 "$REPO_URL" "$SRC_DIR"
