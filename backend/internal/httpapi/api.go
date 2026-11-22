@@ -83,7 +83,10 @@ func (a *API) Router() http.Handler {
 		})
 		r.Get("/api/v1/home", a.handleHome)
 		r.Get("/api/v1/titles", a.handleTitles)
-		r.Get("/api/v1/titles/{id}", a.handleTitleDetail)
+		// Detail memakai auth OPSIONAL: tanpa ini FromContext selalu
+		// nil → semua penonton dianggap tamu → episode pengguna
+		// premium ikut terkunci (bug dilaporkan Rams 2026-11-23).
+		r.With(a.authn.Optional).Get("/api/v1/titles/{id}", a.handleTitleDetail)
 		// Playback & chapter melewati gerbang freemium (Fase 4): JWT
 		// opsional membedakan tamu / user gratis / premium.
 		r.With(a.authn.Optional).Get("/api/v1/episodes/{id}/playback", a.handlePlayback)
