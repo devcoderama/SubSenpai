@@ -124,3 +124,34 @@ func TestDiscoverHashflixLive(t *testing.T) {
 		t.Fatalf("hasil terlalu sedikit: %d film, %d poster", len(items), posters)
 	}
 }
+
+// TestEpisodesAnichinMoeLive memverifikasi cadangan eplister HTML:
+// daftar episode "Tales of Herding Gods" dari anichin.moe.
+func TestEpisodesAnichinMoeLive(t *testing.T) {
+	if os.Getenv("SUBSENPAI_LIVE_TEST") != "1" {
+		t.Skip("uji langsung dilewati (SUBSENPAI_LIVE_TEST != 1)")
+	}
+	r, ok := ByKey("anichin")
+	if !ok {
+		t.Fatal("resolver anichin tidak terdaftar")
+	}
+	src := Source{Name: "Anichin", ContentType: "donghua", Lang: "id", BaseURL: "https://anichin.my", Resolver: "anichin", FetchMode: "server"}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	eps, err := r.Episodes(ctx, src, "https://anichin.moe/tales-of-herding-god/")
+	if err != nil {
+		t.Fatalf("Episodes: %v", err)
+	}
+	t.Logf("episode Tales of Herding Gods: %d (pertama %d, terakhir %d)", len(eps), eps[0].Number, eps[len(eps)-1].Number)
+	if len(eps) < 50 {
+		t.Fatalf("episode terlalu sedikit: %d", len(eps))
+	}
+	res, err := r.Resolve(ctx, src, eps[len(eps)-1])
+	if err != nil {
+		t.Fatalf("Resolve ep terakhir: %v", err)
+	}
+	t.Logf("aliran ep %d: %d server; pertama: %s (%s)", eps[len(eps)-1].Number, len(res.Streams), res.Streams[0].Label, res.Streams[0].URL)
+	if len(res.Streams) < 3 {
+		t.Fatalf("server terlalu sedikit: %d", len(res.Streams))
+	}
+}

@@ -21,8 +21,10 @@ import (
 //     berkategori series-nya, jadi daftar episode diambil lewat
 //     /wp-json/wp/v2/posts?categories=<id> (parameter search pada /posts
 //     dinonaktifkan situs ini — selalu mengembalikan kosong).
-//   - Daftar episode TIDAK ada di HTML statis halaman series (dimuat
-//     sisi klien), jadi jalur REST adalah satu-satunya jalur server.
+//   - Daftar episode di anichin.my dimuat sisi klien (tidak ada di
+//     HTML statis), tapi mirror anichin.moe menyajikannya sebagai
+//     eplister statis — Episodes() memakai REST dulu, lalu eplister
+//     HTML sebagai cadangan.
 //   - Halaman episode menyediakan <select class="mirror"> berisi opsi
 //     server sebagai HTML embed ter-base64, plus satu iframe bawaan.
 type animestreamResolver struct{ key string }
@@ -204,7 +206,109 @@ type wpCategory struct {
 // series adalah satu kategori (slug kategori = slug series) dan semua
 // post episodenya berkategori itu. Parameter search pada /posts dinonaktifkan
 // situs (selalu kosong), jadi jalur kategori adalah jalur yang andal.
+// Episodes mengambil daftar episode lewat WP REST (jalur utama);
+// bila jalur itu gagal/kosong, jatuh ke daftar episode HTML
+// (eplister) di halaman series — mirror anichin.moe menyajikan
+// eplister sebagai HTML statis (terverifikasi 2026-11-22 pada
+// "Tales of Herding Gods": 108 episode tertaut dari halaman seri),
+// tidak seperti anichin.my yang memuatnya sisi klien.
 func (a *animestreamResolver) Episodes(ctx context.Context, src Source, titleURL string) ([]EpisodeRef, error) {
+	eps, err := a.episodesWP(ctx, src, titleURL)
+	if err == nil && len(eps) > 0 {
+		return eps, nil
+	}
+	if htmlEps, herr := a.episodesHTML(ctx, titleURL); herr == nil && len(htmlEps) > 0 {
+		return htmlEps, nil
+	}
+	return eps, err
+}
+
+var eplisterRe = regexp.MustCompile(`href="([^"]*-episode-(\d+)[^"]*)"`)
+
+// parseEplister mengurai tautan episode dari HTML halaman series
+// tema Animestream. Dua penjaga agar episode seri LAIN dari widget
+// "rilisan terbaru" di bilah sisi tidak ikut tertangkap: (1) hanya
+// blok eplister yang dibaca (dari penanda "eplister" sampai </ul>
+// pertamanya); (2) slug episode harus berawalan slug seri ini —
+// situs memakai varian jamak untuk slug episode (seri
+// "tales-of-herding-god" → episode "tales-of-herding-gods-episode-…"),
+// jadi awalan yang diterima: slug, slug+s, dan slug tanpa s akhir.
+func parseEplister(html, pageURL string) []EpisodeRef {
+	base, err := url.Parse(pageURL)
+	if err != nil {
+		return nil
+	}
+	seg := html
+	if i := strings.Index(seg, "eplister"); i >= 0 {
+		seg = seg[i:]
+		if j := strings.Index(seg, "</ul>"); j >= 0 {
+			seg = seg[:j]
+		}
+	}
+	parts := strings.Split(strings.Trim(base.Path, "/"), "/")
+	slug := parts[len(parts)-1]
+	prefixes := map[string]bool{slug: true, slug + "s": true}
+	if strings.HasSuffix(slug, "s") {
+		prefixes[strings.TrimSuffix(slug, "s")] = true
+	}
+	byNo := map[int]EpisodeRef{}
+	for _, m := range eplisterRe.FindAllStringSubmatch(seg, -1) {
+		ref, err := url.Parse(m[1])
+		if err != nil {
+			continue
+		}
+		segPath := strings.Trim(ref.Path, "/")
+		ok := false
+		for p := range prefixes {
+			if strings.HasPrefix(segPath, p+"-episode-") {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			continue
+		}
+		n, err := strconv.Atoi(m[2])
+		if err != nil || n <= 0 {
+			continue
+		}
+		if _, dup := byNo[n]; dup {
+			continue
+		}
+		byNo[n] = EpisodeRef{Number: n, URL: base.ResolveReference(ref).String()}
+	}
+	out := make([]EpisodeRef, 0, len(byNo))
+	for _, e := range byNo {
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
+	return out
+}
+
+// episodesHTML mencoba halaman series apa adanya, lalu mirror
+// anichin.moe dengan path yang sama.
+func (a *animestreamResolver) episodesHTML(ctx context.Context, titleURL string) ([]EpisodeRef, error) {
+	candidates := []string{titleURL}
+	if u, err := url.Parse(titleURL); err == nil && u.Host != "anichin.moe" {
+		u.Host = "anichin.moe"
+		u.Scheme = "https"
+		candidates = append(candidates, u.String())
+	}
+	var lastErr error
+	for _, cand := range candidates {
+		page, err := Fetch(ctx, cand)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if eps := parseEplister(page, cand); len(eps) > 0 {
+			return eps, nil
+		}
+	}
+	return nil, lastErr
+}
+
+func (a *animestreamResolver) episodesWP(ctx context.Context, src Source, titleURL string) ([]EpisodeRef, error) {
 	base := strings.TrimRight(src.BaseURL, "/")
 	u, err := url.Parse(titleURL)
 	if err != nil {
