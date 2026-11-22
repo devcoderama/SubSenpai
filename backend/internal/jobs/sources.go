@@ -14,7 +14,7 @@ import (
 // dan mencatat hasilnya ke content_sources.
 func CheckSources(ctx context.Context, pool *pgxpool.Pool) error {
 	rows, err := pool.Query(ctx, `
-		select id, base_url from content_sources where is_active`)
+		select id, resolver, base_url from content_sources where is_active`)
 	if err != nil {
 		return err
 	}
@@ -22,9 +22,10 @@ func CheckSources(ctx context.Context, pool *pgxpool.Pool) error {
 	items := []item{}
 	for rows.Next() {
 		var it item
+		var resolver string
 		var base *string
-		if err := rows.Scan(&it.id, &base); err == nil && base != nil {
-			it.base = *base
+		if err := rows.Scan(&it.id, &resolver, &base); err == nil && base != nil {
+			it.base = sources.EffectiveBaseURL(resolver, *base)
 			items = append(items, it)
 		}
 	}
@@ -77,6 +78,7 @@ func loadSourcesMode(ctx context.Context, pool *pgxpool.Pool, contentType string
 		var s sources.Source
 		if err := rows.Scan(&s.ID, &s.Name, &s.ContentType, &s.Lang, &s.BaseURL,
 			&s.Resolver, &s.FetchMode, &s.SubtitleKind, &s.Priority); err == nil {
+			sources.ApplyBaseOverride(&s)
 			out = append(out, s)
 		}
 	}
@@ -180,6 +182,7 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 			continue
 		}
 		seen[j.titleID] = true
+		sources.ApplyBaseOverride(&j.src)
 		jobs = append(jobs, j)
 	}
 	rows.Close()

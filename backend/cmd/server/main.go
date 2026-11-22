@@ -14,10 +14,12 @@ import (
 	"subsenpai/backend/internal/db"
 	"subsenpai/backend/internal/httpapi"
 	"subsenpai/backend/internal/middleware"
+	"subsenpai/backend/internal/sources"
 )
 
 func main() {
 	cfg := config.Load()
+	sources.LogBaseOverrides()
 	ctx := context.Background()
 
 	pool, err := db.Connect(ctx, cfg.DatabaseURL)

@@ -19,10 +19,12 @@ import (
 	"subsenpai/backend/internal/db"
 	"subsenpai/backend/internal/jobs"
 	"subsenpai/backend/internal/payments"
+	"subsenpai/backend/internal/sources"
 )
 
 func main() {
 	cfg := config.Load()
+	sources.LogBaseOverrides()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

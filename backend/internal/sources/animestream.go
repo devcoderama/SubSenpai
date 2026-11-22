@@ -111,7 +111,7 @@ func (a *animestreamResolver) Discover(ctx context.Context, src Source, limit in
 			out = append(out, DiscoveredTitle{
 				Title: name,
 				Slug:  c.Slug,
-				URL:   base + "/series/" + c.Slug + "/",
+				URL:   seriesURL(base, c.Slug),
 			})
 			if len(out) >= limit {
 				break
@@ -312,6 +312,19 @@ func parseEplister(html, pageURL string) []EpisodeRef {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
 	return out
+}
+
+// seriesURL membangun URL halaman seri dari base + slug dengan
+// format path yang benar untuk host base itu (dipakai Discover):
+// host anichin.moe (mis. base ditimpa env DONGHUA_ID) memakai path
+// level akar, host lain format /series/<slug>/ seperti sebelumnya.
+func seriesURL(base, slug string) string {
+	base = strings.TrimRight(base, "/")
+	host := ""
+	if u, err := url.Parse(base); err == nil {
+		host = u.Host
+	}
+	return base + seriesPathForHost("/series/"+slug+"/", host)
 }
 
 // seriesPathForHost menyesuaikan format path halaman seri Animestream

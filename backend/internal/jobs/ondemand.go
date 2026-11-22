@@ -45,6 +45,7 @@ func loadTitleMappings(ctx context.Context, pool *pgxpool.Pool, titleID string) 
 		if err := rows.Scan(&m.url, &m.src.ID, &m.src.Name, &m.src.ContentType,
 			&m.src.Lang, &m.src.BaseURL, &m.src.Resolver, &m.src.FetchMode,
 			&m.src.SubtitleKind, &m.src.Priority); err == nil {
+			sources.ApplyBaseOverride(&m.src)
 			out = append(out, m)
 		}
 	}

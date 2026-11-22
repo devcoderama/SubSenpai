@@ -79,6 +79,9 @@ GOPAY_PASSWORD=
 TOKOPAY_MERCHANT_ID=
 TOKOPAY_SECRET_KEY=
 TOKOPAY_API_URL=
+DONGHUA_ID=https://anichin.moe
+ANIME_ID=https://kuronime.sbs
+FILM=https://hashflix.top
 EOF
   chmod 600 "$ENV_FILE"
   say "Database + env dibuat (rahasia hanya tersimpan di $ENV_FILE)."
