@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -46,6 +47,7 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit) {
     var redeemCode by remember { mutableStateOf("") }
     var giftCode by remember { mutableStateOf("") }
     var giftPlan by remember { mutableStateOf<PlanItem?>(null) }
+    var channel by remember { mutableStateOf("QRIS") }
     var refresh by remember { mutableStateOf(0) }
 
     LaunchedEffect(refresh) {
@@ -98,6 +100,18 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit) {
                 }
             }
         }
+        Text("Metode pembayaran Tokopay", style = MaterialTheme.typography.titleMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            listOf("QRIS", "BRIVA", "BCAVA", "BNIVA", "MANDIRIVA", "DANA", "GOPAY", "SHOPEEPAY", "ALFAMART", "INDOMARET")
+                .forEach { ch ->
+                    OutlinedButton(onClick = { channel = ch }) {
+                        Text((if (channel == ch) "✓ " else "") + ch)
+                    }
+                }
+        }
         Text("Pilih paket", style = MaterialTheme.typography.titleMedium)
         plans.forEach { plan ->
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -117,18 +131,18 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit) {
                                     ". " + note
                             }
                         }) { Text("GoPay") }
-                        OutlinedButton(onClick = {
+                        Button(onClick = {
                             act {
-                                val o = repo.checkout(plan.id, "midtrans", "subscription")
-                                "Buka tautan pembayaran Midtrans: " + o.optString("redirect_url")
+                                val o = repo.checkout(plan.id, "tokopay", "subscription", channel = channel)
+                                val total = o.optInt("total_bayar")
+                                val va = o.optString("nomor_va")
+                                "Order Tokopay ($channel) dibuat. Total bayar Rp" +
+                                    NumberFormat.getNumberInstance(Locale("id", "ID")).format(total) +
+                                    (if (va.isNotBlank()) ". Nomor VA/kode bayar: $va" else "") +
+                                    ". Buka halaman bayar: " + o.optString("pay_url") +
+                                    " — premium aktif otomatis setelah pembayaran terkonfirmasi."
                             }
-                        }) { Text("Midtrans") }
-                        OutlinedButton(onClick = {
-                            act {
-                                val o = repo.checkout(plan.id, "xendit", "subscription")
-                                "Buka tautan pembayaran Xendit: " + o.optString("invoice_url")
-                            }
-                        }) { Text("Xendit") }
+                        }) { Text("Tokopay") }
                     }
                 }
             }

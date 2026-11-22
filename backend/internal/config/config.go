@@ -29,6 +29,11 @@ type Config struct {
 	GoPayBaseURL  string
 	GoPayUsername string
 	GoPayPassword string
+	// Tokopay — gateway utama (dipilih Rams 2026-11-22, fee lebih murah
+	// dari Midtrans/Xendit). Kosong = checkout Tokopay nonaktif (503).
+	TokopayMerchantID string
+	TokopaySecret     string
+	TokopayAPIURL     string // bawaan https://api.tokopay.id
 }
 
 func Load() Config {
@@ -55,6 +60,9 @@ func Load() Config {
 		GoPayBaseURL:       os.Getenv("GOPAY_MERCHANT_URL"),
 		GoPayUsername:      os.Getenv("GOPAY_USERNAME"),
 		GoPayPassword:      os.Getenv("GOPAY_PASSWORD"),
+		TokopayMerchantID: os.Getenv("TOKOPAY_MERCHANT_ID"),
+		TokopaySecret:     os.Getenv("TOKOPAY_SECRET_KEY"),
+		TokopayAPIURL:     os.Getenv("TOKOPAY_API_URL"),
 	}
 }
 

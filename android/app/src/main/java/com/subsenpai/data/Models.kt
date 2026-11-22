@@ -268,12 +268,19 @@ class CatalogRepository(
         return o.optString("premium_until").ifBlank { null }
     }
 
-    suspend fun checkout(planId: String, provider: String, purpose: String, recipientCode: String? = null): JSONObject {
+    suspend fun checkout(
+        planId: String,
+        provider: String,
+        purpose: String,
+        recipientCode: String? = null,
+        channel: String? = null,
+    ): JSONObject {
         val body = JSONObject()
             .put("plan_id", planId)
             .put("provider", provider)
             .put("purpose", purpose)
         if (recipientCode != null) body.put("recipient_code", recipientCode)
+        if (channel != null) body.put("channel", channel)
         return api.post("/api/v1/payments/checkout", body)
     }
 

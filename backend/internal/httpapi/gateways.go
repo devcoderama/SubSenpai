@@ -9,9 +9,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
+	"subsenpai/backend/internal/auth"
 	"subsenpai/backend/internal/billing"
+	"subsenpai/backend/internal/payments"
 )
 
 var gatewayHTTP = &http.Client{Timeout: 30 * time.Second}
@@ -120,6 +125,101 @@ func (a *API) handleMidtransWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// sessionIDFromReff mengubah reff_id Tokopay (id sesi kita tanpa tanda
+// hubung) kembali ke bentuk UUID. String kosong bila formatnya asing.
+func sessionIDFromReff(reff string) string {
+	if len(reff) != 32 {
+		return ""
+	}
+	for _, c := range reff {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+			return ""
+		}
+	}
+	return reff[0:8] + "-" + reff[8:12] + "-" + reff[12:16] + "-" + reff[16:20] + "-" + reff[20:32]
+}
+
+// handleTokopayWebhook menerima callback Tokopay (gateway utama).
+// Keaslian dari signature md5(merchant_id:secret:reff_id) di body;
+// status Success/Completed mengaktifkan sesi. Balasan wajib berbentuk
+// JSON {"status":true} agar Tokopay berhenti mengirim ulang.
+func (a *API) handleTokopayWebhook(w http.ResponseWriter, r *http.Request) {
+	fail := func(code int) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		_, _ = w.Write([]byte(`{"status":false}`))
+	}
+	if a.tokopay == nil || !a.tokopay.Configured() {
+		fail(http.StatusServiceUnavailable)
+		return
+	}
+	var n struct {
+		ReffID    string `json:"reff_id"`
+		Status    string `json:"status"`
+		Signature string `json:"signature"`
+		TrxID     string `json:"trx_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&n); err != nil || n.ReffID == "" {
+		fail(http.StatusBadRequest)
+		return
+	}
+	if !payments.VerifyTokopayCallback(a.cfg.TokopayMerchantID, a.cfg.TokopaySecret, n.ReffID, n.Signature) {
+		fail(http.StatusForbidden)
+		return
+	}
+	if payments.TokopayPaid(n.Status) {
+		sessionID := sessionIDFromReff(n.ReffID)
+		if sessionID != "" {
+			var exists bool
+			_ = a.pool.QueryRow(r.Context(), `
+				select exists(select 1 from payment_sessions where id = $1::uuid)`,
+				sessionID).Scan(&exists)
+			if exists {
+				if err := billing.ActivateSession(r.Context(), a.pool, sessionID, n.TrxID); err != nil {
+					fail(http.StatusInternalServerError)
+					return
+				}
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"status":true}`))
+}
+
+// handlePaymentStatus: status sesi milik user; untuk Tokopay, status
+// segar ditanyakan ke gateway (cek status order) dan sesi diaktifkan
+// bila ternyata sudah lunas tapi callback belum sampai.
+func (a *API) handlePaymentStatus(w http.ResponseWriter, r *http.Request) {
+	p := auth.FromContext(r.Context())
+	sessionID := chi.URLParam(r, "sessionId")
+	var userID, provider, status string
+	var trxRef *string
+	err := a.pool.QueryRow(r.Context(), `
+		select user_id, provider, status, matched_ref
+		from payment_sessions where id = $1::uuid`, sessionID,
+	).Scan(&userID, &provider, &status, &trxRef)
+	if err != nil || userID != p.ID {
+		writeErr(w, http.StatusNotFound, "sesi tidak ditemukan")
+		return
+	}
+	resp := map[string]any{"session_id": sessionID, "provider": provider, "status": status}
+	if status == "pending" && provider == "tokopay" && a.tokopay != nil && a.tokopay.Configured() {
+		trx := ""
+		if trxRef != nil {
+			trx = *trxRef
+		}
+		if fresh, err := a.tokopay.CheckOrderStatus(r.Context(), trx, strings.ReplaceAll(sessionID, "-", "")); err == nil {
+			resp["gateway_status"] = fresh
+			if payments.TokopayPaid(fresh) {
+				if err := billing.ActivateSession(r.Context(), a.pool, sessionID, trx); err == nil {
+					resp["status"] = "paid"
+				}
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleXenditWebhook menerima callback Xendit; token callback diverifikasi

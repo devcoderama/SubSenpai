@@ -32,6 +32,7 @@ type API struct {
 	authn     *auth.Authenticator
 	cfg       config.Config
 	gopay     *payments.GoPayClient
+	tokopay   *payments.TokopayClient
 	hub       *chat.Hub
 }
 
@@ -52,6 +53,9 @@ func New(pool *pgxpool.Pool, sessions *middleware.Sessions, cfg config.Config) *
 	if cfg.GoPayBaseURL != "" {
 		a.gopay = payments.NewGoPayClient(cfg.GoPayBaseURL, cfg.GoPayUsername, cfg.GoPayPassword)
 	}
+	if cfg.TokopayMerchantID != "" {
+		a.tokopay = payments.NewTokopayClient(cfg.TokopayAPIURL, cfg.TokopayMerchantID, cfg.TokopaySecret)
+	}
 	return a
 }
 
@@ -65,6 +69,7 @@ func (a *API) Router() http.Handler {
 	// keasliannya dari tanda tangan/token callback gateway (Fase 4).
 	r.Post("/api/v1/payments/webhook/midtrans", a.handleMidtransWebhook)
 	r.Post("/api/v1/payments/webhook/xendit", a.handleXenditWebhook)
+	r.Post("/api/v1/payments/webhook/tokopay", a.handleTokopayWebhook)
 	// WebSocket chat & watch party (Fase 4): auth via header Authorization.
 	r.Get("/ws", a.handleWS)
 	r.Group(func(r chi.Router) {
@@ -96,6 +101,7 @@ func (a *API) Router() http.Handler {
 			r.Get("/api/v1/premium/status", a.handlePremiumStatus)
 			r.Post("/api/v1/premium/trial", a.handleTrial)
 			r.Post("/api/v1/payments/checkout", a.handleCheckout)
+			r.Get("/api/v1/payments/status/{sessionId}", a.handlePaymentStatus)
 			r.Post("/api/v1/vouchers/redeem", a.handleVoucherRedeem)
 			r.Get("/api/v1/vouchers/mine", a.handleVouchersMine)
 			r.Get("/api/v1/devices", a.handleDevicesList)

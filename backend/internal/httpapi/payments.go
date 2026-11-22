@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"math/big"
 	"net/http"
+	"strings"
 	"time"
 
 	"subsenpai/backend/internal/auth"
 	"subsenpai/backend/internal/billing"
+	"subsenpai/backend/internal/payments"
 )
 
 // handlePlans: daftar paket premium (publik).
@@ -74,6 +76,7 @@ type checkoutReq struct {
 	Provider      string `json:"provider"`
 	Purpose       string `json:"purpose"` // subscription | voucher
 	RecipientCode string `json:"recipient_code"`
+	Channel       string `json:"channel"` // kode channel Tokopay (bawaan QRIS)
 }
 
 // handleCheckout membuat sesi pembayaran. GoPay: nominal unik
@@ -100,6 +103,18 @@ func (a *API) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 	switch req.Provider {
 	case "gopay":
+	case "tokopay":
+		if a.tokopay == nil || !a.tokopay.Configured() {
+			writeErr(w, http.StatusServiceUnavailable, "Tokopay belum dikonfigurasi di server")
+			return
+		}
+		if req.Channel == "" {
+			req.Channel = "QRIS"
+		}
+		if _, ok := payments.TokopayChannels[req.Channel]; !ok {
+			writeErr(w, http.StatusBadRequest, "channel Tokopay tidak dikenal")
+			return
+		}
 	case "midtrans":
 		if a.cfg.MidtransServerKey == "" {
 			writeErr(w, http.StatusServiceUnavailable, "Midtrans belum dikonfigurasi di server")
@@ -181,6 +196,44 @@ func (a *API) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		resp["voucher_code"] = code
 	}
 	switch req.Provider {
+	case "tokopay":
+		reffID := strings.ReplaceAll(sessionID, "-", "")
+		var displayName *string
+		_ = a.pool.QueryRow(ctx, `
+			select display_name from profiles where id = $1::uuid`, p.ID).Scan(&displayName)
+		name := p.Email
+		if displayName != nil && *displayName != "" {
+			name = *displayName
+		}
+		// customer_phone wajib di API Advanced Tokopay; profil belum
+		// menyimpan nomor HP — dipakai penanda sampai profil punya HP.
+		order, err := a.tokopay.CreateOrder(ctx, req.Channel, reffID, amount, name, p.Email, "080000000000", expires.Unix())
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, "gateway Tokopay gagal: "+err.Error())
+			return
+		}
+		_, _ = a.pool.Exec(ctx, `
+			update payment_sessions set matched_ref = $2 where id = $1::uuid`,
+			sessionID, order.TrxID)
+		resp["channel"] = req.Channel
+		resp["trx_id"] = order.TrxID
+		resp["pay_url"] = order.PayURL
+		resp["total_bayar"] = order.TotalBayar
+		if order.NomorVA != "" {
+			resp["nomor_va"] = order.NomorVA
+		}
+		if order.QRString != "" {
+			resp["qr_string"] = order.QRString
+		}
+		if order.QRLink != "" {
+			resp["qr_link"] = order.QRLink
+		}
+		if order.CheckoutURL != "" {
+			resp["checkout_url"] = order.CheckoutURL
+		}
+		if order.Panduan != "" {
+			resp["panduan"] = order.Panduan
+		}
 	case "gopay":
 		if a.gopay != nil && a.gopay.Configured() {
 			if qris, err := a.gopay.CreatePayment(ctx, amount); err == nil && qris != "" {
