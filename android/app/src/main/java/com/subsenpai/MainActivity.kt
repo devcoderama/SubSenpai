@@ -19,7 +19,6 @@ import com.subsenpai.data.AuthStore
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.player.PlayerScreen
 import com.subsenpai.ui.ChatListScreen
-import com.subsenpai.ui.ComicBrowseScreen
 import com.subsenpai.ui.ComicDetailScreen
 import com.subsenpai.ui.ComicReaderScreen
 import com.subsenpai.ui.ChatRoomScreen
@@ -54,13 +53,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenWatchlist = { nav.navigate("watchlist") },
                                 onOpenPremium = { nav.navigate("premium") },
                                 onOpenChat = { nav.navigate("chat") },
-                                onOpenComics = { nav.navigate("comics") },
-                            )
-                        }
-                        composable("comics") {
-                            ComicBrowseScreen(
-                                onBack = { nav.popBackStack() },
-                                onOpenSeries = { s ->
+                                onOpenComic = { s ->
                                     com.subsenpai.data.ComicNav.series = s
                                     nav.navigate("comicdetail")
                                 },

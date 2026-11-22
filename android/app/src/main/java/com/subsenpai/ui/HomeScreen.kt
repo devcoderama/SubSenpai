@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.TitleCard
+import kotlinx.coroutines.launch
 
 private val typeFilters = listOf(
     null to "Semua", "anime" to "Anime", "donghua" to "Donghua", "film" to "Film",
@@ -53,8 +54,13 @@ private val typeFilters = listOf(
 
 private val rowTypes = listOf(
     "anime" to "Anime Pilihan", "donghua" to "Donghua Pilihan", "film" to "Film Pilihan",
+)
+
+private val comicRowTypes = listOf(
     "manga" to "Manga Pilihan", "manhwa" to "Manhwa Pilihan", "manhua" to "Manhua Pilihan",
 )
+
+private val comicTypeSet = setOf("manga", "manhua", "manhwa")
 
 @Composable
 fun HomeScreen(
@@ -66,7 +72,7 @@ fun HomeScreen(
     onOpenWatchlist: () -> Unit,
     onOpenPremium: () -> Unit = {},
     onOpenChat: () -> Unit = {},
-    onOpenComics: () -> Unit = {},
+    onOpenComic: (com.subsenpai.data.ComicSeries) -> Unit = {},
 ) {
     var trending by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var terbaru by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
@@ -78,6 +84,38 @@ fun HomeScreen(
     var query by remember { mutableStateOf("") }
     val browsing = type != null || query.isNotBlank()
     val loggedIn = repo.isLoggedIn
+
+    // Umpan komik perangkat (API manhuarmtl langsung dari aplikasi,
+    // pola Mihon) — mengisi baris & kisi manga/manhua/manhwa di sini.
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var comicRaw by remember { mutableStateOf<List<com.subsenpai.data.ComicSeries>>(emptyList()) }
+    var comicPage by remember { mutableStateOf(0) }
+    var comicTotal by remember { mutableStateOf(1) }
+    var comicLoading by remember { mutableStateOf(false) }
+    var comicSearch by remember { mutableStateOf<List<com.subsenpai.data.ComicSeries>>(emptyList()) }
+    val comicMode = type in comicTypeSet
+
+    suspend fun loadComics(minEach: Int) {
+        if (comicLoading) return
+        comicLoading = true
+        try {
+            var fetched = 0
+            while (fetched < 8 && comicPage < comicTotal) {
+                val counts = comicTypeSet.associateWith { t -> comicRaw.count { it.type == t } }
+                if (fetched > 0 && counts.values.all { it >= minEach }) break
+                val (items, total) = com.subsenpai.data.ManhuarmtlApi.latest(comicPage + 1)
+                comicTotal = total
+                comicPage += 1
+                fetched++
+                val known = comicRaw.map { it.slug }.toSet()
+                comicRaw = comicRaw + items.filter { it.slug !in known }
+            }
+        } catch (e: Exception) {
+            // Baris komik dilewati bila sumber gagal dijangkau.
+        } finally {
+            comicLoading = false
+        }
+    }
 
     LaunchedEffect(Unit) {
         try {
@@ -110,12 +148,25 @@ fun HomeScreen(
     }
     LaunchedEffect(type, query) {
         if (!browsing) return@LaunchedEffect
+        if (comicMode) {
+            if (query.isNotBlank()) {
+                try {
+                    comicSearch = com.subsenpai.data.ManhuarmtlApi.search(query, 1).first
+                } catch (e: Exception) {
+                    comicSearch = emptyList()
+                }
+            } else if (comicRaw.none { it.type == type }) {
+                loadComics(12)
+            }
+            return@LaunchedEffect
+        }
         try {
             hasil = repo.titles(type, query.ifBlank { null })
         } catch (e: Exception) {
             error = e.message
         }
     }
+    LaunchedEffect(Unit) { loadComics(10) }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
@@ -132,7 +183,6 @@ fun HomeScreen(
                 )
                 Row {
                     TextButton(onClick = onOpenPremium) { Text("Premium", color = Color.White) }
-                    TextButton(onClick = onOpenComics) { Text("Komik", color = Color.White) }
                     if (loggedIn) {
                         TextButton(onClick = onOpenChat) { Text("Chat", color = Color.White) }
                         TextButton(onClick = onOpenWatchlist) { Text("Watchlist", color = Color.White) }
@@ -171,7 +221,39 @@ fun HomeScreen(
                 )
             }
         }
-        if (browsing) {
+        if (browsing && comicMode) {
+            val comicItems = (if (query.isNotBlank()) comicSearch else comicRaw)
+                .filter { it.type == type }
+            item { SectionTitle("Hasil") }
+            if (comicItems.isEmpty()) {
+                item {
+                    Text(
+                        if (comicLoading) "Memuat dari sumber komik…" else "Belum ada judul yang cocok.",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+            }
+            items(comicItems.chunked(3)) { rowSeries ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    for (s in rowSeries) {
+                        Box(Modifier.weight(1f)) { ComicPosterCard(s, onOpenComic, Modifier.fillMaxWidth()) }
+                    }
+                    repeat(3 - rowSeries.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+            if (query.isBlank() && comicPage < comicTotal) {
+                item {
+                    Button(
+                        enabled = !comicLoading,
+                        onClick = { scope.launch { loadComics(12) } },
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    ) { Text(if (comicLoading) "Memuat…" else "Muat Lebih Banyak") }
+                }
+            }
+        } else if (browsing) {
             item { SectionTitle("Hasil") }
             if (hasil.isEmpty() && error == null) {
                 item { Text("Belum ada judul yang cocok.", modifier = Modifier.padding(horizontal = 16.dp)) }
@@ -233,6 +315,13 @@ fun HomeScreen(
                 if (rows.isNotEmpty()) {
                     item { SectionTitle(label) }
                     item { PosterRow(rows, onOpenTitle) }
+                }
+            }
+            for ((t, label) in comicRowTypes) {
+                val rows = comicRaw.filter { it.type == t }
+                if (rows.isNotEmpty()) {
+                    item { SectionTitle(label) }
+                    item { ComicPosterRow(rows, onOpenComic) }
                 }
             }
             if (terbaru.isNotEmpty()) {
@@ -357,6 +446,38 @@ private fun PosterCard(t: TitleCard, onOpen: (String) -> Unit, modifier: Modifie
         )
         Text(
             t.title,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
+@Composable
+private fun ComicPosterRow(list: List<com.subsenpai.data.ComicSeries>, onOpen: (com.subsenpai.data.ComicSeries) -> Unit) {
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.padding(horizontal = 16.dp),
+    ) {
+        items(list) { ComicPosterCard(it, onOpen, Modifier.width(112.dp)) }
+    }
+}
+
+@Composable
+private fun ComicPosterCard(
+    s: com.subsenpai.data.ComicSeries,
+    onOpen: (com.subsenpai.data.ComicSeries) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.clickable { onOpen(s) }) {
+        PosterImage(
+            url = s.poster,
+            title = s.title,
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)),
+        )
+        Text(
+            s.title,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodySmall,

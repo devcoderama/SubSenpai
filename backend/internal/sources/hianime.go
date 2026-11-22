@@ -94,6 +94,28 @@ func (h *hiAnimeResolver) Search(ctx context.Context, src Source, query string) 
 }
 
 var hiImgRe = regexp.MustCompile(`(?is)<img[^>]+data-src="([^"]+)"`)
+var hiImgSrcRe = regexp.MustCompile(`(?is)<img[^>]+src="([^"]+)"`)
+
+// posterDariChunk mengambil URL poster dari potongan kartu: data-src
+// (lazy-load) lebih dulu; bila tidak ada, src langsung selama terlihat
+// seperti berkas poster sungguhan (bukan plakat pemuatan/placeholder).
+func posterDariChunk(chunk string) string {
+	if img := hiImgRe.FindStringSubmatch(chunk); img != nil {
+		return img[1]
+	}
+	if img := hiImgSrcRe.FindStringSubmatch(chunk); img != nil {
+		u := img[1]
+		lower := strings.ToLower(u)
+		if strings.HasPrefix(lower, "http") &&
+			(strings.Contains(lower, ".jpg") || strings.Contains(lower, ".jpeg") ||
+				strings.Contains(lower, ".png") || strings.Contains(lower, ".webp")) &&
+			!strings.Contains(lower, "blank") && !strings.Contains(lower, "loading") &&
+			!strings.Contains(lower, "no-image") && !strings.Contains(lower, "placeholder") {
+			return u
+		}
+	}
+	return ""
+}
 
 // parseHiCards mengurai kartu flw-item pada halaman daftar HiAnime
 // menjadi judul katalog (slug dari URL tontonan, poster dari data-src
@@ -121,9 +143,7 @@ func parseHiCards(page, base string) []DiscoveredTitle {
 			Slug:  slug,
 			URL:   base + href[1],
 		}
-		if img := hiImgRe.FindStringSubmatch(chunk); img != nil {
-			d.Poster = img[1]
-		}
+		d.Poster = posterDariChunk(chunk)
 		out = append(out, d)
 	}
 	return out

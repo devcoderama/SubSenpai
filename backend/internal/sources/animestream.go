@@ -175,7 +175,11 @@ func (a *animestreamResolver) Posters(ctx context.Context, src Source) (map[stri
 	}
 	const mirror = "https://anichin.moe"
 	out := map[string]string{}
-	for _, u := range []string{mirror + "/", mirror + "/page/2/", mirror + "/page/3/"} {
+	pages := []string{mirror + "/"}
+	for p := 2; p <= 10; p++ {
+		pages = append(pages, fmt.Sprintf("%s/page/%d/", mirror, p))
+	}
+	for _, u := range pages {
 		page, err := Fetch(ctx, u)
 		if err != nil {
 			continue
