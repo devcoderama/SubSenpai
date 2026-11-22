@@ -3,10 +3,12 @@ package httpapi
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -49,6 +51,7 @@ type feedPost struct {
 	Body         *string    `json:"body,omitempty"`
 	ImageURL     *string    `json:"image_url,omitempty"`
 	Category     string     `json:"category"`
+	Visibility   string     `json:"visibility"`
 	GroupID      *string    `json:"group_id,omitempty"`
 	GroupName    *string    `json:"group_name,omitempty"`
 	LikeCount    int        `json:"like_count"`
@@ -67,7 +70,7 @@ type feedPost struct {
 // komentar, bookmark, dan repost selalu menunjuk op agar baris repost
 // menampilkan & mengubah konten yang sama dengan aslinya.
 const feedPostCols = `
-	fp.id, op.id, op.body, op.image_url, op.category, op.group_id, g.name,
+	fp.id, op.id, op.body, op.image_url, op.category, op.visibility, op.group_id, g.name,
 	op.share_count, fp.created_at,
 	op.user_id, coalesce(pr.display_name, pr.email, 'Pengguna'), pr.avatar_url, pr.is_premium,
 	fp.user_id,
@@ -96,7 +99,7 @@ func scanFeedPost(rows interface {
 	var rpAvatar *string
 	var rpPremium bool
 	err := rows.Scan(
-		&p.ID, &p.PostID, &p.Body, &p.ImageURL, &p.Category, &p.GroupID, &p.GroupName,
+		&p.ID, &p.PostID, &p.Body, &p.ImageURL, &p.Category, &p.Visibility, &p.GroupID, &p.GroupName,
 		&p.ShareCount, &p.CreatedAt,
 		&authorID, &p.Author.DisplayName, &p.Author.AvatarURL, &p.Author.IsPremium,
 		&rowAuthorID, &isRepost, &rpName, &rpAvatar, &rpPremium,
@@ -133,13 +136,22 @@ func feedWhere(tab, category, q, groupID string) (string, []any) {
 			args = append(args, groupID)
 			where += " and fp.group_id = $" + strconv.Itoa(len(args)) + "::uuid"
 		}
-	} else { // teman (bawaan): saya + teman yang sudah diterima
-		where += ` and (fp.user_id = $1::uuid or exists (
+	} else { // teman (bawaan): baris saya/teman, atau konten publik siapa pun
+		where += ` and (fp.user_id = $1::uuid or op.visibility = 'publik' or exists (
 			select 1 from friendships f
 			where f.status = 'accepted'
 			  and ((f.requester_id = $1::uuid and f.addressee_id = fp.user_id)
 			    or (f.addressee_id = $1::uuid and f.requester_id = fp.user_id))))`
 	}
+	// Gerbang visibilitas konten (kedua tab): menilai penulis ASLI —
+	// publik untuk semua, teman hanya untuk teman penulis, pribadi
+	// hanya penulis. Repost tidak bisa membocorkan konten terbatas.
+	where += ` and (op.user_id = $1::uuid or op.visibility = 'publik' or (
+		op.visibility = 'teman' and exists (
+			select 1 from friendships f
+			where f.status = 'accepted'
+			  and ((f.requester_id = $1::uuid and f.addressee_id = op.user_id)
+			    or (f.addressee_id = $1::uuid and f.requester_id = op.user_id)))))`
 	if category != "" && category != "semua" {
 		args = append(args, category)
 		where += " and op.category = $" + strconv.Itoa(len(args))
@@ -346,10 +358,11 @@ func (a *API) handleFeedGetPost(w http.ResponseWriter, r *http.Request) {
 func (a *API) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	var req struct {
-		Body     string  `json:"body"`
-		ImageURL *string `json:"image_url"`
-		Category string  `json:"category"`
-		GroupID  *string `json:"group_id"`
+		Body       string  `json:"body"`
+		ImageURL   *string `json:"image_url"`
+		Category   string  `json:"category"`
+		Visibility string  `json:"visibility"`
+		GroupID    *string `json:"group_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "format permintaan tidak valid")
@@ -373,8 +386,18 @@ func (a *API) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "kategori tidak dikenal")
 		return
 	}
-	if req.ImageURL != nil && *req.ImageURL != "" && !strings.Contains(*req.ImageURL, "/uploads/feed/") {
-		writeErr(w, http.StatusBadRequest, "gambar harus diunggah lewat aplikasi")
+	visibility := strings.ToLower(req.Visibility)
+	if visibility == "" {
+		visibility = "publik"
+	}
+	if visibility != "publik" && visibility != "teman" && visibility != "pribadi" {
+		writeErr(w, http.StatusBadRequest, "visibilitas tidak dikenal")
+		return
+	}
+	if req.ImageURL != nil && *req.ImageURL != "" &&
+		!strings.Contains(*req.ImageURL, "/uploads/feed/") &&
+		!strings.HasPrefix(*req.ImageURL, "https://i.ibb.co/") {
+		writeErr(w, http.StatusBadRequest, "media harus diunggah lewat aplikasi")
 		return
 	}
 	ctx := r.Context()
@@ -394,9 +417,9 @@ func (a *API) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	var id string
 	err := a.pool.QueryRow(ctx, `
-		insert into feed_posts (user_id, body, image_url, category, group_id)
-		values ($1::uuid, $2, $3, $4, $5::uuid) returning id`,
-		p.ID, bodyPtr, req.ImageURL, category, req.GroupID).Scan(&id)
+		insert into feed_posts (user_id, body, image_url, category, visibility, group_id)
+		values ($1::uuid, $2, $3, $4, $5, $6::uuid) returning id`,
+		p.ID, bodyPtr, req.ImageURL, category, visibility, req.GroupID).Scan(&id)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "gagal menyimpan postingan")
 		return
@@ -658,57 +681,127 @@ func (a *API) handleFeedCommentDelete(w http.ResponseWriter, r *http.Request) {
 
 // ---------- Unggah & sajikan gambar ----------
 
-var feedFileRe = regexp.MustCompile(`^[a-f0-9]{32}\.(jpg|png|webp)$`)
+var feedFileRe = regexp.MustCompile(`^[a-f0-9]{32}\.(jpg|png|webp|mp4|webm)$`)
 
+// handleFeedUpload menerima gambar atau video postingan.
+// Gambar: bila IMGBB_API_KEY terisi, diunggah ke ImgBB dan URL
+// publiknya yang disimpan (permintaan Rams 2026-11-22); bila ImgBB
+// gagal/tidak terkonfigurasi, disimpan lokal di FeedUploadDir.
+// Video (MP4/WebM, maks 50 MB): selalu lokal — ImgBB khusus gambar.
 func (a *API) handleFeedUpload(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 6<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, 52<<20)
 	file, _, err := r.FormFile("image")
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "berkas gambar wajib dilampirkan (maks 5 MB)")
+		writeErr(w, http.StatusBadRequest, "berkas media wajib dilampirkan")
 		return
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, 5<<20+1))
+	data, err := io.ReadAll(io.LimitReader(file, 50<<20+1))
 	if err != nil || len(data) == 0 {
-		writeErr(w, http.StatusBadRequest, "berkas gambar tidak terbaca")
+		writeErr(w, http.StatusBadRequest, "berkas media tidak terbaca")
 		return
 	}
-	if len(data) > 5<<20 {
-		writeErr(w, http.StatusBadRequest, "gambar maksimal 5 MB")
+	if len(data) > 50<<20 {
+		writeErr(w, http.StatusBadRequest, "media maksimal 50 MB")
 		return
 	}
+	ctype := http.DetectContentType(data)
 	var ext string
-	switch http.DetectContentType(data) {
+	isImage := true
+	switch ctype {
 	case "image/jpeg":
 		ext = ".jpg"
 	case "image/png":
 		ext = ".png"
 	case "image/webp":
 		ext = ".webp"
+	case "video/mp4":
+		ext = ".mp4"
+		isImage = false
+	case "video/webm":
+		ext = ".webm"
+		isImage = false
 	default:
-		writeErr(w, http.StatusBadRequest, "format gambar harus JPG, PNG, atau WebP")
+		writeErr(w, http.StatusBadRequest, "format media harus JPG, PNG, WebP, MP4, atau WebM")
 		return
 	}
-	if err := os.MkdirAll(a.cfg.FeedUploadDir, 0o755); err != nil {
-		writeErr(w, http.StatusInternalServerError, "penyimpanan gambar tidak tersedia")
+	if isImage {
+		if len(data) > 5<<20 {
+			writeErr(w, http.StatusBadRequest, "gambar maksimal 5 MB")
+			return
+		}
+		if a.cfg.ImgBBAPIKey != "" {
+			if url, err := a.uploadImgBB(r.Context(), data); err == nil {
+				writeJSON(w, http.StatusCreated, map[string]any{"url": url})
+				return
+			}
+			// ImgBB gagal → jatuh ke penyimpanan lokal di bawah.
+		}
+	}
+	url, err := a.saveFeedFile(r, data, ext)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "penyimpanan media tidak tersedia")
 		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"url": url})
+}
+
+// uploadImgBB mengunggah gambar ke ImgBB (API 1/upload, base64) dan
+// mengembalikan URL publik gambarnya (i.ibb.co).
+func (a *API) uploadImgBB(ctx context.Context, data []byte) (string, error) {
+	form := url.Values{
+		"key":   {a.cfg.ImgBBAPIKey},
+		"image": {base64.StdEncoding.EncodeToString(data)},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		"https://api.imgbb.com/1/upload", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Data struct {
+			URL string `json:"url"`
+		} `json:"data"`
+		Success bool `json:"success"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || !out.Success || out.Data.URL == "" {
+		return "", errImgBBUpload
+	}
+	return out.Data.URL, nil
+}
+
+var errImgBBUpload = &feedError{"imgbb menolak unggahan"}
+
+type feedError struct{ s string }
+
+func (e *feedError) Error() string { return e.s }
+
+// saveFeedFile menyimpan media ke folder unggahan lokal dan
+// mengembalikan URL publiknya.
+func (a *API) saveFeedFile(r *http.Request, data []byte, ext string) (string, error) {
+	if err := os.MkdirAll(a.cfg.FeedUploadDir, 0o755); err != nil {
+		return "", err
 	}
 	raw := make([]byte, 16)
 	if _, err := rand.Read(raw); err != nil {
-		writeErr(w, http.StatusInternalServerError, "kesalahan server")
-		return
+		return "", err
 	}
 	name := hex.EncodeToString(raw) + ext
 	if err := os.WriteFile(filepath.Join(a.cfg.FeedUploadDir, name), data, 0o644); err != nil {
-		writeErr(w, http.StatusInternalServerError, "gagal menyimpan gambar")
-		return
+		return "", err
 	}
 	proto := r.Header.Get("X-Forwarded-Proto")
 	if proto == "" {
 		proto = "https"
 	}
-	url := proto + "://" + r.Host + "/uploads/feed/" + name
-	writeJSON(w, http.StatusCreated, map[string]any{"url": url})
+	return proto + "://" + r.Host + "/uploads/feed/" + name, nil
 }
 
 // handleFeedFile menyajikan gambar feed secara publik (nama berkas

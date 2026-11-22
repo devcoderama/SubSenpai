@@ -128,6 +128,8 @@ class ApiClient(
         val media = when {
             filename.endsWith(".png", true) -> "image/png"
             filename.endsWith(".webp", true) -> "image/webp"
+            filename.endsWith(".mp4", true) -> "video/mp4"
+            filename.endsWith(".webm", true) -> "video/webm"
             else -> "image/jpeg"
         }.toMediaType()
         suspend fun attempt(snap: XdataSession.Snapshot): Pair<Int, String> {

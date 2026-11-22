@@ -29,6 +29,7 @@ data class FeedPost(
     val body: String?,
     val imageUrl: String?,
     val category: String,
+    val visibility: String,
     val groupId: String?,
     val groupName: String?,
     val likeCount: Int,
@@ -51,6 +52,7 @@ data class FeedPost(
             body = o.optString("body").ifBlank { null },
             imageUrl = o.optString("image_url").ifBlank { null },
             category = o.optString("category", "umum"),
+            visibility = o.optString("visibility", "publik"),
             groupId = o.optString("group_id").ifBlank { null },
             groupName = o.optString("group_name").ifBlank { null },
             likeCount = o.optInt("like_count"),
@@ -117,6 +119,12 @@ data class FeedNotification(
         )
     }
 }
+
+/** True bila lampiran postingan adalah video (dari akhiran URL). */
+val FeedPost.isVideo: Boolean
+    get() = imageUrl?.let {
+        it.endsWith(".mp4", true) || it.endsWith(".webm", true)
+    } == true
 
 /** Waktu RFC3339 dari backend → epoch milidetik (0 bila tak terbaca). */
 fun parseIsoMs(s: String): Long = try {

@@ -44,6 +44,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -68,6 +69,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -79,6 +81,7 @@ import com.subsenpai.data.FeedComment
 import com.subsenpai.data.FeedNotification
 import com.subsenpai.data.FeedPost
 import com.subsenpai.data.GroupItem
+import com.subsenpai.data.isVideo
 import com.subsenpai.data.relativeTimeId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -176,6 +179,61 @@ private fun VerifiedBadge() {
     }
 }
 
+/** Pemutar video sebaris untuk lampiran video postingan (Media3). */
+@Composable
+fun FeedVideoPlayer(url: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val exo = remember(url) {
+        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+            setMediaItem(androidx.media3.common.MediaItem.fromUri(url))
+            prepare()
+        }
+    }
+    DisposableEffect(url) {
+        onDispose { exo.release() }
+    }
+    AndroidView(
+        factory = { ctx ->
+            androidx.media3.ui.PlayerView(ctx).apply {
+                player = exo
+                useController = true
+            }
+        },
+        modifier = modifier,
+    )
+}
+
+/** URL embed pemutar untuk tautan YouTube/TikTok/Instagram/Facebook. */
+fun socialEmbedUrl(url: String): String? {
+    val yt = Regex("""(?:youtube\.com/(?:watch\?v=|shorts/|embed/)|youtu\.be/)([A-Za-z0-9_-]{6,})""", RegexOption.IGNORE_CASE).find(url)
+    if (yt != null) return "https://www.youtube.com/embed/${yt.groupValues[1]}"
+    val tt = Regex("""tiktok\.com/.*/video/(\d+)""", RegexOption.IGNORE_CASE).find(url)
+    if (tt != null) return "https://www.tiktok.com/embed/v2/${tt.groupValues[1]}"
+    val ig = Regex("""instagram\.com/(p|reel)/([A-Za-z0-9_-]+)""", RegexOption.IGNORE_CASE).find(url)
+    if (ig != null) return "https://www.instagram.com/${ig.groupValues[1]}/${ig.groupValues[2]}/embed"
+    if (url.contains("facebook.com/", true) || url.contains("fb.watch/", true)) {
+        return "https://www.facebook.com/plugins/video.php?href=${Uri.encode(url)}&show_text=false"
+    }
+    return null
+}
+
+/** Kotak pemutar embed media sosial di dalam kartu postingan. */
+@Composable
+fun MediaEmbed(embedUrl: String) {
+    AndroidView(
+        factory = { ctx ->
+            android.webkit.WebView(ctx).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                webViewClient = android.webkit.WebViewClient()
+                loadUrl(embedUrl)
+            }
+        },
+        modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+            .aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)),
+    )
+}
+
 /** Baca gambar dari galeri → kompres JPEG maks 1600px agar unggahan ringan. */
 private suspend fun loadCompressedImage(ctx: android.content.Context, uri: Uri): ByteArray? =
     withContext(Dispatchers.IO) {
@@ -230,8 +288,10 @@ fun FeedScreen(
     // Composer
     var draft by remember { mutableStateOf("") }
     var draftCategory by remember { mutableStateOf("umum") }
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
-    var imageBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var draftVisibility by remember { mutableStateOf("publik") }
+    var mediaUri by remember { mutableStateOf<Uri?>(null) }
+    var mediaBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var mediaIsVideo by remember { mutableStateOf(false) }
     var posting by remember { mutableStateOf(false) }
     var postError by remember { mutableStateOf<String?>(null) }
 
@@ -239,8 +299,31 @@ fun FeedScreen(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            imageUri = uri
-            scope.launch { imageBytes = loadCompressedImage(context, uri) }
+            val mime = context.contentResolver.getType(uri) ?: ""
+            mediaUri = uri
+            postError = null
+            if (mime.startsWith("video")) {
+                mediaIsVideo = true
+                scope.launch {
+                    val bytes = withContext(Dispatchers.IO) {
+                        try {
+                            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    if (bytes != null && bytes.size > 50 * 1024 * 1024) {
+                        postError = "Video maksimal 50 MB"
+                        mediaUri = null
+                        mediaBytes = null
+                    } else {
+                        mediaBytes = bytes
+                    }
+                }
+            } else {
+                mediaIsVideo = false
+                scope.launch { mediaBytes = loadCompressedImage(context, uri) }
+            }
         }
     }
 
@@ -502,20 +585,28 @@ fun FeedScreen(
                             ),
                         )
                     }
-                    if (imageUri != null) {
+                    if (mediaUri != null) {
                         Spacer(Modifier.height(10.dp))
                         Box {
-                            AsyncImage(
-                                model = imageUri,
-                                contentDescription = "Lampiran",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
-                                    .clip(RoundedCornerShape(10.dp)),
-                            )
+                            if (mediaIsVideo) {
+                                FeedVideoPlayer(
+                                    mediaUri.toString(),
+                                    Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                                        .clip(RoundedCornerShape(10.dp)),
+                                )
+                            } else {
+                                AsyncImage(
+                                    model = mediaUri,
+                                    contentDescription = "Lampiran",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                                        .clip(RoundedCornerShape(10.dp)),
+                                )
+                            }
                             Box(
                                 modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
                                     .background(Color(0xB3000000), CircleShape)
-                                    .clickable { imageUri = null; imageBytes = null }
+                                    .clickable { mediaUri = null; mediaBytes = null }
                                     .padding(6.dp),
                             ) {
                                 Text("✕", color = Color.White, fontWeight = FontWeight.Bold)
@@ -535,30 +626,36 @@ fun FeedScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         IconButton(onClick = {
-                            picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
                         }) {
-                            Icon(painterResource(R.drawable.ic_image), contentDescription = "Tambah gambar", tint = FeedPurple)
+                            Icon(painterResource(R.drawable.ic_image), contentDescription = "Tambah gambar/video", tint = FeedPurple)
                         }
                         CategoryMenu(selected = draftCategory, onSelect = { draftCategory = it })
+                        VisibilityMenu(selected = draftVisibility, onSelect = { draftVisibility = it })
                         Spacer(Modifier.weight(1f))
                         Button(
-                            enabled = !posting && (draft.isNotBlank() || imageBytes != null) &&
+                            enabled = !posting && (draft.isNotBlank() || mediaBytes != null) &&
                                 (tab != "grup" || groupId != null),
                             onClick = {
                                 posting = true
                                 postError = null
                                 scope.launch {
                                     try {
-                                        val url = imageBytes?.let {
-                                            repo.feedUpload(it, "feed-${System.currentTimeMillis()}.jpg")
+                                        val url = mediaBytes?.let {
+                                            val name = if (mediaIsVideo) {
+                                                "feed-${System.currentTimeMillis()}.mp4"
+                                            } else {
+                                                "feed-${System.currentTimeMillis()}.jpg"
+                                            }
+                                            repo.feedUpload(it, name)
                                         }
                                         val created = repo.feedCreate(
-                                            draft.trim(), url, draftCategory,
+                                            draft.trim(), url, draftCategory, draftVisibility,
                                             if (tab == "grup") groupId else null,
                                         )
                                         draft = ""
-                                        imageUri = null
-                                        imageBytes = null
+                                        mediaUri = null
+                                        mediaBytes = null
                                         if (tab == "teman") {
                                             posts = listOf(created) + posts
                                         } else {
@@ -757,6 +854,32 @@ private fun FilterChip2(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+private val visibilityOptions = listOf(
+    "publik" to "Publik", "teman" to "Teman", "pribadi" to "Pribadi",
+)
+
+@Composable
+private fun VisibilityMenu(selected: String, onSelect: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val label = visibilityOptions.firstOrNull { it.first == selected }?.second ?: "Publik"
+    Box {
+        TextButton(onClick = { open = true }) {
+            Text(label, color = Color(0xFFB3B3B3))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            visibilityOptions.forEach { (value, name) ->
+                DropdownMenuItem(
+                    text = { Text(name) },
+                    onClick = {
+                        onSelect(value)
+                        open = false
+                    },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun CategoryMenu(selected: String, onSelect: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
@@ -842,6 +965,11 @@ fun FeedPostCard(
                         listOfNotNull(
                             relativeTimeId(post.createdAtMs),
                             post.groupName?.let { "Grup $it" } ?: "Teman",
+                            when (post.visibility) {
+                                "teman" -> "Hanya teman"
+                                "pribadi" -> "Pribadi"
+                                else -> "Publik"
+                            },
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF9E9EA7),
@@ -873,14 +1001,28 @@ fun FeedPostCard(
                     modifier = Modifier.padding(top = 10.dp),
                 )
             }
+            val embedUrl = post.body?.let { b ->
+                urlRegex.find(b)?.value?.let { socialEmbedUrl(it) }
+            }
+            if (embedUrl != null) {
+                MediaEmbed(embedUrl)
+            }
             if (post.imageUrl != null) {
-                AsyncImage(
-                    model = post.imageUrl,
-                    contentDescription = "Gambar postingan",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
-                        .aspectRatio(16f / 10f).clip(RoundedCornerShape(12.dp)),
-                )
+                if (post.isVideo) {
+                    FeedVideoPlayer(
+                        post.imageUrl,
+                        Modifier.fillMaxWidth().padding(top = 10.dp)
+                            .aspectRatio(16f / 10f).clip(RoundedCornerShape(12.dp)),
+                    )
+                } else {
+                    AsyncImage(
+                        model = post.imageUrl,
+                        contentDescription = "Gambar postingan",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+                            .aspectRatio(16f / 10f).clip(RoundedCornerShape(12.dp)),
+                    )
+                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
@@ -1185,14 +1327,28 @@ fun CommentsScreen(
                                 modifier = Modifier.padding(top = 8.dp),
                             )
                         }
+                        val headerEmbed = p.body?.let { b ->
+                            urlRegex.find(b)?.value?.let { socialEmbedUrl(it) }
+                        }
+                        if (headerEmbed != null) {
+                            MediaEmbed(headerEmbed)
+                        }
                         if (p.imageUrl != null) {
-                            AsyncImage(
-                                model = p.imageUrl,
-                                contentDescription = "Gambar postingan",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                                    .aspectRatio(16f / 10f).clip(RoundedCornerShape(12.dp)),
-                            )
+                            if (p.isVideo) {
+                                FeedVideoPlayer(
+                                    p.imageUrl,
+                                    Modifier.fillMaxWidth().padding(top = 8.dp)
+                                        .aspectRatio(16f / 10f).clip(RoundedCornerShape(12.dp)),
+                                )
+                            } else {
+                                AsyncImage(
+                                    model = p.imageUrl,
+                                    contentDescription = "Gambar postingan",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                                        .aspectRatio(16f / 10f).clip(RoundedCornerShape(12.dp)),
+                                )
+                            }
                         }
                     }
                 }

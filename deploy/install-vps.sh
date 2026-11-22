@@ -79,6 +79,8 @@ GOPAY_PASSWORD=
 TOKOPAY_MERCHANT_ID=
 TOKOPAY_SECRET_KEY=
 TOKOPAY_API_URL=
+IMGBB_API_KEY=
+FEED_UPLOAD_DIR=
 DONGHUA_ID=https://anichin.moe
 ANIME_ID=https://kuronime.sbs
 FILM=https://hashflix.top
@@ -117,6 +119,10 @@ fi
 say "Membangun binary (server + worker)…"
 (cd "$SRC_DIR/backend" && CGO_ENABLED=0 go build -buildvcs=false -trimpath -o "$APP_DIR/subsenpai-server" ./cmd/server \
   && CGO_ENABLED=0 go build -buildvcs=false -trimpath -o "$APP_DIR/subsenpai-worker" ./cmd/worker)
+# Folder unggahan feed (video + cadangan gambar lokal). Unit API
+# memakai ProtectSystem=strict, jadi folder ini juga didaftarkan di
+# ReadWritePaths unit subsenpai-api.
+mkdir -p "$APP_DIR/uploads/feed"
 chown -R subsenpai:subsenpai "$APP_DIR"
 
 # --- 6. systemd -----------------------------------------------------------

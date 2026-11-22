@@ -38,6 +38,10 @@ type Config struct {
 	// FeedUploadDir: folder penyimpanan gambar postingan feed
 	// komunitas (dilayani publik lewat /uploads/feed/{nama}).
 	FeedUploadDir string
+	// ImgBBAPIKey: kunci API ImgBB untuk menyimpan gambar feed
+	// sebagai URL publik (permintaan Rams 2026-11-22). Kosong =
+	// gambar disimpan lokal di FeedUploadDir.
+	ImgBBAPIKey string
 }
 
 func Load() Config {
@@ -69,6 +73,7 @@ func Load() Config {
 		TokopaySecret:     os.Getenv("TOKOPAY_SECRET_KEY"),
 		TokopayAPIURL:     os.Getenv("TOKOPAY_API_URL"),
 		FeedUploadDir:     getenv("FEED_UPLOAD_DIR", "/opt/subsenpai/uploads/feed"),
+		ImgBBAPIKey:       os.Getenv("IMGBB_API_KEY"),
 	}
 }
 
