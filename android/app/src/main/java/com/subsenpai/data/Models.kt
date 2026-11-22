@@ -72,6 +72,9 @@ data class TitleDetail(
     val synopsis: String?,
     val episodes: List<EpisodeItem>,
     val chapters: List<ChapterItem>,
+    val fetchMode: String = "server",
+    val sourceDomain: String? = null,
+    val sourceUrlTemplate: String? = null,
 ) {
     companion object {
         fun fromJson(o: JSONObject): TitleDetail {
@@ -79,6 +82,9 @@ data class TitleDetail(
             return TitleDetail(
                 card = TitleCard.fromJson(t),
                 synopsis = t.optString("synopsis").ifBlank { null },
+                fetchMode = t.optString("fetch_mode").ifBlank { "server" },
+                sourceDomain = t.optString("source_domain").ifBlank { null },
+                sourceUrlTemplate = t.optString("source_url_template").ifBlank { null },
                 episodes = buildList {
                     val arr = o.optJSONArray("episodes")
                     if (arr != null) for (i in 0 until arr.length()) add(EpisodeItem.fromJson(arr.getJSONObject(i)))
@@ -234,6 +240,36 @@ class CatalogRepository(
             api.post(
                 "/api/v1/history/watch",
                 JSONObject().put("episode_id", episodeId).put("position_sec", positionSec),
+            )
+        } catch (e: Exception) {
+            // Abaikan — progres dicoba lagi pada laporan berikutnya.
+        }
+    }
+
+    /** Lapor progres baca chapter server (Fase 5). */
+    suspend fun reportRead(chapterId: String, lastPage: Int) {
+        if (!isLoggedIn) return
+        try {
+            api.post(
+                "/api/v1/history/read",
+                JSONObject().put("chapter_id", chapterId).put("last_page", lastPage),
+            )
+        } catch (e: Exception) {
+            // Abaikan — progres dicoba lagi pada laporan berikutnya.
+        }
+    }
+
+    /** Lapor progres baca chapter eksternal F39 (diselesaikan di perangkat). */
+    suspend fun reportReadExternal(titleId: String, label: String, no: Double, lastPage: Int) {
+        if (!isLoggedIn) return
+        try {
+            api.post(
+                "/api/v1/history/read",
+                JSONObject()
+                    .put("title_id", titleId)
+                    .put("external_label", label)
+                    .put("external_no", no)
+                    .put("last_page", lastPage),
             )
         } catch (e: Exception) {
             // Abaikan — progres dicoba lagi pada laporan berikutnya.

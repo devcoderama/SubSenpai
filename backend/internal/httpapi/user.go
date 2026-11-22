@@ -195,17 +195,52 @@ func (a *API) handleHistoryReadReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		ChapterID string `json:"chapter_id"`
-		LastPage  int    `json:"last_page"`
+		ChapterID     string   `json:"chapter_id"`
+		TitleID       string   `json:"title_id"`
+		ExternalLabel string   `json:"external_label"`
+		ExternalNo    *float64 `json:"external_no"`
+		LastPage      int      `json:"last_page"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ChapterID == "" {
-		writeErr(w, http.StatusBadRequest, "chapter_id wajib diisi")
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "isi permintaan tidak valid")
 		return
 	}
 	if req.LastPage < 1 {
 		req.LastPage = 1
 	}
 	ctx := r.Context()
+	// Bentuk eksternal (F39): chapter diselesaikan di perangkat user dari
+	// sumber ber-Cloudflare — dicatat per (judul, nomor chapter eksternal).
+	if req.ChapterID == "" && req.TitleID != "" && req.ExternalNo != nil {
+		var existing string
+		err = a.pool.QueryRow(ctx, `
+			select id from read_history
+			where user_id = $1::uuid and viewing_profile_id = $2::uuid
+			  and chapter_id is null and title_id = $3::uuid and external_no = $4`,
+			p.ID, vp, req.TitleID, *req.ExternalNo).Scan(&existing)
+		if err == nil {
+			_, err = a.pool.Exec(ctx, `
+				update read_history set last_page = $2, external_label = $3,
+				       updated_at = now() where id = $1::uuid`,
+				existing, req.LastPage, req.ExternalLabel)
+		} else {
+			_, err = a.pool.Exec(ctx, `
+				insert into read_history
+				  (user_id, viewing_profile_id, title_id, external_label, external_no, last_page)
+				values ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6)`,
+				p.ID, vp, req.TitleID, req.ExternalLabel, *req.ExternalNo, req.LastPage)
+		}
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "judul tidak ditemukan")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"saved": true})
+		return
+	}
+	if req.ChapterID == "" {
+		writeErr(w, http.StatusBadRequest, "chapter_id atau (title_id + external_no) wajib diisi")
+		return
+	}
 	// Satu baris per (user, profil, chapter): perbarui bila sudah ada.
 	var existing string
 	err = a.pool.QueryRow(ctx, `
@@ -240,20 +275,21 @@ func (a *API) handleHistoryReadList(w http.ResponseWriter, r *http.Request) {
 		limit = v
 	}
 	type item struct {
-		ChapterID *string   `json:"chapter_id,omitempty"`
-		TitleID   *string   `json:"title_id,omitempty"`
-		Title     *string   `json:"title,omitempty"`
-		PosterURL *string   `json:"poster_url,omitempty"`
-		ChapterNo *float64  `json:"chapter_no,omitempty"`
-		Label     *string   `json:"external_label,omitempty"`
-		LastPage  int       `json:"last_page"`
-		UpdatedAt time.Time `json:"updated_at"`
+		ChapterID  *string   `json:"chapter_id,omitempty"`
+		TitleID    *string   `json:"title_id,omitempty"`
+		Title      *string   `json:"title,omitempty"`
+		PosterURL  *string   `json:"poster_url,omitempty"`
+		ChapterNo  *float64  `json:"chapter_no,omitempty"`
+		Label      *string   `json:"external_label,omitempty"`
+		ExternalNo *float64  `json:"external_no,omitempty"`
+		LastPage   int       `json:"last_page"`
+		UpdatedAt  time.Time `json:"updated_at"`
 	}
 	items := []item{}
 	rows, err := a.pool.Query(r.Context(), `
 		select rh.chapter_id, coalesce(c.title_id, rh.title_id),
 		       t.title, t.poster_url, c.chapter_no::float8,
-		       rh.external_label, rh.last_page, rh.updated_at
+		       rh.external_label, rh.external_no::float8, rh.last_page, rh.updated_at
 		from read_history rh
 		left join chapters c on c.id = rh.chapter_id
 		left join titles t on t.id = coalesce(c.title_id, rh.title_id)
@@ -264,7 +300,7 @@ func (a *API) handleHistoryReadList(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var it item
 			if err := rows.Scan(&it.ChapterID, &it.TitleID, &it.Title, &it.PosterURL,
-				&it.ChapterNo, &it.Label, &it.LastPage, &it.UpdatedAt); err == nil {
+				&it.ChapterNo, &it.Label, &it.ExternalNo, &it.LastPage, &it.UpdatedAt); err == nil {
 				items = append(items, it)
 			}
 		}

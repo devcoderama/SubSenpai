@@ -37,3 +37,12 @@ insert into chapter_pages (chapter_id, page_no, image_url, light_url) values
   ('43333333-3333-3333-3333-333333333333', 2, 'https://picsum.photos/seed/senpai-page2/800/1200', 'https://picsum.photos/seed/senpai-page2/540/810'),
   ('43333333-3333-3333-3333-333333333333', 3, 'https://picsum.photos/seed/senpai-page3/800/1200', 'https://picsum.photos/seed/senpai-page3/540/810')
 on conflict (chapter_id, page_no) do nothing;
+
+-- Judul sumber perangkat (F39): chapter & halaman diselesaikan aplikasi
+-- dari manhuarmtl.com lewat WebView (lolos Cloudflare di perangkat).
+insert into titles (id, slug, type, title, poster_url, year, status, genres, rating, synopsis, fetch_mode, source_domain, source_url_template)
+values ('88888888-8888-8888-8888-888888888888', 'pedang-fajar-mtl', 'manhua', 'Pedang Fajar (Sumber Perangkat)',
+        'https://picsum.photos/seed/mtl/300/420', 2024, 'ongoing', array['Aksi','Kultivasi'], 4.5,
+        'Fixture F39: daftar chapter diambil aplikasi langsung dari sumber ber-Cloudflare.',
+        'device', 'manhuarmtl.com', 'https://manhuarmtl.com/manga/pedang-fajar/')
+on conflict (id) do nothing;

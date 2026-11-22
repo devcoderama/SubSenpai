@@ -21,6 +21,7 @@ import com.subsenpai.player.PlayerScreen
 import com.subsenpai.ui.ChatListScreen
 import com.subsenpai.ui.ChatRoomScreen
 import com.subsenpai.ui.DetailScreen
+import com.subsenpai.ui.DeviceReaderScreen
 import com.subsenpai.ui.FriendsScreen
 import com.subsenpai.ui.GroupsScreen
 import com.subsenpai.ui.HomeScreen
@@ -117,6 +118,18 @@ class MainActivity : ComponentActivity() {
                                 onRead = { nav.navigate("reader/$it") },
                                 onBack = { nav.popBackStack() },
                                 onNeedLogin = { nav.navigate("login") },
+                                onOpenDeviceSource = { nav.navigate("devicesrc/$it") },
+                            )
+                        }
+                        composable(
+                            "devicesrc/{id}",
+                            arguments = listOf(navArgument("id") { type = NavType.StringType }),
+                        ) { entry ->
+                            DeviceReaderScreen(
+                                repo,
+                                entry.arguments!!.getString("id")!!,
+                                onBack = { nav.popBackStack() },
+                                onNeedLogin = { nav.navigate("login") },
                             )
                         }
                         composable(
@@ -134,9 +147,16 @@ class MainActivity : ComponentActivity() {
                             "reader/{chapterId}",
                             arguments = listOf(navArgument("chapterId") { type = NavType.StringType }),
                         ) { entry ->
-                            ReaderScreen(repo, entry.arguments!!.getString("chapterId")!!) {
-                                nav.popBackStack()
-                            }
+                            ReaderScreen(
+                                repo,
+                                entry.arguments!!.getString("chapterId")!!,
+                                onBack = { nav.popBackStack() },
+                                onOpenChapter = { target ->
+                                    nav.navigate("reader/$target") {
+                                        popUpTo("reader/{chapterId}") { inclusive = true }
+                                    }
+                                },
+                            )
                         }
                     }
                 }

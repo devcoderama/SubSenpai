@@ -52,6 +52,13 @@ class GtxTranslator(private val http: OkHttpClient = OkHttpClient()) {
         }
     }
 
+    /** Terjemahkan satu teks bebas (dipakai OCR balon teks F31 & tombol Terjemahkan). */
+    suspend fun translateText(text: String, targetLang: String): String? =
+        withContext(Dispatchers.IO) {
+            if (text.isBlank()) return@withContext null
+            gtx(text.take(1200), targetLang)
+        }
+
     private fun get(url: String): String? {
         val req = Request.Builder().url(url)
             .header("User-Agent", "Mozilla/5.0 (Android) SubSenpai")

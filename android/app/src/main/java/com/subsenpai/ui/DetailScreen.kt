@@ -39,6 +39,7 @@ fun DetailScreen(
     onRead: (String) -> Unit,
     onBack: () -> Unit,
     onNeedLogin: () -> Unit,
+    onOpenDeviceSource: (String) -> Unit = {},
 ) {
     var detail by remember { mutableStateOf<TitleDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -48,7 +49,12 @@ fun DetailScreen(
 
     LaunchedEffect(titleId) {
         try {
-            detail = repo.titleDetail(titleId)
+            val d = repo.titleDetail(titleId)
+            detail = d
+            com.subsenpai.data.ReaderNav.titleId = titleId
+            com.subsenpai.data.ReaderNav.titleType = d.card.type
+            com.subsenpai.data.ReaderNav.chapters = d.chapters
+            com.subsenpai.data.ReaderNav.detail = d
         } catch (e: Exception) {
             error = e.message
         }
@@ -141,6 +147,23 @@ fun DetailScreen(
                             "Episode ${ep.episodeNo}" + (ep.title?.let { " — $it" } ?: ""),
                             modifier = Modifier.padding(14.dp),
                         )
+                    }
+                }
+            }
+            if (d.fetchMode == "device") {
+                item {
+                    Text("Sumber Perangkat (F39)", style = MaterialTheme.typography.titleMedium)
+                }
+                item {
+                    Text(
+                        "Judul ini diambil langsung dari ${d.sourceDomain ?: "sumbernya"} di perangkatmu " +
+                            "agar lolos perlindungan Cloudflare. Daftar chapter & halaman dimuat dari situs sumber.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                item {
+                    androidx.compose.material3.Button(onClick = { onOpenDeviceSource(titleId) }) {
+                        Text("Buka dari Sumber")
                     }
                 }
             }
