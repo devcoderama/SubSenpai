@@ -98,6 +98,40 @@ const maxPosterPerRun = 40
 // prioritasnya: dari umpan penemuan → peta poster sumber → og:image
 // halaman seri (dibatasi per putaran), dan dilengkapi bertahap untuk
 // judul lama yang belum berposter.
+// PurgePosterless menghapus judul tanpa poster yang sudah melewati
+// masa tenggang, agar putaran penemuan berikutnya memasukkannya
+// kembali dari sumber dengan parser poster terkini (permintaan Rams
+// 2026-11-22: data tanpa URL poster dihapus dulu supaya disinkronkan
+// ulang dan mendapat URL poster). Pengaman agar tidak menggerus
+// katalog: (1) hanya judul yang BISA ditemukan ulang — punya
+// pemetaan title_sources atau mode perangkat; (2) masa tenggang 24
+// jam sejak dibuat, memberi kesempatan pelengkapan poster biasa;
+// (3) maksimal 100 judul per putaran. Episode/aliran/wishlist judul
+// terhapus ikut hilang (cascade) dan terisi lagi oleh SyncSources —
+// urutannya yang berepisode paling sedikit dulu, jadi judul hasil
+// purge justru diprioritaskan.
+func PurgePosterless(ctx context.Context, pool *pgxpool.Pool) error {
+	tag, err := pool.Exec(ctx, `
+		delete from titles t
+		where t.poster_url is null
+		  and t.created_at < now() - interval '24 hours'
+		  and (t.fetch_mode = 'device' or exists (
+		      select 1 from title_sources ts where ts.title_id = t.id))
+		  and t.id in (
+		      select id from titles
+		      where poster_url is null
+		        and created_at < now() - interval '24 hours'
+		      order by created_at
+		      limit 100)`)
+	if err != nil {
+		return err
+	}
+	if n := tag.RowsAffected(); n > 0 {
+		log.Printf("purge poster: %d judul tanpa poster dihapus untuk ditemukan ulang", n)
+	}
+	return nil
+}
+
 func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
 	posters := 0
 	seen := map[string]bool{} // resolver+base yang sudah ditemukan putaran ini
