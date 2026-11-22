@@ -216,7 +216,6 @@ func (a *animestreamResolver) discoverKuroArchive(ctx context.Context, src Sourc
 var (
 	kuroBlockEndRe = regexp.MustCompile(`(?i)</(div|li|tr|td|span|p|h[1-6])>|<br[^>]*>`)
 	kuroGenreARe   = regexp.MustCompile(`(?is)<a\s[^>]*href="[^"]*/genres/[^"]*"[^>]*>([^<]+)</a>`)
-	kuroSynopsisRe = regexp.MustCompile(`(?is)<h2[^>]*>\s*Sinopsis[^<]*</h2>\s*<h3[^>]*>(.*?)</h3>`)
 	kuroArticleRe  = regexp.MustCompile(`(?is)<article[^>]*>(.*)</article>`)
 )
 
@@ -305,18 +304,62 @@ func parseKuroSeriesPage(html string) *SeriesMeta {
 		}
 	}
 	meta.DurationMin = parseDurationMin(fields["durasi"])
-	if m := kuroSynopsisRe.FindStringSubmatch(article); m != nil {
-		syn := cleanText(m[1])
-		syn = strings.TrimSuffix(syn, " Subtitle Indonesia")
-		syn = strings.TrimSuffix(syn, " Sub Indo")
-		if len(syn) > 80 && !IsBoilerplateSynopsis(syn) {
-			if len(syn) > 2000 {
-				syn = syn[:2000]
-			}
-			meta.Synopsis = syn
-		}
-	}
+	meta.Synopsis = kuroSynopsis(article)
 	return meta
+}
+
+var (
+	kuroSynopsisHeadRe = regexp.MustCompile(`(?is)<h2[^>]*>\s*Sinopsis[^<]*</h2>`)
+	kuroH3Re           = regexp.MustCompile(`(?is)<h3[^>]*>(.*?)</h3>`)
+	kuroPRe            = regexp.MustCompile(`(?is)<p[^>]*>(.*?)</p>`)
+	// Ekor sisipan kata kunci yang ditempel situs sesudah sinopsis
+	// asli, mis. "… Fate Apocrypha Subtitle Indonesia,
+	// Fate/Apocrypha Subtitle Indonesia" di akhir teks <h3>.
+	kuroKeywordTailRe = regexp.MustCompile(`(?i)[\s,]+[^\s,][^.,]*?subtitle indonesia\s*$`)
+)
+
+// kuroSynopsis mengambil teks sinopsis dari blok sesudah judul
+// <h2>Sinopsis …</h2>: elemen teks pertama (<h3>, cadangan <p>)
+// dalam jendela sesudahnya — di antara judul dan isi boleh ada
+// markup lain, jadi pola lama yang menuntut <h3> menempel persis
+// sesudah </h2> diganti pencarian berjendela ini. Ekor kata kunci
+// "Subtitle Indonesia" dibuang berulang; hasil harus lolos uji
+// boilerplate dan panjang minimum seperti sebelumnya.
+func kuroSynopsis(article string) string {
+	loc := kuroSynopsisHeadRe.FindStringIndex(article)
+	if loc == nil {
+		return ""
+	}
+	window := article[loc[1]:]
+	if len(window) > 12000 {
+		window = window[:12000]
+	}
+	var raw string
+	if m := kuroH3Re.FindStringSubmatch(window); m != nil {
+		raw = m[1]
+	} else if m := kuroPRe.FindStringSubmatch(window); m != nil {
+		raw = m[1]
+	} else {
+		return ""
+	}
+	syn := cleanText(raw)
+	for {
+		trimmed := kuroKeywordTailRe.ReplaceAllString(syn, "")
+		if trimmed == syn {
+			break
+		}
+		syn = trimmed
+	}
+	syn = strings.TrimSuffix(syn, " Subtitle Indonesia")
+	syn = strings.TrimSuffix(syn, " Sub Indo")
+	syn = strings.TrimSpace(syn)
+	if len(syn) <= 80 || IsBoilerplateSynopsis(syn) {
+		return ""
+	}
+	if len(syn) > 2000 {
+		syn = syn[:2000]
+	}
+	return syn
 }
 
 // seriesInfoKuro adalah SeriesInfo Kuronime: ambil halaman seri
@@ -336,47 +379,106 @@ func (a *animestreamResolver) seriesInfoKuro(ctx context.Context, titleURL strin
 	return meta, nil
 }
 
-var kuroEpHrefRe = regexp.MustCompile(`href="((?:https?://[^"/]+)?/nonton-[^"]*?-episode-(\d+)/?)"`)
+var (
+	// href dalam segala bentuk petik (tema ini terbukti memakai
+	// atribut tanpa petik di tempat lain).
+	kuroHrefRe = regexp.MustCompile(`(?i)href\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))`)
+	// Path episode: /nonton-<slug>-episode-<nomor>/
+	kuroEpPathRe = regexp.MustCompile(`^/nonton-(.+)-episode-(\d+)/?$`)
+)
+
+// kuroNormSlug menormalkan slug untuk pencocokan seri↔episode:
+// huruf kecil, tanpa tanda hubung/garis bawah ("fateapocrypha"
+// seri ↔ "fate-apocrypha" episode harus dianggap sama).
+func kuroNormSlug(s string) string {
+	s = strings.ToLower(s)
+	s = strings.ReplaceAll(s, "-", "")
+	s = strings.ReplaceAll(s, "_", "")
+	return s
+}
+
+// kuroSlugMatch: slug episode cocok dengan slug seri bila sesudah
+// normalisasi keduanya sama, atau yang satu awalan yang lain
+// (seri "one-piece-op" ↔ episode "one-piece").
+func kuroSlugMatch(seriesSlug, epSlug string) bool {
+	a, b := kuroNormSlug(seriesSlug), kuroNormSlug(epSlug)
+	if a == "" || b == "" {
+		return false
+	}
+	return a == b || strings.HasPrefix(a, b) || strings.HasPrefix(b, a)
+}
 
 // parseKuroEpisodes mengurai daftar episode dari HTML halaman
-// seri Kuronime: di dalam <article>, sesudah penanda
-// "<h4>Episode", kumpulkan tautan /nonton-…-episode-N/ (tiap
-// episode tertaut dua kali — "Episode N" dan "Nonton" — dengan
-// href sama; dedupe per nomor). Slug episode tidak harus sama
-// dengan slug seri, jadi tidak ada syarat awalan seperti
-// parseEplister donghua; penjaganya adalah pembatasan wilayah
-// article + penanda Episode agar episode seri lain dari widget
-// bilah sisi tidak tertangkap.
+// seri Kuronime. Pelajaran dari halaman nyata (Fate/Apocrypha,
+// terverifikasi 2026-11-22): daftar episode TIDAK selalu berada
+// di dalam <article> dan slug episode bisa berbeda dari slug
+// seri, jadi pola lama (wilayah article + href berpetik dua)
+// menghasilkan 0 episode. Pola baru: kumpulkan SEMUA tautan
+// /nonton-<slug>-episode-N/ dari seluruh halaman (href segala
+// bentuk petik), kelompokkan per slug episode, lalu pilih
+// kelompok terbesar yang slug-nya cocok dengan slug seri —
+// episode seri lain dari widget bilah sisi tersaring oleh
+// pengelompokan itu (jebakan yang sama seperti eplister
+// donghua). Tiap episode tertaut dua kali ("Episode N" dan
+// "Nonton", href sama) — dedupe per nomor.
 func parseKuroEpisodes(html, pageURL string) []EpisodeRef {
 	base, err := url.Parse(pageURL)
 	if err != nil {
 		return nil
 	}
-	seg := kuroArticle(html)
-	if i := strings.Index(seg, "<h4>Episode"); i >= 0 {
-		seg = seg[i:]
+	seriesSlug := ""
+	if segs := strings.Split(strings.Trim(base.Path, "/"), "/"); len(segs) > 0 {
+		seriesSlug = segs[len(segs)-1]
 	}
-	byNo := map[int]EpisodeRef{}
-	for _, m := range kuroEpHrefRe.FindAllStringSubmatch(seg, -1) {
-		n, err := strconv.Atoi(m[2])
-		if err != nil || n <= 0 {
+	groups := map[string]map[int]EpisodeRef{}
+	for _, m := range kuroHrefRe.FindAllStringSubmatch(html, -1) {
+		href := m[1]
+		if href == "" {
+			href = m[2]
+		}
+		if href == "" {
+			href = m[3]
+		}
+		if href == "" {
 			continue
 		}
-		if _, dup := byNo[n]; dup {
-			continue
-		}
-		ref, err := url.Parse(m[1])
+		ref, err := url.Parse(href)
 		if err != nil {
 			continue
 		}
-		byNo[n] = EpisodeRef{
-			Number: n,
-			Title:  fmt.Sprintf("Episode %d", n),
-			URL:    base.ResolveReference(ref).String(),
+		pm := kuroEpPathRe.FindStringSubmatch(ref.Path)
+		if pm == nil {
+			continue
+		}
+		n, err := strconv.Atoi(pm[2])
+		if err != nil || n <= 0 {
+			continue
+		}
+		slug := pm[1]
+		g, ok := groups[slug]
+		if !ok {
+			g = map[int]EpisodeRef{}
+			groups[slug] = g
+		}
+		if _, dup := g[n]; !dup {
+			g[n] = EpisodeRef{
+				Number: n,
+				Title:  fmt.Sprintf("Episode %d", n),
+				URL:    base.ResolveReference(ref).String(),
+			}
 		}
 	}
-	out := make([]EpisodeRef, 0, len(byNo))
-	for _, e := range byNo {
+	var best map[int]EpisodeRef
+	for slug, g := range groups {
+		if kuroSlugMatch(seriesSlug, slug) && (best == nil || len(g) > len(best)) {
+			best = g
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	out := make([]EpisodeRef, 0, len(best))
+	for _, e := range best {
 		out = append(out, e)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })

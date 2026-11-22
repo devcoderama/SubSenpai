@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -129,6 +130,61 @@ func TestParseKuroEpisodes(t *testing.T) {
 	}
 	if eps[2].URL != "https://kuronime.sbs/nonton-one-piece-episode-1180/" {
 		t.Errorf("URL episode 1180 = %q", eps[2].URL)
+	}
+}
+
+// Halaman nyata Fate/Apocrypha (terverifikasi via browser
+// 2026-11-22): slug seri "fateapocrypha" TANPA tanda hubung,
+// slug episode "fate-apocrypha" DENGAN tanda hubung; daftar
+// episode berada di luar <article>; sinopsis diakhiri sisipan
+// kata kunci "Subtitle Indonesia" berulang.
+const kuroFateFixture = `<html><body>
+<article id="post-151" class="post-151 hentry">
+<h1 class="entry-title">Fate/Apocrypha</h1>
+<div class="info-content">
+<div class="spe"><span>Judul: Fate/Apocrypha</span></div>
+<div class="spe"><span>Genre: Action, Drama, Fantasy</span></div>
+<div class="spe"><span>Studio: A-1 Pictures</span></div>
+<div class="spe"><span>Durasi: 23 min. per ep.</span></div>
+</div>
+<h2>Sinopsis Fate/Apocrypha Sub Indo</h2>
+<div class="desc"><div class="entry-content">
+<h3>Pada dahulu kala, di kota Fuyuki pernah diadakan sebuah ritual kuno yang bernama Perang Cawan Suci yang melibatkan tujuh master dan tujuh roh pahlawan. Akan tetapi, ketika perang kedua berlangsung, situasi berubah menjadi pertempuran besar yang melibatkan banyak pihak dari berbagai faksi. Fate Apocrypha Subtitle Indonesia, Fate/Apocrypha Subtitle Indonesia</h3>
+</div></div>
+</article>
+<div class="bixbox"><h4>Episode Fate/Apocrypha</h4><ul>
+<li><a href="https://kuronime.sbs/nonton-fate-apocrypha-episode-25/">Episode 25 END</a> <a href="https://kuronime.sbs/nonton-fate-apocrypha-episode-25/">Nonton</a></li>
+<li><a href='https://kuronime.sbs/nonton-fate-apocrypha-episode-1/'>Episode 1</a></li>
+</ul></div>
+<div class="widget"><ul>
+<li><a href="https://kuronime.sbs/nonton-dreamland-episode-6/">Dreamland Episode 6</a></li>
+<li><a href="https://kuronime.sbs/nonton-one-piece-episode-1180/">One Piece Episode 1180</a></li>
+</ul></div>
+</body></html>`
+
+func TestParseKuroSeriesPageFate(t *testing.T) {
+	meta := parseKuroSeriesPage(kuroFateFixture)
+	if meta.Studio != "A-1 Pictures" {
+		t.Errorf("studio = %q", meta.Studio)
+	}
+	if !strings.Contains(meta.Synopsis, "Perang Cawan Suci") {
+		t.Errorf("sinopsis tidak terbaca: %q", meta.Synopsis)
+	}
+	if strings.Contains(meta.Synopsis, "Subtitle Indonesia") {
+		t.Errorf("ekor kata kunci harus dibuang: …%q", meta.Synopsis)
+	}
+}
+
+func TestParseKuroEpisodesFate(t *testing.T) {
+	eps := parseKuroEpisodes(kuroFateFixture, "https://kuronime.sbs/anime/fateapocrypha/")
+	if len(eps) != 2 {
+		t.Fatalf("episode terbaca = %d, mau 2 (slug beda tanda hubung + di luar article + widget seri lain tersaring): %+v", len(eps), eps)
+	}
+	if eps[0].Number != 1 || eps[1].Number != 25 {
+		t.Errorf("nomor episode salah: %+v", eps)
+	}
+	if eps[1].URL != "https://kuronime.sbs/nonton-fate-apocrypha-episode-25/" {
+		t.Errorf("URL episode 25 = %q", eps[1].URL)
 	}
 }
 
