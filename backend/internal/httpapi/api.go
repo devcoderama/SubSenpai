@@ -90,9 +90,12 @@ func (a *API) Router() http.Handler {
 		r.With(a.authn.Optional).Get("/api/v1/chapters/{id}", a.handleChapter)
 		r.With(middleware.RateLimit(30)).Post("/api/v1/auth/google", a.handleGoogleLogin)
 		r.Get("/api/v1/plans", a.handlePlans)
+		r.Get("/api/v1/payment-methods", a.handlePaymentMethods)
 		// Endpoint khusus user login (Fase 3–4).
 		r.Group(func(r chi.Router) {
 			r.Use(a.authn.Require)
+			r.Get("/api/v1/admin/payment-methods", a.handleAdminPaymentMethods)
+			r.Patch("/api/v1/admin/payment-methods/{code}", a.handleAdminPaymentMethodUpdate)
 			r.Get("/api/v1/me", a.handleMe)
 			r.Get("/api/v1/watchlist", a.handleWatchlistList)
 			r.Get("/api/v1/watchlist/{titleId}", a.handleWatchlistCheck)

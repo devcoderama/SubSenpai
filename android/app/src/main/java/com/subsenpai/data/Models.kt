@@ -299,6 +299,23 @@ class CatalogRepository(
         }
     }
 
+    /** Metode pembayaran aktif dari database (diatur admin). */
+    suspend fun paymentMethods(): List<PaymentMethodItem> {
+        val o = api.get("/api/v1/payment-methods")
+        return buildList {
+            val arr = o.optJSONArray("methods")
+            if (arr != null) for (i in 0 until arr.length()) {
+                val m = arr.getJSONObject(i)
+                add(
+                    PaymentMethodItem(
+                        m.getString("code"), m.optString("name", m.getString("code")),
+                        m.optString("group"), m.optString("icon_url"),
+                    ),
+                )
+            }
+        }
+    }
+
     suspend fun premiumStatus(): PremiumStatus {
         val o = api.get("/api/v1/premium/status")
         return PremiumStatus(

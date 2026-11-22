@@ -10,7 +10,6 @@ import (
 
 	"subsenpai/backend/internal/auth"
 	"subsenpai/backend/internal/billing"
-	"subsenpai/backend/internal/payments"
 )
 
 // handlePlans: daftar paket premium (publik) — dari database
@@ -112,8 +111,8 @@ func (a *API) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		if req.Channel == "" {
 			req.Channel = "QRIS"
 		}
-		if _, ok := payments.TokopayChannels[req.Channel]; !ok {
-			writeErr(w, http.StatusBadRequest, "channel Tokopay tidak dikenal")
+		if !a.tokopayChannelActive(r.Context(), req.Channel) {
+			writeErr(w, http.StatusBadRequest, "channel Tokopay tidak dikenal atau sedang nonaktif")
 			return
 		}
 	case "midtrans":

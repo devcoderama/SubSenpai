@@ -55,6 +55,9 @@ data class WatchHistoryItem(
 
 data class PlanItem(val id: String, val days: Int, val price: Int, val label: String)
 
+/** Metode pembayaran Tokopay dari database (migrasi 0015). */
+data class PaymentMethodItem(val code: String, val name: String, val group: String, val iconUrl: String)
+
 data class PremiumStatus(
     val tier: String,
     val isPremium: Boolean,
