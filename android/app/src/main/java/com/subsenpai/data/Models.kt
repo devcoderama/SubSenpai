@@ -505,13 +505,14 @@ class CatalogRepository(
     suspend fun feedPost(id: String): FeedPost =
         FeedPost.fromJson(api.get("/api/v1/feed/posts/$id").getJSONObject("post"))
 
-    suspend fun feedCreate(body: String, imageUrl: String?, category: String, visibility: String, groupId: String?): FeedPost {
+    suspend fun feedCreate(body: String, imageUrl: String?, category: String, visibility: String, groupId: String?, titleId: String? = null): FeedPost {
         val req = org.json.JSONObject()
             .put("body", body)
             .put("category", category)
             .put("visibility", visibility)
         if (imageUrl != null) req.put("image_url", imageUrl)
         if (groupId != null) req.put("group_id", groupId)
+        if (titleId != null) req.put("title_id", titleId)
         return FeedPost.fromJson(api.post("/api/v1/feed/posts", req).getJSONObject("post"))
     }
 

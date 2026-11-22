@@ -16,6 +16,7 @@ class PendingPost(
     val groupId: String?,
     val mediaBytes: ByteArray?,
     val isVideo: Boolean,
+    val titleId: String? = null,
 )
 
 /** Muatan "Bagikan ke Post" dari halaman Detail/Player. */
@@ -23,6 +24,7 @@ class SharePrefill(
     val text: String,
     val posterUrl: String?,
     val category: String,
+    val titleId: String? = null,
 )
 
 /**
@@ -105,7 +107,7 @@ object FeedUploadManager {
                         repo.feedUpload(bytes, "feed-${System.currentTimeMillis()}.jpg")
                     }
                 }
-                repo.feedCreate(next.body, url, next.category, next.visibility, next.groupId)
+                repo.feedCreate(next.body, url, next.category, next.visibility, next.groupId, next.titleId)
                 lastFailed = null
                 _state.value = FeedUploadState.Done
             } catch (e: Exception) {

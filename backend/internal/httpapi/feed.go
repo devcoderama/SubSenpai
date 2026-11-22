@@ -57,6 +57,7 @@ type feedPost struct {
 	Visibility   string     `json:"visibility"`
 	GroupID      *string    `json:"group_id,omitempty"`
 	GroupName    *string    `json:"group_name,omitempty"`
+	TitleID      *string    `json:"title_id,omitempty"`
 	LikeCount    int        `json:"like_count"`
 	CommentCount int        `json:"comment_count"`
 	RepostCount  int        `json:"repost_count"`
@@ -84,7 +85,8 @@ const feedPostCols = `
 	(select count(*) from feed_posts x where x.repost_of_id = op.id and x.deleted_at is null),
 	exists(select 1 from feed_post_likes l where l.post_id = op.id and l.user_id = $ME),
 	exists(select 1 from feed_bookmarks b where b.post_id = op.id and b.user_id = $ME),
-	exists(select 1 from feed_posts x where x.repost_of_id = op.id and x.user_id = $ME and x.deleted_at is null)`
+	exists(select 1 from feed_posts x where x.repost_of_id = op.id and x.user_id = $ME and x.deleted_at is null),
+	op.title_id`
 
 const feedPostJoins = ` from feed_posts fp
 	join feed_posts op on op.id = coalesce(fp.repost_of_id, fp.id)
@@ -107,6 +109,7 @@ func scanFeedPost(rows interface {
 		&authorID, &p.Author.DisplayName, &p.Author.AvatarURL, &p.Author.IsPremium,
 		&rowAuthorID, &isRepost, &rpName, &rpAvatar, &rpPremium,
 		&p.LikeCount, &p.CommentCount, &p.RepostCount, &p.Liked, &p.Bookmarked, &p.Reposted,
+		&p.TitleID,
 	)
 	p.Author.ID = authorID
 	p.Mine = rowAuthorID == me
@@ -366,6 +369,7 @@ func (a *API) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 		Category   string  `json:"category"`
 		Visibility string  `json:"visibility"`
 		GroupID    *string `json:"group_id"`
+		TitleID    *string `json:"title_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "format permintaan tidak valid")
@@ -405,6 +409,15 @@ func (a *API) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	if req.TitleID != nil {
+		var exists bool
+		err := a.pool.QueryRow(ctx, `
+			select exists(select 1 from titles where id = $1::uuid)`, *req.TitleID).Scan(&exists)
+		if err != nil || !exists {
+			writeErr(w, http.StatusBadRequest, "judul tidak ditemukan")
+			return
+		}
+	}
 	if req.GroupID != nil {
 		var member bool
 		err := a.pool.QueryRow(ctx, `
@@ -421,9 +434,9 @@ func (a *API) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	var id string
 	err := a.pool.QueryRow(ctx, `
-		insert into feed_posts (user_id, body, image_url, category, visibility, group_id)
-		values ($1::uuid, $2, $3, $4, $5, $6::uuid) returning id`,
-		p.ID, bodyPtr, req.ImageURL, category, visibility, req.GroupID).Scan(&id)
+		insert into feed_posts (user_id, body, image_url, category, visibility, group_id, title_id)
+		values ($1::uuid, $2, $3, $4, $5, $6::uuid, $7::uuid) returning id`,
+		p.ID, bodyPtr, req.ImageURL, category, visibility, req.GroupID, req.TitleID).Scan(&id)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "gagal menyimpan postingan")
 		return

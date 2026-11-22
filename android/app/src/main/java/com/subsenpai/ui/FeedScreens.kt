@@ -53,14 +53,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -237,6 +243,12 @@ fun MediaEmbed(embedUrl: String) {
         embedUrl.contains("facebook.com") -> "https://www.facebook.com/"
         else -> "https://www.youtube.com/"
     }
+    // Tampilkan sedekat mungkin dengan ukuran asli kontennya:
+    // TikTok & Instagram umumnya vertikal, YouTube/Facebook 16:9.
+    val aspect = when {
+        embedUrl.contains("tiktok.com") || embedUrl.contains("instagram.com") -> 4f / 5f
+        else -> 16f / 9f
+    }
     AndroidView(
         factory = { ctx ->
             android.webkit.WebView(ctx).apply {
@@ -253,7 +265,7 @@ fun MediaEmbed(embedUrl: String) {
             }
         },
         modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
-            .aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)),
+            .aspectRatio(aspect).clip(RoundedCornerShape(12.dp)),
     )
 }
 
@@ -314,6 +326,7 @@ fun FeedScreen(
     onOpenComments: (String) -> Unit,
     onOpenNotifications: () -> Unit,
     onBack: () -> Unit,
+    onOpenTitle: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -337,6 +350,8 @@ fun FeedScreen(
     var draft by remember { mutableStateOf("") }
     var draftCategory by remember { mutableStateOf("umum") }
     var draftVisibility by remember { mutableStateOf("publik") }
+    var draftTitleId by remember { mutableStateOf<String?>(null) }
+    var viewerUrl by remember { mutableStateOf<String?>(null) }
     var mediaUri by remember { mutableStateOf<Uri?>(null) }
     var mediaBytes by remember { mutableStateOf<ByteArray?>(null) }
     var mediaIsVideo by remember { mutableStateOf(false) }
@@ -570,6 +585,7 @@ fun FeedScreen(
         val p = sharePrefill ?: return@LaunchedEffect
         draft = p.text
         draftCategory = p.category
+        draftTitleId = p.titleId
         if (p.posterUrl != null) {
             mediaUri = Uri.parse(p.posterUrl)
             mediaIsVideo = false
@@ -735,11 +751,13 @@ fun FeedScreen(
                                         groupId = if (tab == "grup") groupId else null,
                                         mediaBytes = mediaBytes,
                                         isVideo = mediaIsVideo,
+                                        titleId = draftTitleId,
                                     ),
                                 )
                                 draft = ""
                                 mediaUri = null
                                 mediaBytes = null
+                                draftTitleId = null
                                 postError = null
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = FeedPurple),
@@ -905,6 +923,8 @@ fun FeedScreen(
                 },
                 onHide = { hiddenIds = hiddenIds + post.id },
                 onResolveUrl = { repo.resolveUrl(it) },
+                onOpenTitle = onOpenTitle,
+                onImageClick = { viewerUrl = it },
             )
         }
         if (loadingMore) {
@@ -929,6 +949,49 @@ fun FeedScreen(
             contentAlignment = Alignment.Center,
         ) {
             Icon(painterResource(R.drawable.ic_edit), contentDescription = "Buat postingan", tint = Color.White)
+        }
+        if (viewerUrl != null) {
+            FullImageViewer(url = viewerUrl!!, onDismiss = { viewerUrl = null })
+        }
+    }
+}
+
+/** Penampil gambar layar penuh ala Facebook: cubit untuk memperbesar. */
+@Composable
+fun FullImageViewer(url: String, onDismiss: () -> Unit) {
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black)
+                .clickable { if (scale <= 1f) onDismiss() },
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = url,
+                contentDescription = "Gambar ukuran penuh",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = scale, scaleY = scale,
+                        translationX = offset.x, translationY = offset.y,
+                    )
+                    .pointerInput(url) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(1f, 5f)
+                            offset = if (scale > 1f) offset + pan else Offset.Zero
+                        }
+                    },
+            )
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+            ) {
+                Text("✕", color = Color.White, style = MaterialTheme.typography.titleLarge)
+            }
         }
     }
 }
@@ -1037,6 +1100,8 @@ fun FeedPostCard(
     onDelete: () -> Unit,
     onHide: () -> Unit,
     onResolveUrl: suspend (String) -> String?,
+    onOpenTitle: (String) -> Unit,
+    onImageClick: (String) -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var inlineText by remember(post.id) { mutableStateOf("") }
@@ -1140,7 +1205,45 @@ fun FeedPostCard(
                         contentDescription = "Gambar postingan",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
-                            .aspectRatio(16f / 10f).clip(RoundedCornerShape(12.dp)),
+                            .aspectRatio(16f / 10f).clip(RoundedCornerShape(12.dp))
+                            .clickable { onImageClick(post.imageUrl) },
+                    )
+                }
+            }
+            if (post.titleId != null) {
+                // Postingan hasil "Bagikan ke Post": judulnya bisa
+                // diklik menuju halaman detail untuk langsung ditonton.
+                val sharedTitle = post.body
+                    ?.takeIf { it.startsWith("🎬 Lagi nonton ") }
+                    ?.removePrefix("🎬 Lagi nonton ")
+                    ?.substringBefore(" (")
+                    ?.substringBefore(" — ")
+                    ?.trim()
+                Row(
+                    modifier = Modifier.padding(top = 10.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(FeedPurple.copy(alpha = 0.16f))
+                        .clickable { onOpenTitle(post.titleId) }
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_play),
+                        contentDescription = null,
+                        tint = FeedPurple,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (sharedTitle.isNullOrBlank()) {
+                            "Buka judul ini — langsung tonton"
+                        } else {
+                            "$sharedTitle — tonton sekarang"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                        maxLines = 1,
                     )
                 }
             }
@@ -1354,6 +1457,7 @@ fun CommentsScreen(
     repo: CatalogRepository,
     postId: String,
     onBack: () -> Unit,
+    onOpenTitle: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1367,6 +1471,7 @@ fun CommentsScreen(
     var input by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<FeedComment?>(null) }
     var sending by remember { mutableStateOf(false) }
+    var viewerUrl by remember { mutableStateOf<String?>(null) }
 
     suspend fun reload() {
         try {
@@ -1406,6 +1511,9 @@ fun CommentsScreen(
                 Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Kembali", tint = Color.White)
             }
             Text("Komentar", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
+        if (viewerUrl != null) {
+            FullImageViewer(url = viewerUrl!!, onDismiss = { viewerUrl = null })
         }
         if (loading) {
             Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -1463,7 +1571,32 @@ fun CommentsScreen(
                                     contentDescription = "Gambar postingan",
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                                        .aspectRatio(16f / 10f).clip(RoundedCornerShape(12.dp)),
+                                        .aspectRatio(16f / 10f).clip(RoundedCornerShape(12.dp))
+                                        .clickable { viewerUrl = p.imageUrl },
+                                )
+                            }
+                        }
+                        if (p.titleId != null) {
+                            Row(
+                                modifier = Modifier.padding(top = 10.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(FeedPurple.copy(alpha = 0.16f))
+                                    .clickable { onOpenTitle(p.titleId) }
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_play),
+                                    contentDescription = null,
+                                    tint = FeedPurple,
+                                    modifier = Modifier.size(15.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Buka judul ini — langsung tonton",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White,
                                 )
                             }
                         }

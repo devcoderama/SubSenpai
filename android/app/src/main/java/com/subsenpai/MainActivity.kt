@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
                         com.subsenpai.data.SharePrefill(
                             text = text,
                             posterUrl = d.card.posterUrl,
+                            titleId = d.card.id,
                             category = when (d.card.type) {
                                 "anime", "donghua", "film" -> d.card.type
                                 else -> "umum"
@@ -178,6 +179,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenComments = { postId -> nav.navigate("comments/$postId") },
                                 onOpenNotifications = { nav.navigate("feednotif") },
                                 onBack = { nav.popBackStack() },
+                                onOpenTitle = { nav.navigate("detail/$it") },
                             )
                         }
                         composable(
@@ -188,6 +190,7 @@ class MainActivity : ComponentActivity() {
                                 repo,
                                 postId = backStack.arguments?.getString("postId") ?: "",
                                 onBack = { nav.popBackStack() },
+                                onOpenTitle = { nav.navigate("detail/$it") },
                             )
                         }
                         composable("feednotif") {
