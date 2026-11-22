@@ -77,11 +77,18 @@ type Resolver interface {
 }
 
 // DiscoveredTitle adalah satu judul hasil penemuan katalog dari situs
-// sumber: nama + slug + URL halaman judulnya.
+// sumber: nama + slug + URL halaman judulnya, plus metadata yang
+// kebetulan disediakan sumber (poster, jenis, tahun, genre, status
+// tamat) — kosong bila sumber tidak menyediakannya.
 type DiscoveredTitle struct {
-	Title string
-	Slug  string
-	URL   string
+	Title     string
+	Slug      string
+	URL       string
+	Type      string // manga|manhua|manhwa|... — kosong = ikuti jenis sumber
+	Poster    string
+	Year      int
+	Genres    []string
+	Completed bool
 }
 
 // Discoverer adalah kemampuan opsional resolver: menemukan judul-judul
@@ -89,6 +96,24 @@ type DiscoveredTitle struct {
 // Search yang mencari satu judul tertentu yang sudah dikenal namanya.
 type Discoverer interface {
 	Discover(ctx context.Context, src Source, limit int) ([]DiscoveredTitle, error)
+}
+
+// PosterProvider adalah kemampuan opsional resolver: menyediakan peta
+// poster massal (kunci judul ternormalisasi → URL poster) dari halaman
+// daftar sumber, untuk melengkapi judul yang belum berposter tanpa
+// mengambil satu halaman per judul.
+type PosterProvider interface {
+	Posters(ctx context.Context, src Source) (map[string]string, error)
+}
+
+var nonAlnumSpaceRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// NormalizeTitleKey menormalisasi judul untuk pencocokan poster antar
+// sumber: huruf kecil, hanya a-z0-9, spasi tunggal.
+func NormalizeTitleKey(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = nonAlnumSpaceRe.ReplaceAllString(s, " ")
+	return strings.Join(strings.Fields(s), " ")
 }
 
 var ogImageRe = regexp.MustCompile(`(?is)<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']|<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']`)
@@ -124,6 +149,7 @@ func init() {
 	register(NewKuronime())
 	register(NewAnichin())
 	register(NewHiAnime())
+	register(NewManhuarmtl())
 	register(NewGeneric())
 }
 

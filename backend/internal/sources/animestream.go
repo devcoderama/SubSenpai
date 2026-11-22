@@ -122,6 +122,74 @@ func (a *animestreamResolver) Discover(ctx context.Context, src Source, limit in
 	return out, nil
 }
 
+var (
+	tsImgRe  = regexp.MustCompile(`(?is)<img[^>]+class="[^"]*ts-post-image[^"]*"[^>]*>`)
+	epTitleRe = regexp.MustCompile(`(?i)\s+Episode\s+\d+.*$`)
+)
+
+// attr mengambil nilai atribut dari satu tag HTML ("" bila tidak ada).
+// Nama atribut harus didahului spasi agar "src" tidak tertukar dengan
+// "data-src".
+func attr(tag, name string) string {
+	m := regexp.MustCompile(`(?i)\s` + name + `="([^"]*)"`).FindStringSubmatch(tag)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+// parsePosterMap mengurai halaman daftar Animestream menjadi peta
+// poster: tiap kartu episode membawa gambar poster serinya dengan
+// title "<Seri> Episode <n> Subtitle Indonesia" — sufiks episode
+// dibuang, kunci dinormalisasi, URL relatif dibuat absolut ke mirror.
+func parsePosterMap(page, mirrorBase string) map[string]string {
+	out := map[string]string{}
+	for _, tag := range tsImgRe.FindAllString(page, -1) {
+		img := attr(tag, "src")
+		if img == "" || strings.HasPrefix(img, "data:") {
+			img = attr(tag, "data-src")
+		}
+		name := attr(tag, "title")
+		if name == "" {
+			name = attr(tag, "alt")
+		}
+		name = strings.TrimSuffix(epTitleRe.ReplaceAllString(cleanText(name), ""), " Subtitle Indonesia")
+		if img == "" || name == "" {
+			continue
+		}
+		if strings.HasPrefix(img, "/") {
+			img = mirrorBase + img
+		}
+		out[NormalizeTitleKey(name)] = img
+	}
+	return out
+}
+
+// Posters menyediakan peta poster massal khusus Anichin: halaman HTML
+// anichin.my tidak bisa diandalkan dari server (WAF), tetapi mirror
+// resminya anichin.moe menyajikan kartu episode lengkap dengan poster
+// seri — tiga halaman daftar terbaru cukup untuk judul-judul aktif.
+func (a *animestreamResolver) Posters(ctx context.Context, src Source) (map[string]string, error) {
+	if a.key != "anichin" {
+		return nil, fmt.Errorf("peta poster hanya tersedia untuk anichin")
+	}
+	const mirror = "https://anichin.moe"
+	out := map[string]string{}
+	for _, u := range []string{mirror + "/", mirror + "/page/2/", mirror + "/page/3/"} {
+		page, err := Fetch(ctx, u)
+		if err != nil {
+			continue
+		}
+		for k, v := range parsePosterMap(page, mirror) {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("tidak ada poster terbaca dari %s", mirror)
+	}
+	return out, nil
+}
+
 var epSlugRe = regexp.MustCompile(`(?i)-episode-(\d+)`)
 
 type wpCategory struct {

@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"log"
+	"net/url"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -45,12 +46,27 @@ func CheckSources(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 func loadSources(ctx context.Context, pool *pgxpool.Pool, contentType string) ([]sources.Source, error) {
+	return loadSourcesMode(ctx, pool, contentType, true)
+}
+
+// loadDiscoverySources memuat sumber untuk penemuan katalog: semua
+// sumber aktif ber-URL, termasuk sumber mode perangkat (komik F39)
+// yang judulnya tetap didaftarkan ke katalog server.
+func loadDiscoverySources(ctx context.Context, pool *pgxpool.Pool, contentType string) ([]sources.Source, error) {
+	return loadSourcesMode(ctx, pool, contentType, false)
+}
+
+func loadSourcesMode(ctx context.Context, pool *pgxpool.Pool, contentType string, serverOnly bool) ([]sources.Source, error) {
+	modeFilter := ""
+	if serverOnly {
+		modeFilter = " and fetch_mode = 'server'"
+	}
 	rows, err := pool.Query(ctx, `
 		select id, name, content_type, lang, coalesce(base_url,''), resolver,
 		       fetch_mode, subtitle_kind, priority
 		from content_sources
-		where is_active and fetch_mode = 'server' and base_url is not null
-		  and content_type = $1
+		where is_active and base_url is not null
+		  and content_type = $1`+modeFilter+`
 		order by priority, name`, contentType)
 	if err != nil {
 		return nil, err
@@ -67,24 +83,35 @@ func loadSources(ctx context.Context, pool *pgxpool.Pool, contentType string) ([
 	return out, rows.Err()
 }
 
-// maxPosterPerRun membatasi pengambilan poster (satu permintaan HTTP per
-// judul) per putaran penemuan agar worker tidak membanjiri situs sumber.
+// maxPosterPerRun membatasi pengambilan poster og:image (satu
+// permintaan HTTP per judul) per putaran penemuan agar worker tidak
+// membanjiri situs sumber. Poster dari umpan/peta sumber tidak dihitung
+// (tidak menambah permintaan per judul).
 const maxPosterPerRun = 40
 
 // DiscoverTitles mengisi katalog dari indeks judul situs sumber (F40):
-// untuk tiap sumber server yang resolvernya mendukung penemuan, judul
-// yang belum ada dimasukkan ke titles + langsung dipetakan di
-// title_sources (episode & aliran menyusul lewat SyncSources). Poster
-// diambil dari og:image halaman seri, dibatasi per putaran, dan
-// dilengkapi bertahap untuk judul lama yang belum berposter.
+// untuk tiap sumber aktif yang resolvernya mendukung penemuan, judul
+// yang belum ada dimasukkan ke titles. Sumber server: judul langsung
+// dipetakan di title_sources (episode & aliran menyusul lewat
+// SyncSources). Sumber perangkat (komik): judul masuk sebagai judul
+// mode perangkat dengan template URL sumbernya (F39). Poster berurutan
+// prioritasnya: dari umpan penemuan → peta poster sumber → og:image
+// halaman seri (dibatasi per putaran), dan dilengkapi bertahap untuk
+// judul lama yang belum berposter.
 func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
 	posters := 0
-	for _, ct := range []string{"anime", "donghua", "film"} {
-		srcs, err := loadSources(ctx, pool, ct)
+	seen := map[string]bool{} // resolver+base yang sudah ditemukan putaran ini
+	for _, ct := range []string{"anime", "donghua", "film", "manga", "manhua", "manhwa"} {
+		srcs, err := loadDiscoverySources(ctx, pool, ct)
 		if err != nil {
 			return err
 		}
 		for _, src := range srcs {
+			key := src.Resolver + "|" + src.BaseURL
+			if seen[key] {
+				continue // satu umpan bisa melayani beberapa jenis (komik)
+			}
+			seen[key] = true
 			resolver, ok := sources.ByKey(src.Resolver)
 			if !ok {
 				continue
@@ -98,18 +125,63 @@ func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
 				log.Printf("penemuan dari %s: %v", src.Name, err)
 				continue
 			}
+			// Peta poster massal sumber ini (bila disediakan resolver).
+			var pmap map[string]string
+			if pp, ok := resolver.(sources.PosterProvider); ok {
+				if m, err := pp.Posters(ctx, src); err == nil {
+					pmap = m
+				} else {
+					log.Printf("peta poster %s: %v", src.Name, err)
+				}
+			}
+			device := src.FetchMode == "device"
 			baru := 0
 			for _, d := range found {
+				typ := d.Type
+				if typ == "" {
+					typ = ct
+				}
+				poster := d.Poster
+				if poster == "" && pmap != nil {
+					poster = pmap[sources.NormalizeTitleKey(d.Title)]
+				}
+				status := "ongoing"
+				if d.Completed {
+					status = "completed"
+				}
+				genres := d.Genres
+				if genres == nil {
+					genres = []string{}
+				}
+				var year any
+				if d.Year > 0 {
+					year = d.Year
+				}
 				var id string
-				err := pool.QueryRow(ctx, `
-					insert into titles (slug, type, title)
-					values ($1, $2, $3)
-					on conflict (slug) do nothing
-					returning id`, d.Slug, ct, d.Title).Scan(&id)
+				if device {
+					err = pool.QueryRow(ctx, `
+						insert into titles (slug, type, title, poster_url, year, genres, status,
+						                    fetch_mode, source_domain, source_url_template)
+						values ($1, $2, $3, $4, $5, $6, $7, 'device', $8, $9)
+						on conflict (slug) do nothing
+						returning id`,
+						d.Slug, typ, d.Title, nullIfEmpty(poster), year, genres, status,
+						hostOf(src.BaseURL), d.URL).Scan(&id)
+				} else {
+					err = pool.QueryRow(ctx, `
+						insert into titles (slug, type, title, poster_url, year, genres, status)
+						values ($1, $2, $3, $4, $5, $6, $7)
+						on conflict (slug) do nothing
+						returning id`,
+						d.Slug, typ, d.Title, nullIfEmpty(poster), year, genres, status).Scan(&id)
+				}
 				if err != nil {
 					continue // sudah ada di katalog — lewati
 				}
 				baru++
+				if device {
+					continue // judul perangkat tidak memakai title_sources
+				}
 				if _, err := pool.Exec(ctx, `
 					insert into title_sources (title_id, source_id, source_url)
 					values ($1::uuid, $2::uuid, $3)
@@ -118,7 +190,7 @@ func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
 					log.Printf("petakan judul %s: %v", d.Title, err)
 					continue
 				}
-				if posters < maxPosterPerRun {
+				if poster == "" && posters < maxPosterPerRun {
 					if p := sources.FetchPoster(ctx, d.URL); p != "" {
 						_, _ = pool.Exec(ctx, `
 							update titles set poster_url = $2, updated_at = now()
@@ -127,38 +199,63 @@ func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
 					}
 				}
 			}
-			// Lengkapi poster judul dari sumber ini yang belum berposter.
-			if posters < maxPosterPerRun {
-				rows, err := pool.Query(ctx, `
-					select t.id, ts.source_url from titles t
-					join title_sources ts
-					  on ts.title_id = t.id and ts.source_id = $1::uuid
-					where t.poster_url is null
-					limit $2`, src.ID, maxPosterPerRun-posters)
-				if err == nil {
-					type pend struct{ id, url string }
-					list := []pend{}
-					for rows.Next() {
-						var p pend
-						if err := rows.Scan(&p.id, &p.url); err == nil {
-							list = append(list, p)
-						}
-					}
-					rows.Close()
-					for _, p := range list {
-						if poster := sources.FetchPoster(ctx, p.url); poster != "" {
-							_, _ = pool.Exec(ctx, `
-								update titles set poster_url = $2, updated_at = now()
-								where id = $1::uuid`, p.id, poster)
-							posters++
-						}
-					}
-				}
+			if !device {
+				backfillPosters(ctx, pool, src, pmap, &posters)
 			}
 			log.Printf("penemuan %s: %d judul ditemukan, %d baru masuk katalog", src.Name, len(found), baru)
 		}
 	}
 	return nil
+}
+
+// backfillPosters melengkapi poster judul terpetakan ke sumber ini yang
+// belum berposter: dari peta poster sumber dulu (tanpa HTTP per judul),
+// lalu og:image halaman seri (dibatasi anggaran putaran).
+func backfillPosters(ctx context.Context, pool *pgxpool.Pool, src sources.Source, pmap map[string]string, posters *int) {
+	rows, err := pool.Query(ctx, `
+		select t.id, t.title, ts.source_url from titles t
+		join title_sources ts
+		  on ts.title_id = t.id and ts.source_id = $1::uuid
+		where t.poster_url is null
+		limit 200`, src.ID)
+	if err != nil {
+		return
+	}
+	type pend struct{ id, title, url string }
+	list := []pend{}
+	for rows.Next() {
+		var p pend
+		if err := rows.Scan(&p.id, &p.title, &p.url); err == nil {
+			list = append(list, p)
+		}
+	}
+	rows.Close()
+	for _, p := range list {
+		poster := ""
+		if pmap != nil {
+			poster = pmap[sources.NormalizeTitleKey(p.title)]
+		}
+		if poster == "" && *posters < maxPosterPerRun {
+			poster = sources.FetchPoster(ctx, p.url)
+			if poster != "" {
+				*posters += 1
+			}
+		}
+		if poster != "" {
+			_, _ = pool.Exec(ctx, `
+				update titles set poster_url = $2, updated_at = now()
+				where id = $1::uuid`, p.id, poster)
+		}
+	}
+}
+
+// hostOf mengambil host dari URL basis sumber (untuk source_domain
+// judul mode perangkat).
+func hostOf(raw string) string {
+	if u, err := url.Parse(raw); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return raw
 }
 
 // maxResolvePerRun membatasi episode yang diselesaikan per putaran sinkron
@@ -174,7 +271,9 @@ func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
 	trows, err := pool.Query(ctx, `
 		select id, type, title from titles
 		where type in ('anime','donghua','film')
-		order by created_at limit 50`)
+		order by (select count(*) from episodes e where e.title_id = titles.id) asc,
+		         created_at
+		limit 50`)
 	if err != nil {
 		return err
 	}

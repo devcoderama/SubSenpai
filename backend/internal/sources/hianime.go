@@ -93,6 +93,75 @@ func (h *hiAnimeResolver) Search(ctx context.Context, src Source, query string) 
 	return out, nil
 }
 
+var hiImgRe = regexp.MustCompile(`(?is)<img[^>]+data-src="([^"]+)"`)
+
+// parseHiCards mengurai kartu flw-item pada halaman daftar HiAnime
+// menjadi judul katalog (slug dari URL tontonan, poster dari data-src
+// gambar poster). Halaman dipotong per kartu (bukan regex blok) karena
+// nama film berada di sub-div detail setelah poster.
+func parseHiCards(page, base string) []DiscoveredTitle {
+	out := []DiscoveredTitle{}
+	seen := map[string]bool{}
+	for _, chunk := range strings.Split(page, `<div class="flw-item">`)[1:] {
+		if len(chunk) > 4000 {
+			chunk = chunk[:4000]
+		}
+		href := hiHrefRe.FindStringSubmatch(chunk)
+		name := hiNameRe.FindStringSubmatch(chunk)
+		if href == nil || name == nil {
+			continue
+		}
+		slug := strings.TrimPrefix(href[1], "/watch/")
+		if slug == "" || seen[slug] {
+			continue
+		}
+		seen[slug] = true
+		d := DiscoveredTitle{
+			Title: cleanText(name[1]),
+			Slug:  slug,
+			URL:   base + href[1],
+		}
+		if img := hiImgRe.FindStringSubmatch(chunk); img != nil {
+			d.Poster = img[1]
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+// Discover menemukan anime dari halaman beranda + halaman terpopuler
+// HiAnime (kartu yang sama yang dipakai Search, ditambah poster).
+// CATATAN: domain HiAnime belum terjangkau dari jaringan uji agen —
+// penemuan ini berjalan apa adanya di VPS dan kegagalannya hanya
+// dicatat worker, tidak mengganggu sumber lain.
+func (h *hiAnimeResolver) Discover(ctx context.Context, src Source, limit int) ([]DiscoveredTitle, error) {
+	base := strings.TrimRight(src.BaseURL, "/")
+	out := []DiscoveredTitle{}
+	seen := map[string]bool{}
+	var lastErr error
+	for _, path := range []string{"/home", "/most-popular", "/top-airing"} {
+		page, err := Fetch(ctx, base+path)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		for _, d := range parseHiCards(page, base) {
+			if seen[d.Slug] {
+				continue
+			}
+			seen[d.Slug] = true
+			out = append(out, d)
+			if len(out) >= limit {
+				return out, nil
+			}
+		}
+	}
+	if len(out) == 0 && lastErr != nil {
+		return nil, lastErr
+	}
+	return out, nil
+}
+
 func (h *hiAnimeResolver) animeID(ctx context.Context, src Source, titleURL string) (string, error) {
 	page, err := Fetch(ctx, titleURL)
 	if err != nil {
