@@ -1,13 +1,16 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -396,7 +399,8 @@ func (a *API) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ImageURL != nil && *req.ImageURL != "" &&
 		!strings.Contains(*req.ImageURL, "/uploads/feed/") &&
-		!strings.HasPrefix(*req.ImageURL, "https://i.ibb.co/") {
+		!strings.HasPrefix(*req.ImageURL, "https://i.ibb.co/") &&
+		!strings.HasPrefix(*req.ImageURL, "https://www.image2url.com/r2/") {
 		writeErr(w, http.StatusBadRequest, "media harus diunggah lewat aplikasi")
 		return
 	}
@@ -737,6 +741,14 @@ func (a *API) handleFeedUpload(w http.ResponseWriter, r *http.Request) {
 			}
 			// ImgBB gagal → jatuh ke penyimpanan lokal di bawah.
 		}
+	} else {
+		// Video: utamakan image2url (URL CDN publik, teruji dari
+		// server 2026-11-22). Kuota tamu per-IP terbatas — kegagalan
+		// apa pun jatuh ke penyimpanan lokal agar posting tak gagal.
+		if url, err := a.uploadImage2URL(r.Context(), data, ext); err == nil {
+			writeJSON(w, http.StatusCreated, map[string]any{"url": url})
+			return
+		}
 	}
 	url, err := a.saveFeedFile(r, data, ext)
 	if err != nil {
@@ -777,7 +789,57 @@ func (a *API) uploadImgBB(ctx context.Context, data []byte) (string, error) {
 	return out.Data.URL, nil
 }
 
-var errImgBBUpload = &feedError{"imgbb menolak unggahan"}
+// uploadImage2URL meneruskan video ke image2url.com
+// (POST /api/upload-video, field "file") dan mengembalikan URL
+// publiknya di R2 mereka. Teruji dari server agen 2026-11-22:
+// tanpa akun/cookie, balasan {success:true, url:...}.
+func (a *API) uploadImage2URL(ctx context.Context, data []byte, ext string) (string, error) {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	// Content-Type bagian wajib video/* — bawaan Go
+	// (application/octet-stream) ditolak layanan ("Only video
+	// files are allowed"), terbukti di uji hidup 2026-11-22.
+	partCT := "video/mp4"
+	if ext == ".webm" {
+		partCT = "video/webm"
+	}
+	hdr := make(textproto.MIMEHeader)
+	hdr.Set("Content-Disposition", `form-data; name="file"; filename="video`+ext+`"`)
+	hdr.Set("Content-Type", partCT)
+	part, err := mw.CreatePart(hdr)
+	if err != nil {
+		return "", err
+	}
+	if _, err := part.Write(data); err != nil {
+		return "", err
+	}
+	if err := mw.Close(); err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		"https://www.image2url.com/api/upload-video", &buf)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36")
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Success bool   `json:"success"`
+		URL     string `json:"url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || !out.Success || out.URL == "" {
+		return "", errImgBBUpload
+	}
+	return out.URL, nil
+}
+
+var errImgBBUpload = &feedError{"layanan unggah menolak berkas"}
 
 type feedError struct{ s string }
 
