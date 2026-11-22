@@ -268,6 +268,7 @@ class MainActivity : ComponentActivity() {
                                 onNeedLogin = { nav.navigate("login") },
                                 onOpenTitle = { nav.navigate("detail/$it") },
                                 onShareToPost = shareToPost,
+                                onOpenPremium = { nav.navigate("premium") },
                             )
                         }
                         composable(
@@ -281,6 +282,7 @@ class MainActivity : ComponentActivity() {
                                 onNeedLogin = { nav.navigate("login") },
                                 onOpenTitle = { nav.navigate("detail/$it") },
                                 onShareToPost = shareToPost,
+                                onOpenPremium = { nav.navigate("premium") },
                             )
                         }
                     }

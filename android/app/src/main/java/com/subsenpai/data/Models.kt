@@ -40,6 +40,8 @@ data class EpisodeItem(
     val episodeNo: Int,
     val title: String?,
     val durationSec: Int?,
+    /** Terkunci untuk tier penonton ini (non-premium: hanya episode pertama anime/donghua). */
+    val locked: Boolean = false,
 ) {
     companion object {
         fun fromJson(o: JSONObject) = EpisodeItem(
@@ -47,6 +49,7 @@ data class EpisodeItem(
             episodeNo = o.getInt("episode_no"),
             title = o.optString("title").ifBlank { null },
             durationSec = if (o.has("duration_sec") && !o.isNull("duration_sec")) o.getInt("duration_sec") else null,
+            locked = o.optBoolean("locked"),
         )
     }
 }

@@ -132,6 +132,7 @@ fun PlayerScreen(
     onNeedLogin: () -> Unit = {},
     onOpenTitle: (String) -> Unit = {},
     onShareToPost: (TitleDetail) -> Unit = {},
+    onOpenPremium: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -393,6 +394,7 @@ fun PlayerScreen(
             fullscreen = fullscreen,
             onToggleFullscreen = { fullscreen = !fullscreen },
             onNeedLogin = onNeedLogin,
+            onOpenPremium = onOpenPremium,
             modifier = if (fullscreen) {
                 Modifier.fillMaxSize()
             } else {
@@ -599,6 +601,7 @@ private fun VideoPlayerContainer(
     fullscreen: Boolean,
     onToggleFullscreen: () -> Unit,
     onNeedLogin: () -> Unit,
+    onOpenPremium: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Halaman embed yang sedang dimuat WebView: selama ini wadah
@@ -626,21 +629,37 @@ private fun VideoPlayerContainer(
     }
     Box(modifier = modifier.background(Color.Black)) {
         if (locked != null) {
+            val premiumLock = locked.startsWith("premium_required")
             Column(
                 modifier = Modifier.align(Alignment.Center).padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("🔒 $locked", color = Color.White, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Masuk gratis untuk membuka semua episode — atau Premium untuk tanpa iklan.",
+                    "🔒 " + locked.removePrefix("premium_required:").trim(),
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    if (premiumLock) {
+                        "Akun gratis hanya bisa menonton episode pertama anime & donghua."
+                    } else {
+                        "Masuk gratis untuk membuka semua episode — atau Premium untuk tanpa iklan."
+                    },
                     color = Color.LightGray,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(vertical = 8.dp),
                 )
-                Button(
-                    onClick = onNeedLogin,
-                    colors = ButtonDefaults.buttonColors(containerColor = WatchAccent),
-                ) { Text("Masuk") }
+                if (premiumLock) {
+                    Button(
+                        onClick = onOpenPremium,
+                        colors = ButtonDefaults.buttonColors(containerColor = WatchAccent),
+                    ) { Text("Lihat Premium") }
+                } else {
+                    Button(
+                        onClick = onNeedLogin,
+                        colors = ButtonDefaults.buttonColors(containerColor = WatchAccent),
+                    ) { Text("Masuk") }
+                }
             }
         } else if (curSrc != null && isEmbedUrl(curSrc.url)) {
             key(curSrc.url, fullscreen) {
@@ -951,7 +970,7 @@ private fun EpisodeSelector(
                     modifier = Modifier.clickable { onSelect(ep.id) },
                 ) {
                     Text(
-                        (if (active) "▶ " else "") + "Ep ${ep.episodeNo}",
+                        (if (active) "▶ " else "") + (if (ep.locked) "🔒 " else "") + "Ep ${ep.episodeNo}",
                         color = Color.White,
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                         style = MaterialTheme.typography.labelLarge,

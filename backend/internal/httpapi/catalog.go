@@ -264,6 +264,9 @@ type episodeItem struct {
 	EpisodeNo   int     `json:"episode_no"`
 	Title       *string `json:"title,omitempty"`
 	DurationSec *int    `json:"duration_sec,omitempty"`
+	// Locked: episode ini tidak boleh ditonton tier penonton saat
+	// ini (aturan non-premium hanya episode pertama anime/donghua).
+	Locked bool `json:"locked"`
 }
 
 type chapterItem struct {
@@ -344,8 +347,22 @@ func (a *API) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Tandai episode terkunci untuk tier penonton ini.
+	aksesTier, _ := a.viewerTier(r)
+	if len(episodes) > 0 {
+		minNo := episodes[0].EpisodeNo
+		for _, e := range episodes {
+			if e.EpisodeNo < minNo {
+				minNo = e.EpisodeNo
+			}
+		}
+		for i := range episodes {
+			episodes[i].Locked = !watchAllowed(aksesTier, detail.Type, episodes[i].EpisodeNo == minNo)
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"title": detail, "episodes": episodes, "chapters": chapters,
+		"access": map[string]any{"tier": string(aksesTier), "ads": aksesTier != tierPremium},
 	})
 }
 
@@ -372,8 +389,9 @@ func (a *API) handlePlayback(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "episode tidak ditemukan")
 		return
 	}
-	// Gerbang freemium (STRUKTUR Bagian 4): tamu maks. 1 episode.
-	if !a.gateEpisode(w, r, ep.ID, ep.TitleID) {
+	// Gerbang freemium: non-premium hanya episode pertama
+	// anime/donghua; film & episode lanjutan khusus premium.
+	if !a.gateEpisode(w, r, ep.ID, ep.TitleID, ep.EpisodeNo) {
 		return
 	}
 	aksesTier, _ := a.viewerTier(r)

@@ -59,18 +59,56 @@ func deviceKey(r *http.Request) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// gateEpisode menegakkan batas tamu untuk satu episode: tamu hanya boleh
-// membuka SATU episode (yang pertama ia buka, tercatat di guest_access);
-// membuka episode lain ditolak. User login selalu lolos.
-func (a *API) gateEpisode(w http.ResponseWriter, r *http.Request, episodeID, titleID string) bool {
+// watchAllowed: aturan nonton (permintaan Rams 2026-11-22) —
+// premium bebas menonton semua judul & episode; non-premium
+// (akun gratis & tamu) hanya boleh menonton episode PERTAMA
+// anime/donghua; film khusus premium.
+func watchAllowed(t tier, titleType string, isFirst bool) bool {
+	if t == tierPremium {
+		return true
+	}
+	return isFirst && (titleType == "anime" || titleType == "donghua")
+}
+
+// episodeAccessInfo: tipe judul + apakah episode ini episode
+// pertamanya (episode_no terkecil pada judul tersebut).
+func (a *API) episodeAccessInfo(ctx context.Context, titleID string, episodeNo int) (string, bool, error) {
+	var titleType string
+	var isFirst bool
+	err := a.pool.QueryRow(ctx, `
+		select t.type,
+		       not exists(select 1 from episodes e
+		                  where e.title_id = t.id and e.episode_no < $2)
+		from titles t where t.id = $1::uuid`, titleID, episodeNo).Scan(&titleType, &isFirst)
+	return titleType, isFirst, err
+}
+
+// gateEpisode menegakkan aturan nonton untuk satu episode:
+// premium selalu lolos; non-premium hanya episode pertama
+// anime/donghua (film & episode lanjutan khusus premium, ditolak
+// dengan awalan "premium_required:"); tamu ditambah batas SATU
+// episode per perangkat (tercatat di guest_access).
+func (a *API) gateEpisode(w http.ResponseWriter, r *http.Request, episodeID, titleID string, episodeNo int) bool {
 	t, _ := a.viewerTier(r)
-	if t != tierGuest {
+	if t == tierPremium {
+		return true
+	}
+	titleType, isFirst, err := a.episodeAccessInfo(r.Context(), titleID, episodeNo)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "kesalahan server")
+		return false
+	}
+	if !watchAllowed(t, titleType, isFirst) {
+		writeErr(w, http.StatusForbidden, "premium_required: konten ini khusus Premium — akun gratis hanya bisa menonton episode pertama anime & donghua")
+		return false
+	}
+	if t == tierFree {
 		return true
 	}
 	ctx := r.Context()
 	dk := deviceKey(r)
 	var usedEpisode string
-	err := a.pool.QueryRow(ctx, `
+	err = a.pool.QueryRow(ctx, `
 		select episode_id from guest_access
 		where device_key = $1 and episode_id is not null limit 1`, dk).Scan(&usedEpisode)
 	if err == nil {

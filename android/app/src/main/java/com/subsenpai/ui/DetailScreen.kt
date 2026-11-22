@@ -64,6 +64,7 @@ fun DetailScreen(
     onNeedLogin: () -> Unit,
     onOpenTitle: (String) -> Unit,
     onShareToPost: (TitleDetail) -> Unit,
+    onOpenPremium: () -> Unit = {},
 ) {
     var detail by remember { mutableStateOf<TitleDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -170,8 +171,11 @@ fun DetailScreen(
                         )
                     }
                     if (d.episodes.isNotEmpty()) {
+                        val firstLocked = d.episodes.first().locked
                         Button(
-                            onClick = { onPlay(d.episodes.first().id) },
+                            onClick = {
+                                if (firstLocked) onOpenPremium() else onPlay(d.episodes.first().id)
+                            },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.White,
                                 contentColor = Color.Black,
@@ -180,13 +184,19 @@ fun DetailScreen(
                             modifier = Modifier.fillMaxWidth().padding(top = 14.dp).height(48.dp),
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_play),
+                                painter = painterResource(
+                                    if (firstLocked) R.drawable.ic_lock else R.drawable.ic_play,
+                                ),
                                 contentDescription = null,
                                 tint = Color.Black,
                                 modifier = Modifier.size(24.dp),
                             )
                             Spacer(Modifier.size(6.dp))
-                            Text("Putar", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Text(
+                                if (firstLocked) "Khusus Premium" else "Putar",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp,
+                            )
                         }
                     }
                     val ctx = LocalContext.current
@@ -312,7 +322,7 @@ fun DetailScreen(
                 items(d.episodes) { ep ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                            .clickable { onPlay(ep.id) },
+                            .clickable { if (ep.locked) onOpenPremium() else onPlay(ep.id) },
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1F1F1F)),
                         shape = RoundedCornerShape(8.dp),
                     ) {
@@ -341,6 +351,13 @@ fun DetailScreen(
                                         color = Color(0xFFB3B3B3),
                                     )
                                 }
+                                if (ep.locked) {
+                                    Text(
+                                        "Khusus Premium",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFFFFC107),
+                                    )
+                                }
                             }
                             Box(
                                 modifier = Modifier.size(38.dp)
@@ -348,9 +365,11 @@ fun DetailScreen(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.ic_play),
+                                    painter = painterResource(
+                                        if (ep.locked) R.drawable.ic_lock else R.drawable.ic_play,
+                                    ),
                                     contentDescription = "Putar episode ${ep.episodeNo}",
-                                    tint = Color.White,
+                                    tint = if (ep.locked) Color(0xFFFFC107) else Color.White,
                                     modifier = Modifier.size(28.dp),
                                 )
                             }
