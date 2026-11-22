@@ -430,9 +430,21 @@ fun PosterImage(url: String?, title: String, modifier: Modifier = Modifier) {
             )
         }
     } else {
-        // Sebagian CDN poster (mis. anichin.moe yang ber-WAF) menolak
-        // User-Agent bawaan OkHttp — kirim UA peramban seperti situs
-        // aslinya; kegagalan muat jatuh kembali ke plakat judul.
+        // Dua lapis perlindungan sumber poster: (1) sebagian CDN
+        // menolak User-Agent bawaan OkHttp — kirim UA peramban;
+        // (2) anichin.moe dan situs sejenis memasang perlindungan
+        // hotlink: berkas gambarnya hanya dilayani bila header
+        // Referer menunjuk situsnya sendiri (terbukti: tanpa Referer
+        // 403 dari Cloudflare, dengan Referer situs asal 200).
+        // Referer diturunkan dari URL gambar itu sendiri, jadi
+        // berlaku umum untuk semua sumber. Kegagalan muat jatuh
+        // kembali ke plakat judul.
+        val referer = try {
+            val u = java.net.URL(url)
+            "${u.protocol}://${u.host}/"
+        } catch (e: Exception) {
+            null
+        }
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(url)
@@ -440,6 +452,7 @@ fun PosterImage(url: String?, title: String, modifier: Modifier = Modifier) {
                     "User-Agent",
                     "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
                 )
+                .apply { if (referer != null) addHeader("Referer", referer) }
                 .crossfade(true)
                 .build(),
             contentDescription = title,
