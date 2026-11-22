@@ -1,7 +1,13 @@
--- SubSenpai - Draf SQL skema database (PostgreSQL, lokal di VPS)
--- Diekstrak dari database/DATABASE.md Bagian 7 (skema dasar 36 tabel).
--- CATATAN: perubahan skema gelombang 3-5 (FITUR.md / OPTIMASI.md / KEAMANAN.md)
--- belum tergabung di berkas ini; sinkronisasi final adalah langkah Fase 0 (lihat PROGRES.md).
+-- SubSenpai - SQL skema database FINAL Fase 0 (PostgreSQL, lokal di VPS)
+-- Migrasi awal resmi: skema dasar + seluruh perubahan gelombang 3-5
+-- (FITUR.md F13-F39, OPTIMASI.md O9-O27, KEAMANAN.md) sudah tergabung.
+-- Total 52 tabel. Sumber kebenaran desain: database/DATABASE.md Bagian 7.
+-- Catatan migrasi:
+-- * O9: episodes.video_url yang lama menjadi baris pertama episode_sources
+--   (is_alive = true) saat data episode dimasukkan.
+-- * O22: chat_messages, watch_history, read_history, dan notifications
+--   direncanakan menjadi tabel terpartisi bulanan lewat migrasi lanjutan
+--   sebelum data membesar (kunci gabungan menyertakan kolom waktu buat).
 
 create table titles (
   id uuid primary key default gen_random_uuid(),
@@ -17,6 +23,12 @@ create table titles (
   genres text[] not null default '{}',
   rating numeric,
   is_adult boolean not null default false,
+  airing_day smallint check (airing_day between 0 and 6),
+  airing_time time,
+  airing_tz text,
+  fetch_mode text not null default 'server' check (fetch_mode in ('server','device')),
+  source_domain text,
+  source_url_template text,
   search_tsv tsvector generated always as (
     to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(title_alt, ''))
   ) stored,
@@ -47,6 +59,18 @@ create table episodes (
 );
 create index episodes_updated_idx on episodes (updated_at);
 
+create table episode_sources (
+  id uuid primary key default gen_random_uuid(),
+  episode_id uuid not null references episodes(id) on delete cascade,
+  url text not null,
+  label text,
+  is_alive boolean not null default true,
+  fail_count int not null default 0,
+  last_checked_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index episode_sources_episode_idx on episode_sources (episode_id, is_alive);
+
 create table chapters (
   id uuid primary key default gen_random_uuid(),
   title_id uuid not null references titles(id) on delete cascade,
@@ -63,6 +87,8 @@ create table chapter_pages (
   chapter_id uuid not null references chapters(id) on delete cascade,
   page_no int not null,
   image_url text not null,
+  light_url text,
+  ocr_status text not null default 'none' check (ocr_status in ('none','queued','processing','done','failed')),
   unique (chapter_id, page_no)
 );
 
@@ -70,10 +96,11 @@ create table subtitles (
   id uuid primary key default gen_random_uuid(),
   episode_id uuid not null references episodes(id) on delete cascade,
   lang text not null default 'id', -- bahasa ASAL episode (kode BCP-47); terjemahan dibuat di aplikasi user
-  source text not null check (source in ('caption','whisper')),
+  source text not null check (source in ('caption','whisper','community')),
   format text not null default 'srt' check (format in ('srt','ass')),
   file_url text,
   status text not null default 'queued' check (status in ('queued','processing','done','failed')),
+  contributed_by uuid,
   unique (episode_id, lang)
 );
 
@@ -99,8 +126,27 @@ create table profiles (
   last_active_date date,
   streak_days int not null default 0,
   is_banned boolean not null default false,
-  app_language text not null default 'id'
+  app_language text not null default 'id',
+  quiet_start time,
+  quiet_end time
 );
+
+create table viewing_profiles (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references profiles(id) on delete cascade,
+  name text not null,
+  is_kids boolean not null default false,
+  pin_hash text,
+  app_language text not null default 'id',
+  created_at timestamptz not null default now(),
+  check (not is_kids or pin_hash is not null)
+);
+create index viewing_profiles_account_idx on viewing_profiles (account_id);
+
+-- FK kontributor subtitle komunitas (tabel profiles baru ada setelah subtitles dibuat)
+alter table subtitles
+  add constraint subtitles_contributed_by_fk
+  foreign key (contributed_by) references profiles(id) on delete set null;
 
 create table subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -114,28 +160,42 @@ create table subscriptions (
 
 create table watchlist (
   user_id uuid not null references profiles(id) on delete cascade,
+  viewing_profile_id uuid not null references viewing_profiles(id) on delete cascade,
   title_id uuid not null references titles(id) on delete cascade,
   notify boolean not null default false,
+  last_nudge_at timestamptz,
+  nudge_ignored_count int not null default 0,
   created_at timestamptz not null default now(),
-  primary key (user_id, title_id)
+  primary key (user_id, viewing_profile_id, title_id)
 );
 
 create table watch_history (
   user_id uuid not null references profiles(id) on delete cascade,
+  viewing_profile_id uuid not null references viewing_profiles(id) on delete cascade,
   episode_id uuid not null references episodes(id) on delete cascade,
   position_sec int not null default 0,
   updated_at timestamptz not null default now(),
-  primary key (user_id, episode_id)
+  primary key (user_id, viewing_profile_id, episode_id)
 );
 create index watch_history_user_idx on watch_history (user_id, updated_at desc);
 
 create table read_history (
+  id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
-  chapter_id uuid not null references chapters(id) on delete cascade,
+  viewing_profile_id uuid not null references viewing_profiles(id) on delete cascade,
+  chapter_id uuid references chapters(id) on delete cascade,
+  title_id uuid references titles(id) on delete cascade,
+  external_label text,
+  external_no numeric,
   last_page int not null default 1,
   updated_at timestamptz not null default now(),
-  primary key (user_id, chapter_id)
+  check (
+    (chapter_id is not null and title_id is null and external_no is null)
+    or (chapter_id is null and title_id is not null and external_no is not null)
+  )
 );
+create unique index read_history_chapter_uniq on read_history (user_id, viewing_profile_id, chapter_id) where chapter_id is not null;
+create unique index read_history_external_uniq on read_history (user_id, viewing_profile_id, title_id, external_no) where chapter_id is null;
 create index read_history_user_idx on read_history (user_id, updated_at desc);
 
 create table guest_access (
@@ -173,7 +233,7 @@ create index admin_logs_admin_idx on admin_logs (admin_id, created_at desc);
 create table vouchers (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,
-  source text not null check (source in ('admin','purchase','referral')),
+  source text not null check (source in ('admin','purchase','referral','mission')),
   duration_days int not null check (duration_days > 0),
   status text not null default 'active' check (status in ('active','redeemed','expired','revoked')),
   created_by uuid not null references profiles(id) on delete cascade,
@@ -233,12 +293,13 @@ create table chat_messages (
   id uuid primary key default gen_random_uuid(),
   channel_id uuid not null references chat_channels(id) on delete cascade,
   user_id uuid not null references profiles(id) on delete cascade,
-  kind text not null default 'text' check (kind in ('text','sticker','image','share')),
+  kind text not null default 'text' check (kind in ('text','sticker','image','share','poll')),
   body text check (char_length(body) <= 500),
   sticker_id uuid references stickers(id) on delete set null,
   image_url text,
   image_thumb_url text,
   image_delete_url text,
+  poll jsonb,
   reply_to_id uuid references chat_messages(id) on delete set null,
   ref_title_id uuid references titles(id) on delete set null,
   ref_episode_id uuid references episodes(id) on delete set null,
@@ -249,9 +310,18 @@ create table chat_messages (
     or (kind = 'sticker' and (sticker_id is not null or image_url is not null))
     or (kind = 'image' and image_url is not null)
     or (kind = 'share' and ref_title_id is not null)
+    or (kind = 'poll' and poll is not null)
   )
 );
 create index chat_messages_channel_idx on chat_messages (channel_id, created_at desc);
+
+create table chat_poll_votes (
+  message_id uuid not null references chat_messages(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  option_index int not null check (option_index >= 0),
+  created_at timestamptz not null default now(),
+  primary key (message_id, user_id)
+);
 
 create table friendships (
   requester_id uuid not null references profiles(id) on delete cascade,
@@ -394,8 +464,10 @@ create table collections (
   owner_id uuid not null references profiles(id) on delete cascade,
   name text not null,
   description text,
+  kind text not null default 'personal' check (kind in ('personal','shared')),
   is_public boolean not null default true,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  check (kind <> 'shared' or is_public = false)
 );
 create index collections_owner_idx on collections (owner_id);
 
@@ -410,6 +482,15 @@ create index collection_items_order_idx on collection_items (collection_id, posi
 create table collection_follows (
   collection_id uuid not null references collections(id) on delete cascade,
   user_id uuid not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (collection_id, user_id)
+);
+
+create table collection_members (
+  collection_id uuid not null references collections(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  role text not null default 'editor' check (role in ('owner','editor')),
+  invited_by uuid references profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   primary key (collection_id, user_id)
 );
@@ -432,3 +513,130 @@ create table user_devices (
   unique (user_id, device_id)
 );
 create index user_devices_user_idx on user_devices (user_id);
+
+create table chat_moderators (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  granted_by uuid not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create table missions (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  description text,
+  target jsonb not null,
+  reward_kind text not null check (reward_kind in ('xp','badge','voucher')),
+  reward_value text,
+  starts_at timestamptz,
+  ends_at timestamptz,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create index missions_active_idx on missions (is_active, starts_at, ends_at);
+
+create table user_missions (
+  user_id uuid not null references profiles(id) on delete cascade,
+  mission_id uuid not null references missions(id) on delete cascade,
+  progress int not null default 0,
+  completed_at timestamptz,
+  claimed_at timestamptz,
+  primary key (user_id, mission_id)
+);
+
+create table bookmarks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  viewing_profile_id uuid references viewing_profiles(id) on delete cascade,
+  episode_id uuid references episodes(id) on delete cascade,
+  chapter_id uuid references chapters(id) on delete cascade,
+  position_sec int,
+  page_number int,
+  note text,
+  created_at timestamptz not null default now(),
+  check ((episode_id is not null) <> (chapter_id is not null))
+);
+create index bookmarks_user_idx on bookmarks (user_id, created_at desc);
+
+create table chapter_text_regions (
+  id uuid primary key default gen_random_uuid(),
+  page_id uuid not null references chapter_pages(id) on delete cascade,
+  bbox jsonb not null,
+  source_text text,
+  reading_order int not null default 0,
+  confidence numeric
+);
+create index chapter_text_regions_page_idx on chapter_text_regions (page_id, reading_order);
+
+create table title_reviews (
+  id uuid primary key default gen_random_uuid(),
+  title_id uuid not null references titles(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  body text not null,
+  is_spoiler boolean not null default false,
+  helpful_count int not null default 0,
+  status text not null default 'visible' check (status in ('visible','hidden')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (title_id, user_id)
+);
+create index title_reviews_title_idx on title_reviews (title_id, helpful_count desc);
+
+create table title_review_votes (
+  review_id uuid not null references title_reviews(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (review_id, user_id)
+);
+
+create table user_integrations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  provider text not null check (provider in ('anilist','mal')),
+  access_token_enc text not null,
+  enabled boolean not null default true,
+  last_sync_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (user_id, provider)
+);
+
+create table challenges (
+  id uuid primary key default gen_random_uuid(),
+  creator_id uuid not null references profiles(id) on delete cascade,
+  opponent_id uuid not null references profiles(id) on delete cascade,
+  kind text not null check (kind in ('finish_title','most_progress')),
+  title_id uuid references titles(id) on delete set null,
+  target jsonb,
+  starts_at timestamptz,
+  ends_at timestamptz,
+  status text not null default 'pending' check (status in ('pending','active','completed','declined','expired')),
+  winner_id uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  check (creator_id <> opponent_id),
+  check (kind <> 'finish_title' or title_id is not null)
+);
+create index challenges_users_idx on challenges (creator_id, opponent_id, status);
+
+create table trending_cache (
+  title_id uuid not null references titles(id) on delete cascade,
+  score numeric not null default 0,
+  "window" text not null check ("window" in ('day','week')),
+  computed_at timestamptz not null default now(),
+  primary key (title_id, "window")
+);
+create index trending_cache_rank_idx on trending_cache ("window", score desc);
+
+create table metrics_hourly (
+  kind text not null,
+  bucket timestamptz not null,
+  value numeric not null default 0,
+  primary key (kind, bucket)
+);
+
+create table image_uploads (
+  hash text primary key,
+  imgbb_url text not null,
+  thumb_url text,
+  delete_url text,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);

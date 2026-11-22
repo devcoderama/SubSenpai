@@ -17,13 +17,13 @@
 ✓ [PROGRES.md](PROGRES.md) → peta alur progres ini
 ✓ [android/README.md](android/README.md) → struktur aplikasi Android (folder `android/` di akar repo)
 ✓ [web_admin/README.md](web_admin/README.md) → struktur panel admin web (folder `web_admin/` di akar repo)
-- [database/DATABASE.md](database/DATABASE.md) → sinkronisasi final seluruh perubahan skema F13–F39 dan O8–O27 ke ERD, relasi, enum, indeks, dan DDL
-- [database/DATABASE.md](database/DATABASE.md) → migrasi awal final dari DDL hasil sinkronisasi
-✓ [database/database.sql](database/database.sql) → draf SQL skema dasar (diekstrak dari DATABASE.md Bagian 7)
+✓ [database/DATABASE.md](database/DATABASE.md) → sinkronisasi final seluruh perubahan skema F13–F39 dan O8–O27 ke ERD, relasi, enum, indeks, dan DDL (52 tabel)
+✓ [database/database.sql](database/database.sql) → migrasi awal final dari DDL hasil sinkronisasi (tervalidasi parser PostgreSQL)
+✓ [database/database.sql](database/database.sql) → SQL skema final 52 tabel, sinkron dengan DATABASE.md Bagian 7
 
 ## Alur Pembangunan
 
-- Fase 0 → selesaikan sinkronisasi final DATABASE.md sebelum pembangunan dimulai
+✓ Fase 0 → sinkronisasi final DATABASE.md selesai (52 tabel) — pembangunan bisa dimulai
 - Fase 1 → katalog multi-konten + halaman detail + player HLS
 - Fase 2 → worker subtitle bahasa asal (caption/Whisper → SRT asal) + terjemahan subtitle di perangkat user
 - Fase 3 → login Google + JWT backend + watchlist + riwayat
