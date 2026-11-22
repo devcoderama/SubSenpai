@@ -319,6 +319,33 @@ class CatalogRepository(
         }
     }
 
+    /** Jadwal rilis per kategori: anime (Kuronime), donghua (Anichin), film (rilis terbaru katalog). */
+    suspend fun schedule(type: String): List<ScheduleGroup> {
+        val o = api.get("/api/v1/schedule?type=$type")
+        return buildList {
+            val groups = o.optJSONArray("groups")
+            if (groups != null) for (g in 0 until groups.length()) {
+                val go = groups.getJSONObject(g)
+                val items = buildList {
+                    val arr = go.optJSONArray("items")
+                    if (arr != null) for (i in 0 until arr.length()) {
+                        val it = arr.getJSONObject(i)
+                        add(
+                            ScheduleItem(
+                                title = it.optString("title"),
+                                time = it.optString("time"),
+                                episode = it.optInt("episode"),
+                                poster = it.optString("poster").ifBlank { null },
+                                titleId = it.optString("title_id").ifBlank { null },
+                            ),
+                        )
+                    }
+                }
+                add(ScheduleGroup(go.optString("day"), items))
+            }
+        }
+    }
+
     suspend fun premiumStatus(): PremiumStatus {
         val o = api.get("/api/v1/premium/status")
         return PremiumStatus(

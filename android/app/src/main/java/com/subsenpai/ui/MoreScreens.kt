@@ -70,6 +70,7 @@ fun MoreScreen(
     onOpenSettings: () -> Unit,
     onOpenTransactions: () -> Unit,
     onOpenMyVouchers: () -> Unit,
+    onOpenSchedule: () -> Unit,
 ) {
     val context = LocalContext.current
     val auth = remember { AuthStore(context) }
@@ -141,6 +142,9 @@ fun MoreScreen(
         }
         item {
             MoreRow(R.drawable.ic_bookmark, "Daftar Saya", "Watchlist tersimpan", onOpenWatchlist)
+        }
+        item {
+            MoreRow(R.drawable.ic_calendar, "Jadwal Rilis", "Jadwal tayang anime, donghua & film", onOpenSchedule)
         }
         item {
             MoreRow(R.drawable.ic_star, "Premium", "Paket & langganan", onOpenPremium)

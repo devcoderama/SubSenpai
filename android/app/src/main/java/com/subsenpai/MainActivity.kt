@@ -156,6 +156,14 @@ class MainActivity : ComponentActivity() {
                                 onOpenSettings = { nav.navigate("settings") },
                                 onOpenTransactions = { nav.navigate("transactions") },
                                 onOpenMyVouchers = { nav.navigate("myvouchers") },
+                                onOpenSchedule = { nav.navigate("schedule") },
+                            )
+                        }
+                        composable("schedule") {
+                            com.subsenpai.ui.ScheduleScreen(
+                                repo,
+                                onBack = { nav.popBackStack() },
+                                onOpenTitle = { nav.navigate("detail/$it") },
                             )
                         }
                         composable("transactions") {

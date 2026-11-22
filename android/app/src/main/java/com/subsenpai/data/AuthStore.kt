@@ -58,6 +58,18 @@ data class PlanItem(val id: String, val days: Int, val price: Int, val label: St
 /** Metode pembayaran Tokopay dari database (migrasi 0015). */
 data class PaymentMethodItem(val code: String, val name: String, val group: String, val iconUrl: String)
 
+/** Satu entri jadwal rilis (titleId terisi bila judul ada di katalog). */
+data class ScheduleItem(
+    val title: String,
+    val time: String,
+    val episode: Int,
+    val poster: String?,
+    val titleId: String?,
+)
+
+/** Grup jadwal satu hari ("Senin".."Minggu", "Update Acak", "Rilis Terbaru"). */
+data class ScheduleGroup(val day: String, val items: List<ScheduleItem>)
+
 data class PremiumStatus(
     val tier: String,
     val isPremium: Boolean,
