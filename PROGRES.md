@@ -26,7 +26,7 @@
 
 ✓ Fase 0 → sinkronisasi final DATABASE.md selesai (52 tabel) — pembangunan bisa dimulai
 ✓ Fase 1 → katalog multi-konten + halaman detail + player HLS (backend Go + aplikasi Android terbangun & terverifikasi: migrasi 52 tabel jalan, endpoint katalog terenkripsi xdata terbukti hidup, APK debug terkompilasi)
-- Fase 2 → registri sumber per bahasa + resolver per situs (F40: subtitle siap pakai) + migrasi 0002 (content_sources, episode_sources.lang) + cadangan terjemahan gtx di perangkat
+✓ Fase 2 → registri sumber per bahasa + resolver per situs (F40) + migrasi 0002 (content_sources, title_sources, episode_sources.lang) + cadangan terjemahan gtx di perangkat — TERBANGUN & terverifikasi hidup 2026-11-22: migrasi 0002 jalan (13 sumber teregistri), resolver Anichin lulus uji ujung-ke-ujung (judul nyata: 219 episode terpetakan, 20 episode terselesaikan = 79 aliran ber-lang id, terbaca API lewat envelope xdata), cek kesehatan sumber jalan di worker; resolver HiAnime tertulis (alur ajax MegaCloud) tapi domainnya belum terjangkau dari jaringan uji; Kuronime ber-mode device (Cloudflare menolak IP server); aliran Anichin berbentuk embed (OK.ru/Dailymotion/dll.) — ekstraksi aliran langsung per host / pemutar embed adalah penyempurnaan berikutnya; APK 0.2.0 terkompilasi (pemilih bahasa soft/hard + chip Terjemahkan gtx)
 - Fase 3 → login Google + JWT backend + watchlist + riwayat
 - Fase 4 → gerbang freemium + pembayaran + voucher + chat global + teman & grup + DM + nonton bareng
 - Fase 5 → mode baca + reader vertikal + sumber perangkat ber-Cloudflare F39 + OCR & terjemahan balon komik F31

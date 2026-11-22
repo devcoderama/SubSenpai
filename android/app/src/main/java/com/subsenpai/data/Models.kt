@@ -92,7 +92,12 @@ data class TitleDetail(
     }
 }
 
-data class PlaybackSource(val url: String, val label: String?)
+data class PlaybackSource(
+    val url: String,
+    val label: String?,
+    /** Bahasa subtitle aliran ini bila hardsub (F40); null = softsub/tanpa bahasa. */
+    val lang: String? = null,
+)
 
 data class SubtitleItem(
     val lang: String,
@@ -118,7 +123,13 @@ data class Playback(
                     val arr = o.optJSONArray("sources")
                     if (arr != null) for (i in 0 until arr.length()) {
                         val s = arr.getJSONObject(i)
-                        add(PlaybackSource(s.getString("url"), s.optString("label").ifBlank { null }))
+                        add(
+                            PlaybackSource(
+                                url = s.getString("url"),
+                                label = s.optString("label").ifBlank { null },
+                                lang = s.optString("lang").ifBlank { null },
+                            )
+                        )
                     }
                 },
                 subtitles = buildList {

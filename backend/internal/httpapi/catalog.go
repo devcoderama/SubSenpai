@@ -281,16 +281,17 @@ func (a *API) handlePlayback(w http.ResponseWriter, r *http.Request) {
 	type source struct {
 		URL   string  `json:"url"`
 		Label *string `json:"label,omitempty"`
+		Lang  *string `json:"lang,omitempty"` // bahasa hardsub aliran ini (F40); kosong = softsub
 	}
 	sources := []source{}
 	srows, err := a.pool.Query(ctx, `
-		select url, label from episode_sources
+		select url, label, lang from episode_sources
 		where episode_id = $1::uuid and is_alive order by created_at`, id)
 	if err == nil {
 		defer srows.Close()
 		for srows.Next() {
 			var s source
-			if err := srows.Scan(&s.URL, &s.Label); err == nil {
+			if err := srows.Scan(&s.URL, &s.Label, &s.Lang); err == nil {
 				sources = append(sources, s)
 			}
 		}

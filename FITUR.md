@@ -288,5 +288,7 @@ Aturan mainnya:
 - **MyAnimeList bukan sumber streaming** (itu basis data) — perannya metadata katalog & integrasi daftar (F16/F35), bukan sumber video/subtitle.
 
 **Perubahan data**
-- Tabel baru `content_sources` + kolom baru `lang` di `episode_sources` + nilai `sumber` pada `subtitles.source` — semuanya lewat **migrasi 0002** pada Fase 2; skema final Fase 0 (migrasi 0001) tidak diubah mundur (disiplin O23).
+- Tabel baru `content_sources` + `title_sources` (pemetaan judul ↔ halaman sumber) + kolom baru `lang` di `episode_sources` + nilai `sumber` pada `subtitles.source` — semuanya lewat **migrasi 0002** pada Fase 2; skema final Fase 0 (migrasi 0001) tidak diubah mundur (disiplin O23).
+
+**Catatan implementasi (Fase 2, 2026-11-22)** — Resolver Anichin terverifikasi ujung-ke-ujung (pencarian series & daftar episode lewat WP REST API — tiap series adalah kategori WordPress; server video dari `<select class="mirror">` ter-base64 di halaman episode; film = satu post tanpa nomor episode). Aliran dari sumber embed (Anichin: OK.ru, Dailymotion, Rumble, dll.) berbentuk **URL embed**, bukan berkas HLS langsung — memutarnya butuh pemutar embed (WebView) di aplikasi atau ekstraksi aliran langsung per host; keduanya penyempurnaan berikutnya. Sumber softsub (HiAnime/MegaCloud) memberi aliran HLS langsung + trek subtitle. Kuronime terbukti menolak IP datacenter (Cloudflare 403) → `fetch_mode = device` sesuai pola F39.
 
