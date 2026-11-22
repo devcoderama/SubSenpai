@@ -49,13 +49,13 @@ fun BrandLoading(
         ),
         label = "brandPulseAlpha",
     )
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                "SubSenpai",
-                color = Color.White,
-                fontSize = if (compact) 20.sp else 30.sp,
-                fontWeight = FontWeight.Bold,
+                "SUBSENPAI",
+                color = BrandRed,
+                fontSize = if (compact) 22.sp else 36.sp,
+                fontWeight = FontWeight.Black,
                 modifier = Modifier.alpha(pulse),
             )
             Spacer(Modifier.height(if (compact) 12.dp else 20.dp))

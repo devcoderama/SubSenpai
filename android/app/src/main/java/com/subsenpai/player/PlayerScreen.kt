@@ -269,7 +269,8 @@ fun PlayerScreen(
         onDispose { player.release() }
     }
 
-    // Layar penuh: putar ke lanskap selama aktif.
+    // Layar penuh: putar ke lanskap + sembunyikan bar sistem
+    // (mode imersif ala YouTube) selama aktif.
     val activity = context as? Activity
     LaunchedEffect(fullscreen) {
         activity?.requestedOrientation = if (fullscreen) {
@@ -277,9 +278,27 @@ fun PlayerScreen(
         } else {
             ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
+        val window = activity?.window
+        if (window != null) {
+            val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+            if (fullscreen) {
+                controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior =
+                    androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            }
+        }
     }
     DisposableEffect(Unit) {
-        onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            val window = activity?.window
+            if (window != null) {
+                androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+                    .show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            }
+        }
     }
 
     // ---------- Nonton bareng (Fase 4) ----------
@@ -532,6 +551,21 @@ private fun WatchHeader(title: String?, partyCode: String?, onBack: () -> Unit) 
     }
 }
 
+/**
+ * Halaman pembungkus embed khusus layar penuh: viewport terkunci
+ * (tidak bisa zoom/geser) dan iframe tepat 100% wadah, sehingga
+ * video pas layar seperti di YouTube — tidak terpotong dan
+ * halaman luarnya tidak bisa di-scroll.
+ */
+private fun embedFullscreenHtml(url: String): String {
+    val safe = url.replace("&", "&amp;").replace("\"", "&quot;")
+    return "<!DOCTYPE html><html><head>" +
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no\">" +
+        "<style>html,body{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hidden}" +
+        "iframe{position:absolute;left:0;top:0;width:100%;height:100%;border:0}</style></head>" +
+        "<body><iframe src=\"" + safe + "\" allow=\"autoplay; fullscreen; encrypted-media; picture-in-picture\" allowfullscreen></iframe></body></html>"
+}
+
 @Composable
 private fun VideoPlayerContainer(
     player: ExoPlayer,
@@ -570,7 +604,7 @@ private fun VideoPlayerContainer(
                 ) { Text("Masuk") }
             }
         } else if (curSrc != null && isEmbedUrl(curSrc.url)) {
-            key(curSrc.url) {
+            key(curSrc.url, fullscreen) {
                 AndroidView(
                     factory = {
                         WebView(it).apply {
@@ -578,6 +612,11 @@ private fun VideoPlayerContainer(
                             // berwarna putih sampai halaman embed
                             // selesai dilukis (kedip putih).
                             setBackgroundColor(0xFF0D0D0F.toInt())
+                            // Halaman embed tidak boleh bisa digeser
+                            // dari sisi WebView.
+                            isVerticalScrollBarEnabled = false
+                            isHorizontalScrollBarEnabled = false
+                            overScrollMode = android.view.View.OVER_SCROLL_NEVER
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.mediaPlaybackRequiresUserGesture = false
@@ -602,7 +641,27 @@ private fun VideoPlayerContainer(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                             )
-                            loadUrl(curSrc.url)
+                            if (fullscreen) {
+                                // Layar penuh ala YouTube: embed
+                                // dibungkus halaman bervieport
+                                // terkunci — video tepat sebesar
+                                // layar, tidak bisa digeser dan
+                                // tidak terpotong. Mode potret tetap
+                                // memuat URL embed langsung.
+                                val origin = runCatching {
+                                    val u = java.net.URL(curSrc.url)
+                                    u.protocol + "://" + u.host
+                                }.getOrDefault(curSrc.url)
+                                loadDataWithBaseURL(
+                                    origin,
+                                    embedFullscreenHtml(curSrc.url),
+                                    "text/html",
+                                    "UTF-8",
+                                    null,
+                                )
+                            } else {
+                                loadUrl(curSrc.url)
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
