@@ -96,6 +96,7 @@ func (a *API) Router() http.Handler {
 		r.With(a.authn.Optional).Get("/api/v1/chapters/{id}", a.handleChapter)
 		r.With(middleware.RateLimit(30)).Post("/api/v1/auth/google", a.handleGoogleLogin)
 		r.Get("/api/v1/schedule", a.handleSchedule)
+		r.Get("/api/v1/genres", a.handleGenres)
 		r.Get("/api/v1/plans", a.handlePlans)
 		r.Get("/api/v1/payment-methods", a.handlePaymentMethods)
 		// Endpoint khusus user login (Fase 3–4).

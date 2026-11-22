@@ -246,6 +246,46 @@ func (a *API) handleTitles(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleGenres: daftar genre yang BENAR-BENAR ada di katalog
+// (dihitung dari titles.genres) beserta jumlah judulnya — bahan
+// chip filter genre di halaman telusur aplikasi (permintaan Rams
+// 2026-11-23, meniru halaman /genres/ Kuronime). Filter-nya sendiri
+// sudah lama didukung handleTitles lewat parameter genre.
+func (a *API) handleGenres(w http.ResponseWriter, r *http.Request) {
+	typ := r.URL.Query().Get("type")
+	if typ != "" && !titleTypes[typ] {
+		writeErr(w, http.StatusBadRequest, "type tidak dikenal")
+		return
+	}
+	a.serveCached(w, "genres?"+r.URL.RawQuery, func() (any, error) {
+		where := "where not t.is_adult and t.type not in ('manga', 'manhua', 'manhwa')"
+		args := []any{}
+		if typ != "" {
+			args = append(args, typ)
+			where += " and t.type = $1"
+		}
+		rows, err := a.pool.Query(r.Context(), `
+			select g, count(*) as c from titles t, unnest(t.genres) g
+			`+where+` group by g order by c desc, g asc`, args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		type genreOut struct {
+			Name  string `json:"name"`
+			Count int    `json:"count"`
+		}
+		genres := []genreOut{}
+		for rows.Next() {
+			var g genreOut
+			if err := rows.Scan(&g.Name, &g.Count); err == nil {
+				genres = append(genres, g)
+			}
+		}
+		return map[string]any{"genres": genres}, rows.Err()
+	})
+}
+
 type titleDetail struct {
 	titleCard
 	Synopsis         *string `json:"synopsis,omitempty"`

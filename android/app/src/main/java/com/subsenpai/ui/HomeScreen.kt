@@ -90,6 +90,8 @@ fun HomeScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var type by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
+    var genre by remember { mutableStateOf<String?>(null) }
+    var genreList by remember { mutableStateOf<List<String>>(emptyList()) }
     var searchOpen by remember { mutableStateOf(false) }
     val browsing = type != null || query.isNotBlank()
     val scope = rememberCoroutineScope()
@@ -124,10 +126,21 @@ fun HomeScreen(
             emptyList()
         }
     }
-    LaunchedEffect(type, query) {
+    LaunchedEffect(type) {
+        genreList = if (type != null) {
+            try {
+                repo.genres(type!!)
+            } catch (e: Exception) {
+                emptyList()
+            }
+        } else {
+            emptyList()
+        }
+    }
+    LaunchedEffect(type, query, genre) {
         if (!browsing) return@LaunchedEffect
         try {
-            hasil = repo.titles(type, query.ifBlank { null })
+            hasil = repo.titles(type, query.ifBlank { null }, genre)
         } catch (e: Exception) {
             error = e.message
         }
@@ -156,6 +169,21 @@ fun HomeScreen(
                 }
             }
             if (browsing) {
+                if (type != null && genreList.isNotEmpty()) {
+                    item {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        ) {
+                            item {
+                                GenreChip("Semua Genre", genre == null) { genre = null }
+                            }
+                            items(genreList) { g ->
+                                GenreChip(g, genre == g) { genre = g }
+                            }
+                        }
+                    }
+                }
                 item { SectionTitle("Hasil") }
                 if (hasil.isEmpty() && error == null) {
                     item { Text("Belum ada judul yang cocok.", modifier = Modifier.padding(horizontal = 16.dp)) }
@@ -303,7 +331,7 @@ fun HomeScreen(
                         color = if (type == value) Color.White else Color(0xFFB3B3B3),
                         fontWeight = if (type == value) FontWeight.Bold else FontWeight.Normal,
                         style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.clickable { type = value }.padding(bottom = 10.dp),
+                        modifier = Modifier.clickable { type = value; genre = null }.padding(bottom = 10.dp),
                     )
                 }
             }
@@ -317,6 +345,20 @@ fun HomeScreen(
                 )
             }
         }
+    }
+}
+
+/** Chip filter genre di mode telusur (dipilih = merah Netflix). */
+@Composable
+private fun GenreChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) NetflixRed else Color(0xFF2A2A2A))
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+    ) {
+        Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

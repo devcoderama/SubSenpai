@@ -543,14 +543,24 @@ class CatalogRepository(
         return cards("trending") to cards("terbaru")
     }
 
-    suspend fun titles(type: String?, query: String?): List<TitleCard> {
+    suspend fun titles(type: String?, query: String?, genre: String? = null): List<TitleCard> {
         val params = StringBuilder("/api/v1/titles?limit=30")
         if (!type.isNullOrBlank()) params.append("&type=").append(type)
         if (!query.isNullOrBlank()) params.append("&q=").append(java.net.URLEncoder.encode(query, "UTF-8"))
+        if (!genre.isNullOrBlank()) params.append("&genre=").append(java.net.URLEncoder.encode(genre, "UTF-8"))
         val o = api.get(params.toString())
         return buildList {
             val arr = o.optJSONArray("items")
             if (arr != null) for (i in 0 until arr.length()) add(TitleCard.fromJson(arr.getJSONObject(i)))
+        }
+    }
+
+    /** Daftar genre yang ada di katalog untuk satu tipe (chip filter). */
+    suspend fun genres(type: String): List<String> {
+        val o = api.get("/api/v1/genres?type=$type")
+        return buildList {
+            val arr = o.optJSONArray("genres")
+            if (arr != null) for (i in 0 until arr.length()) add(arr.getJSONObject(i).getString("name"))
         }
     }
 
