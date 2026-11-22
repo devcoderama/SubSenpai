@@ -21,14 +21,56 @@ type Plan struct {
 	Label string `json:"label"`
 }
 
+// Plans adalah daftar bawaan yang dipakai HANYA bila tabel
+// subscription_plans belum ada/kosong (mis. migrasi 0014 belum
+// berjalan). Sumber kebenaran harga adalah database.
 var Plans = []Plan{
-	{ID: "premium-30", Days: 30, Price: 29000, Label: "Premium 30 hari"},
-	{ID: "premium-90", Days: 90, Price: 79000, Label: "Premium 90 hari"},
-	{ID: "premium-365", Days: 365, Price: 249000, Label: "Premium 365 hari"},
+	{ID: "premium-30", Days: 30, Price: 8000, Label: "Premium 1 Bulan"},
+	{ID: "premium-90", Days: 90, Price: 21000, Label: "Premium 3 Bulan"},
+	{ID: "premium-180", Days: 180, Price: 39000, Label: "Premium 6 Bulan"},
+	{ID: "premium-365", Days: 365, Price: 72000, Label: "Premium 12 Bulan"},
+	{ID: "premium-1095", Days: 1095, Price: 180000, Label: "Premium 3 Tahun"},
 }
 
 func PlanByID(id string) (Plan, bool) {
 	for _, p := range Plans {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return Plan{}, false
+}
+
+// LoadPlans membaca katalog paket aktif dari tabel
+// subscription_plans; jatuh ke daftar bawaan bila tabel belum
+// ada atau masih kosong.
+func LoadPlans(ctx context.Context, pool *pgxpool.Pool) []Plan {
+	rows, err := pool.Query(ctx, `
+		select id, days, price, label
+		from subscription_plans
+		where is_active
+		order by sort_order, days`)
+	if err != nil {
+		return Plans
+	}
+	defer rows.Close()
+	var out []Plan
+	for rows.Next() {
+		var p Plan
+		if err := rows.Scan(&p.ID, &p.Days, &p.Price, &p.Label); err != nil {
+			return Plans
+		}
+		out = append(out, p)
+	}
+	if rows.Err() != nil || len(out) == 0 {
+		return Plans
+	}
+	return out
+}
+
+// PlanByIDCtx mencari paket dari database (sumber kebenaran).
+func PlanByIDCtx(ctx context.Context, pool *pgxpool.Pool, id string) (Plan, bool) {
+	for _, p := range LoadPlans(ctx, pool) {
 		if p.ID == id {
 			return p, true
 		}
@@ -83,7 +125,7 @@ func ActivateSession(ctx context.Context, pool *pgxpool.Pool, sessionID, matched
 		return err
 	}
 	if purpose == "subscription" {
-		plan, ok := PlanByID(planID)
+		plan, ok := PlanByIDCtx(ctx, pool, planID)
 		if !ok {
 			return fmt.Errorf("paket sesi tidak dikenal: %q", planID)
 		}

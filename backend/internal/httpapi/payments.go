@@ -13,9 +13,10 @@ import (
 	"subsenpai/backend/internal/payments"
 )
 
-// handlePlans: daftar paket premium (publik).
+// handlePlans: daftar paket premium (publik) — dari database
+// (tabel subscription_plans, migrasi 0014).
 func (a *API) handlePlans(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"plans": billing.Plans})
+	writeJSON(w, http.StatusOK, map[string]any{"plans": billing.LoadPlans(r.Context(), a.pool)})
 }
 
 // handlePremiumStatus: tingkat akses akun + sisa masa premium + trial.
@@ -89,7 +90,7 @@ func (a *API) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "isi permintaan tidak valid")
 		return
 	}
-	plan, ok := billing.PlanByID(req.PlanID)
+	plan, ok := billing.PlanByIDCtx(r.Context(), a.pool, req.PlanID)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "paket tidak dikenal")
 		return
