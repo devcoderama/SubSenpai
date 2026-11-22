@@ -176,12 +176,6 @@ data class Playback(
     }
 }
 
-data class ChapterPage(
-    val pageNo: Int,
-    val imageUrl: String,
-    val lightUrl: String?,
-)
-
 /** Repositori katalog & akun — satu-satunya jalan UI ke API. */
 class CatalogRepository(
     private val api: ApiClient = ApiClient(),
@@ -481,21 +475,4 @@ class CatalogRepository(
     suspend fun titleDetail(id: String): TitleDetail = TitleDetail.fromJson(api.get("/api/v1/titles/$id"))
 
     suspend fun playback(episodeId: String): Playback = Playback.fromJson(api.get("/api/v1/episodes/$episodeId/playback"))
-
-    suspend fun chapterPages(chapterId: String): List<ChapterPage> {
-        val o = api.get("/api/v1/chapters/$chapterId")
-        return buildList {
-            val arr = o.optJSONArray("pages")
-            if (arr != null) for (i in 0 until arr.length()) {
-                val p = arr.getJSONObject(i)
-                add(
-                    ChapterPage(
-                        pageNo = p.getInt("page_no"),
-                        imageUrl = p.getString("image_url"),
-                        lightUrl = p.optString("light_url").ifBlank { null },
-                    )
-                )
-            }
-        }
-    }
 }

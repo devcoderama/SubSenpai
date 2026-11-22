@@ -47,10 +47,8 @@ fun DetailScreen(
     repo: CatalogRepository,
     titleId: String,
     onPlay: (String) -> Unit,
-    onRead: (String) -> Unit,
     onBack: () -> Unit,
     onNeedLogin: () -> Unit,
-    onOpenDeviceSource: (String) -> Unit = {},
 ) {
     var detail by remember { mutableStateOf<TitleDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -60,12 +58,7 @@ fun DetailScreen(
 
     LaunchedEffect(titleId) {
         try {
-            val d = repo.titleDetail(titleId)
-            detail = d
-            com.subsenpai.data.ReaderNav.titleId = titleId
-            com.subsenpai.data.ReaderNav.titleType = d.card.type
-            com.subsenpai.data.ReaderNav.chapters = d.chapters
-            com.subsenpai.data.ReaderNav.detail = d
+            detail = repo.titleDetail(titleId)
         } catch (e: Exception) {
             error = e.message
         }
@@ -173,18 +166,6 @@ fun DetailScreen(
                                     colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
                                 ) { Text("▶  Putar", fontWeight = FontWeight.Bold) }
                             }
-                            d.chapters.isNotEmpty() -> {
-                                Button(
-                                    onClick = { onRead(d.chapters.first().id) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
-                                ) { Text("▶  Baca", fontWeight = FontWeight.Bold) }
-                            }
-                            d.fetchMode == "device" -> {
-                                Button(
-                                    onClick = { onOpenDeviceSource(titleId) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
-                                ) { Text("▶  Buka dari Sumber", fontWeight = FontWeight.Bold) }
-                            }
                         }
                         OutlinedButton(
                             enabled = !wlBusy,
@@ -285,56 +266,7 @@ fun DetailScreen(
                     }
                 }
             }
-            if (d.fetchMode == "device") {
-                item {
-                    Text(
-                        "Sumber Perangkat (F39)",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
-                }
-                item {
-                    Text(
-                        "Judul ini diambil langsung dari ${d.sourceDomain ?: "sumbernya"} di perangkatmu " +
-                            "agar lolos perlindungan Cloudflare. Daftar chapter & halaman dimuat dari situs sumber.",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
-                }
-                item {
-                    Button(
-                        onClick = { onOpenDeviceSource(titleId) },
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    ) { Text("Buka dari Sumber") }
-                }
-            }
-            if (d.chapters.isNotEmpty()) {
-                item {
-                    Text(
-                        "Chapter",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
-                }
-                items(d.chapters) { ch ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                            .clickable { onRead(ch.id) },
-                    ) {
-                        Text(
-                            "Chapter ${formatChapterNo(ch.chapterNo)}" + (ch.title?.let { " — $it" } ?: "") +
-                                " · ${ch.pageCount} halaman",
-                            modifier = Modifier.padding(14.dp),
-                        )
-                    }
-                }
-            }
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
 }
-
-private fun formatChapterNo(n: Double): String =
-    if (n == n.toLong().toDouble()) n.toLong().toString() else n.toString()

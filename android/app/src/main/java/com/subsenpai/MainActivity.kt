@@ -19,17 +19,13 @@ import com.subsenpai.data.AuthStore
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.player.PlayerScreen
 import com.subsenpai.ui.ChatListScreen
-import com.subsenpai.ui.ComicDetailScreen
-import com.subsenpai.ui.ComicReaderScreen
 import com.subsenpai.ui.ChatRoomScreen
 import com.subsenpai.ui.DetailScreen
-import com.subsenpai.ui.DeviceReaderScreen
 import com.subsenpai.ui.FriendsScreen
 import com.subsenpai.ui.GroupsScreen
 import com.subsenpai.ui.HomeScreen
 import com.subsenpai.ui.LoginScreen
 import com.subsenpai.ui.PremiumScreen
-import com.subsenpai.ui.ReaderScreen
 import com.subsenpai.ui.WatchlistScreen
 
 class MainActivity : ComponentActivity() {
@@ -53,23 +49,6 @@ class MainActivity : ComponentActivity() {
                                 onOpenWatchlist = { nav.navigate("watchlist") },
                                 onOpenPremium = { nav.navigate("premium") },
                                 onOpenChat = { nav.navigate("chat") },
-                                onOpenComic = { s ->
-                                    com.subsenpai.data.ComicNav.series = s
-                                    nav.navigate("comicdetail")
-                                },
-                            )
-                        }
-                        composable("comicdetail") {
-                            ComicDetailScreen(
-                                onBack = { nav.popBackStack() },
-                                onRead = { nav.navigate("comicreader") },
-                            )
-                        }
-                        composable("comicreader") {
-                            ComicReaderScreen(
-                                repo,
-                                onBack = { nav.popBackStack() },
-                                onNeedLogin = { nav.navigate("login") },
                             )
                         }
                         composable("premium") {
@@ -134,19 +113,6 @@ class MainActivity : ComponentActivity() {
                             DetailScreen(
                                 repo, id,
                                 onPlay = { nav.navigate("player/$it") },
-                                onRead = { nav.navigate("reader/$it") },
-                                onBack = { nav.popBackStack() },
-                                onNeedLogin = { nav.navigate("login") },
-                                onOpenDeviceSource = { nav.navigate("devicesrc/$it") },
-                            )
-                        }
-                        composable(
-                            "devicesrc/{id}",
-                            arguments = listOf(navArgument("id") { type = NavType.StringType }),
-                        ) { entry ->
-                            DeviceReaderScreen(
-                                repo,
-                                entry.arguments!!.getString("id")!!,
                                 onBack = { nav.popBackStack() },
                                 onNeedLogin = { nav.navigate("login") },
                             )
@@ -161,21 +127,6 @@ class MainActivity : ComponentActivity() {
                                 onBack = { nav.popBackStack() },
                                 onNeedLogin = { nav.navigate("login") },
                                 onOpenTitle = { nav.navigate("detail/$it") },
-                            )
-                        }
-                        composable(
-                            "reader/{chapterId}",
-                            arguments = listOf(navArgument("chapterId") { type = NavType.StringType }),
-                        ) { entry ->
-                            ReaderScreen(
-                                repo,
-                                entry.arguments!!.getString("chapterId")!!,
-                                onBack = { nav.popBackStack() },
-                                onOpenChapter = { target ->
-                                    nav.navigate("reader/$target") {
-                                        popUpTo("reader/{chapterId}") { inclusive = true }
-                                    }
-                                },
                             )
                         }
                     }
