@@ -172,6 +172,27 @@ func TestMoeBase(t *testing.T) {
 	}
 }
 
+// Uji regresi parseEplister untuk seri yang tautan episodenya
+// menyelipkan judul alternatif di antara slug seri dan "-episode-N"
+// (kasus nyata "Zhu Tian Ji" di anichin.moe, 2026-11-22: 26 episode
+// di situs, 0 tersimpan karena penjaga awalan lama menuntut
+// "<slug>-episode-" persis). Tautan seri lain di luar blok eplister
+// (widget bilah sisi) harus tetap tertolak.
+const zhuTianJiSeriesPage = `<html><body><div class="eplister"><ul><li><a href="https://anichin.moe/zhu-tian-ji-return-of-gods-episode-25-subtitle-indonesia/">25</a></li><li><a href="https://anichin.moe/zhu-tian-ji-return-of-gods-episode-26-tamat-subtitle-indonesia/">26</a></li></ul></div><div class="bixbox"><ul><li><a href="https://anichin.moe/wukong-episode-12-subtitle-indonesia/">Wukong Episode 12</a></li></ul></div></body></html>`
+
+func TestParseEplisterAltTitleSlug(t *testing.T) {
+	eps := parseEplister(zhuTianJiSeriesPage, "https://anichin.moe/zhu-tian-ji/")
+	if len(eps) != 2 {
+		t.Fatalf("episode = %v, mau 2 (25 & 26)", eps)
+	}
+	if eps[0].Number != 25 || eps[0].URL != "https://anichin.moe/zhu-tian-ji-return-of-gods-episode-25-subtitle-indonesia/" {
+		t.Errorf("eps[0] = %+v", eps[0])
+	}
+	if eps[1].Number != 26 || eps[1].URL != "https://anichin.moe/zhu-tian-ji-return-of-gods-episode-26-tamat-subtitle-indonesia/" {
+		t.Errorf("eps[1] = %+v", eps[1])
+	}
+}
+
 func TestParseDurationMin(t *testing.T) {
 	cases := []struct {
 		in   string

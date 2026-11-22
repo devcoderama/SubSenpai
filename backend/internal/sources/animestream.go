@@ -391,10 +391,15 @@ var eplisterRe = regexp.MustCompile(`href="([^"]*-episode-(\d+)[^"]*)"`)
 // tema Animestream. Dua penjaga agar episode seri LAIN dari widget
 // "rilisan terbaru" di bilah sisi tidak ikut tertangkap: (1) hanya
 // blok eplister yang dibaca (dari penanda "eplister" sampai </ul>
-// pertamanya); (2) slug episode harus berawalan slug seri ini —
-// situs memakai varian jamak untuk slug episode (seri
-// "tales-of-herding-god" → episode "tales-of-herding-gods-episode-…"),
-// jadi awalan yang diterima: slug, slug+s, dan slug tanpa s akhir.
+// pertamanya); (2) path episode harus berawalan slug seri ini
+// diikuti "-" DAN mengandung "-episode-" sesudahnya — situs memakai
+// varian jamak untuk slug episode (seri "tales-of-herding-god" →
+// episode "tales-of-herding-gods-episode-…"), jadi awalan yang
+// diterima: slug, slug+s, dan slug tanpa s akhir. Di antara awalan
+// dan "-episode-" boleh ada sisipan judul alternatif (seri
+// "zhu-tian-ji" → episode "zhu-tian-ji-return-of-gods-episode-…"),
+// jadi yang disyaratkan hanya awalan + keberadaan "-episode-",
+// bukan kedekatan keduanya.
 func parseEplister(html, pageURL string) []EpisodeRef {
 	base, err := url.Parse(pageURL)
 	if err != nil {
@@ -422,7 +427,7 @@ func parseEplister(html, pageURL string) []EpisodeRef {
 		segPath := strings.Trim(ref.Path, "/")
 		ok := false
 		for p := range prefixes {
-			if strings.HasPrefix(segPath, p+"-episode-") {
+			if strings.HasPrefix(segPath, p+"-") && strings.Contains(segPath, "-episode-") {
 				ok = true
 				break
 			}
