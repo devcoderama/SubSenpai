@@ -98,7 +98,15 @@ export PATH="/usr/local/go/bin:$PATH"
 if [ -d "$SRC_DIR/.git" ]; then
   say "Memperbarui sumber…"
   git config --global --add safe.directory "$SRC_DIR" 2>/dev/null || true
-  git -C "$SRC_DIR" pull --ff-only
+  # fetch + reset --hard (bukan pull --ff-only): klon dangkal
+  # (--depth 50) terbukti bisa menjawab "Already up to date" padahal
+  # origin/main sudah maju (kejadian 2026-11-22: worker lama terus
+  # terpasang). Reset keras ke origin/main deterministik, dan commit
+  # hasilnya dicetak agar bisa diverifikasi dari laporan.
+  git -C "$SRC_DIR" fetch --depth 200 origin main
+  git -C "$SRC_DIR" checkout -f main 2>/dev/null || git -C "$SRC_DIR" checkout -f -b main origin/main
+  git -C "$SRC_DIR" reset --hard origin/main
+  say "Sumber kini di commit: $(git -C "$SRC_DIR" log --oneline -1)"
 else
   say "Mengkloning repo…"
   git clone --depth 50 "$REPO_URL" "$SRC_DIR"
