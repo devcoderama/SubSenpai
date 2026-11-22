@@ -84,7 +84,7 @@ private class PayResult(
  * Lainnya › Riwayat Transaksi / Voucher Saya.
  */
 @Composable
-fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit) {
+fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var tab by remember { mutableStateOf(0) } // 0 langganan, 1 voucher
@@ -256,7 +256,11 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit) {
                 }
                 Button(
                     enabled = selectedPlan != null,
-                    onClick = { step = 2 },
+                    onClick = {
+                        // Belum login → ke halaman login dulu
+                        // (permintaan Rams 2026-11-22).
+                        if (!repo.isLoggedIn) onNeedLogin() else step = 2
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Lanjut") }
                 if (isVoucher) {
@@ -273,6 +277,10 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit) {
                         Button(
                             enabled = redeemCode.isNotBlank(),
                             onClick = {
+                                if (!repo.isLoggedIn) {
+                                    onNeedLogin()
+                                    return@Button
+                                }
                                 val code = redeemCode.trim()
                                 scope.launch {
                                     error = null

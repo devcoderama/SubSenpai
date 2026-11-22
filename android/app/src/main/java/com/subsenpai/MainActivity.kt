@@ -184,7 +184,11 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable("premium") {
-                            PremiumScreen(repo, onBack = { nav.popBackStack() })
+                            PremiumScreen(
+                                repo,
+                                onBack = { nav.popBackStack() },
+                                onNeedLogin = { nav.navigate("login") },
+                            )
                         }
                         composable("chat") {
                             FeedScreen(
