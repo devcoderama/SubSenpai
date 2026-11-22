@@ -22,7 +22,10 @@ android {
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         // OAuth client ID (tipe web) untuk Google Sign-In; diisi saat
         // proyek Google Cloud dibuat. Kosong = tombol masuk nonaktif.
-        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"\"")
+        // Web Client ID Google untuk Sign-In; diisi saat build lewat
+        // -PgoogleWebClientId=<id>.apps.googleusercontent.com (kosong = login nonaktif).
+        val googleWebClientId = providers.gradleProperty("googleWebClientId").orElse("").get()
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     }
 
     buildTypes {
