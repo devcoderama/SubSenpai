@@ -43,6 +43,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.TitleCard
 import kotlinx.coroutines.launch
@@ -410,7 +412,8 @@ private fun PosterRow(list: List<TitleCard>, onOpen: (String) -> Unit) {
  */
 @Composable
 fun PosterImage(url: String?, title: String, modifier: Modifier = Modifier) {
-    if (url.isNullOrBlank()) {
+    var gagal by remember(url) { mutableStateOf(false) }
+    if (url.isNullOrBlank() || gagal) {
         Box(
             modifier = modifier.background(
                 Brush.verticalGradient(listOf(Color(0xFF4A0E12), Color(0xFF1B1B1B)))
@@ -427,10 +430,21 @@ fun PosterImage(url: String?, title: String, modifier: Modifier = Modifier) {
             )
         }
     } else {
+        // Sebagian CDN poster (mis. anichin.moe yang ber-WAF) menolak
+        // User-Agent bawaan OkHttp — kirim UA peramban seperti situs
+        // aslinya; kegagalan muat jatuh kembali ke plakat judul.
         AsyncImage(
-            model = url,
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(url)
+                .addHeader(
+                    "User-Agent",
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
+                )
+                .crossfade(true)
+                .build(),
             contentDescription = title,
             contentScale = ContentScale.Crop,
+            onError = { gagal = true },
             modifier = modifier,
         )
     }

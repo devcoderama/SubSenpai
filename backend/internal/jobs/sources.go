@@ -176,7 +176,20 @@ func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
 						d.Slug, typ, d.Title, nullIfEmpty(poster), year, genres, status).Scan(&id)
 				}
 				if err != nil {
-					continue // sudah ada di katalog — lewati
+					// Sudah ada di katalog: sembuhkan kolom yang masih
+					// kosong (poster/tahun/genre) dari hasil penemuan
+					// terbaru — mis. poster anime yang dulu gagal
+					// terbaca kini terbaca dari atribut src kartu.
+					if poster != "" || year != nil || len(genres) > 0 {
+						_, _ = pool.Exec(ctx, `
+							update titles set
+								poster_url = coalesce(poster_url, $2),
+								year = coalesce(year, $3),
+								genres = case when coalesce(cardinality(genres), 0) = 0 then $4 else genres end
+							where slug = $1`,
+							d.Slug, nullIfEmpty(poster), year, genres)
+					}
+					continue
 				}
 				baru++
 				if device {
