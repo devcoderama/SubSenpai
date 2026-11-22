@@ -1,6 +1,8 @@
 package com.subsenpai.ui
 
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +33,9 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.NoCredentialException
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -38,19 +43,29 @@ import com.subsenpai.BuildConfig
 import com.subsenpai.data.CatalogRepository
 import kotlinx.coroutines.launch
 
+/** Kegagalan berantai login Google — membawa rincian tiap jalur. */
+private class GoogleLoginException(val detail: String) : Exception(detail)
+
+private fun describeCredentialError(e: Exception): String = when (e) {
+    is GetCredentialCancellationException ->
+        "alur Google dibatalkan (" + (e.message ?: "tanpa keterangan") + ")"
+    is NoCredentialException ->
+        "Credential Manager tidak menemukan akun Google untuk aplikasi ini"
+    else -> e.message ?: e.javaClass.simpleName
+}
+
 /**
  * Mengambil ID token Google lewat Credential Manager dengan dua jalur
- * berantai dalam satu ketukan — satu jalur gagal/batal tidak langsung
- * menyerah, jalur lain dicoba:
- *  1) GetSignInWithGoogleOption — alur masuk Google layar penuh; paling
- *     toleran untuk izin pertama & perangkat yang bottom sheet-nya rewel.
+ * berantai dalam satu ketukan:
+ *  1) GetSignInWithGoogleOption — alur masuk Google layar penuh.
  *  2) GetGoogleIdOption — bottom sheet pemilih akun.
- * Pengecualian dari jalur terakhir dilempar ke pemanggil untuk dipetakan
- * menjadi pesan pengguna.
+ * Bila keduanya gagal, GoogleLoginException membawa rincian keduanya
+ * dan pemanggil melanjutkan ke jalur ketiga (intent klasik).
  */
 private suspend fun fetchGoogleIdToken(context: Context): String {
     val manager = CredentialManager.create(context)
     val webId = BuildConfig.GOOGLE_WEB_CLIENT_ID
+    var firstDetail: String
     try {
         val option = GetSignInWithGoogleOption.Builder(webId).build()
         val result = manager.getCredential(
@@ -59,9 +74,9 @@ private suspend fun fetchGoogleIdToken(context: Context): String {
         )
         return extractIdToken(result.credential)
     } catch (first: Exception) {
-        // Jalur pertama gagal/batal (termasuk pembatalan semu yang di
-        // sebagian perangkat muncul dari alur pertama) — beri jalur
-        // kedua kesempatan sebelum menyerah.
+        firstDetail = describeCredentialError(first)
+    }
+    try {
         val option = GetGoogleIdOption.Builder()
             .setServerClientId(webId)
             .setFilterByAuthorizedAccounts(false)
@@ -71,6 +86,11 @@ private suspend fun fetchGoogleIdToken(context: Context): String {
             GetCredentialRequest.Builder().addCredentialOption(option).build(),
         )
         return extractIdToken(result.credential)
+    } catch (second: Exception) {
+        throw GoogleLoginException(
+            "Layar penuh: " + firstDetail + ". Bottom sheet: " +
+                describeCredentialError(second) + ".",
+        )
     }
 }
 
@@ -83,10 +103,23 @@ private fun extractIdToken(credential: Credential): String {
     throw IllegalStateException("Kredensial Google tidak dikenal.")
 }
 
+/** Memetakan kode status ApiException jalur klasik ke teks diagnosis. */
+private fun describeApiException(e: ApiException): String = when (e.statusCode) {
+    12501 -> "kamu membatalkan pilihan akun di alur klasik"
+    10 -> "konfigurasi Google tidak cocok (kode 10 DEVELOPER_ERROR) — " +
+        "paket aplikasi atau sidik jari SHA-1 di Google Cloud tidak sama dengan aplikasi ini"
+    12500 -> "alur klasik gagal di sisi Google (kode 12500)"
+    7 -> "gangguan jaringan saat menghubungi Google (kode 7)"
+    else -> "alur klasik gagal (kode " + e.statusCode + ": " + (e.message ?: "-") + ")"
+}
+
 /**
  * Layar akun: masuk dengan Google (satu-satunya cara daftar/masuk),
  * tukar token ID Google dengan JWT backend, tampilkan ringkasan akun.
- * Tombol masuk aktif hanya bila GOOGLE_WEB_CLIENT_ID terisi saat build.
+ * Tiga jalur login dicoba berurutan dalam satu ketukan: dua alur
+ * Credential Manager, lalu intent klasik Play Services yang paling
+ * toleran di perangkat yang Credential Manager-nya rewel (mis. sebagian
+ * HyperOS/MIUI). Tombol aktif hanya bila GOOGLE_WEB_CLIENT_ID terisi.
  */
 @Composable
 fun LoginScreen(
@@ -98,9 +131,44 @@ fun LoginScreen(
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var cmDetail by remember { mutableStateOf<String?>(null) }
     var loggedIn by remember { mutableStateOf(repo.isLoggedIn) }
     val auth = repo.auth
     val clientConfigured = BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank()
+
+    // Jalur ketiga: intent klasik Google Sign-In (Play Services Auth).
+    val legacyLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        try {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            val account = task.getResult(ApiException::class.java)
+            val token = account.idToken
+            if (token.isNullOrBlank()) {
+                error = "Google tidak memberikan token. " + (cmDetail ?: "")
+                busy = false
+            } else {
+                scope.launch {
+                    try {
+                        repo.loginGoogle(token)
+                        loggedIn = true
+                        onAuthChanged()
+                    } catch (e: Exception) {
+                        error = e.message ?: "Masuk gagal."
+                    } finally {
+                        busy = false
+                    }
+                }
+            }
+        } catch (e: ApiException) {
+            error = "Login belum berhasil — " + describeApiException(e) +
+                (cmDetail?.let { "\n\nRincian jalur lain: $it" } ?: "")
+            busy = false
+        } catch (e: Exception) {
+            error = e.message ?: "Masuk gagal."
+            busy = false
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(20.dp),
@@ -142,25 +210,29 @@ fun LoginScreen(
                 onClick = {
                     busy = true
                     error = null
+                    cmDetail = null
                     scope.launch {
                         try {
                             val idToken = fetchGoogleIdToken(context)
                             repo.loginGoogle(idToken)
                             loggedIn = true
                             onAuthChanged()
-                        } catch (e: GetCredentialCancellationException) {
-                            error = "Login dibatalkan. Bila kamu tidak membatalkan, " +
-                                "kemungkinan akun yang dipilih belum terdaftar sebagai " +
-                                "test user di Google Cloud, atau pengaturan client masih " +
-                                "menyebar — coba lagi beberapa saat lagi."
-                        } catch (e: NoCredentialException) {
-                            error = "Tidak ada akun Google yang tersedia untuk aplikasi ini. " +
-                                "Pastikan ada akun Google yang masuk di HP ini. Bila client Google " +
-                                "baru saja dibuat, pengaturannya bisa butuh beberapa menit hingga " +
-                                "beberapa jam untuk tersebar — coba lagi nanti."
+                            busy = false
+                        } catch (e: GoogleLoginException) {
+                            // Dua jalur Credential Manager gagal — lanjut
+                            // ke intent klasik; busy tetap true sampai
+                            // callback launcher selesai.
+                            cmDetail = e.detail
+                            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                .requestIdToken(BuildConfig.GOOGLE_WEB_CLIENT_ID)
+                                .requestEmail()
+                                .build()
+                            val client = GoogleSignIn.getClient(context, gso)
+                            client.signOut().addOnCompleteListener {
+                                legacyLauncher.launch(client.signInIntent)
+                            }
                         } catch (e: Exception) {
                             error = e.message ?: "Masuk gagal."
-                        } finally {
                             busy = false
                         }
                     }
