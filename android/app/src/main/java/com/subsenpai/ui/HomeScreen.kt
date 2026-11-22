@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -20,17 +21,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,15 +39,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import androidx.compose.ui.platform.LocalContext
+import com.subsenpai.R
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.TitleCard
+import kotlinx.coroutines.launch
 
 private val typeFilters = listOf(
     null to "Semua", "anime" to "Anime", "donghua" to "Donghua", "film" to "Film",
@@ -56,6 +61,14 @@ private val rowTypes = listOf(
     "anime" to "Anime Pilihan", "donghua" to "Donghua Pilihan", "film" to "Film Pilihan",
 )
 
+/**
+ * Beranda ala Netflix (redesain 2026-11-22 atas contoh UI Netflix
+ * dari Rams): header melayang transparan di atas hero — logo "S"
+ * merah, ikon cari & akun, tab kategori teks (Semua/Anime/Donghua/
+ * Film) — hero layar penuh dengan baris aksi Daftar Saya / Putar /
+ * Info, lalu baris-baris poster. Navigasi utama pindah ke bilah
+ * bawah di MainActivity.
+ */
 @Composable
 fun HomeScreen(
     repo: CatalogRepository,
@@ -63,9 +76,6 @@ fun HomeScreen(
     onOpenTitle: (String) -> Unit,
     onOpenEpisode: (String) -> Unit,
     onLogin: () -> Unit,
-    onOpenWatchlist: () -> Unit,
-    onOpenPremium: () -> Unit = {},
-    onOpenChat: () -> Unit = {},
 ) {
     var trending by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var homeLoaded by remember { mutableStateOf(false) }
@@ -76,8 +86,9 @@ fun HomeScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var type by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
+    var searchOpen by remember { mutableStateOf(false) }
     val browsing = type != null || query.isNotBlank()
-    val loggedIn = repo.isLoggedIn
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         try {
@@ -118,135 +129,331 @@ fun HomeScreen(
         }
     }
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "SUBSENPAI",
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Black,
-                )
-                Row {
-                    TextButton(onClick = onOpenPremium) { Text("Premium", color = Color.White) }
-                    if (loggedIn) {
-                        TextButton(onClick = onOpenChat) { Text("Chat", color = Color.White) }
-                        TextButton(onClick = onOpenWatchlist) { Text("Watchlist", color = Color.White) }
-                    }
-                    TextButton(onClick = onLogin) { Text(if (loggedIn) "Akun" else "Masuk", color = Color.White) }
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            if (browsing) {
+                // Ruang untuk header melayang (lebih tinggi saat kolom
+                // cari terbuka).
+                item { Spacer(Modifier.height(if (searchOpen) 208.dp else 140.dp)) }
+            }
+            if (!homeLoaded && error == null) {
+                // Umpan beranda belum tiba: animasi merek, bukan halaman kosong.
+                item {
+                    BrandLoading(modifier = Modifier.fillParentMaxHeight())
                 }
             }
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                label = { Text("Cari judul, genre…") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            )
-            Spacer(Modifier.height(10.dp))
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(horizontal = 16.dp),
-            ) {
-                items(typeFilters) { (value, label) ->
-                    FilterChip(
-                        selected = type == value,
-                        onClick = { type = value },
-                        label = { Text(label) },
+            if (error != null) {
+                item {
+                    Text(
+                        "Gagal memuat: $error",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp),
                     )
                 }
             }
-            Spacer(Modifier.height(8.dp))
-        }
-        if (!homeLoaded && error == null) {
-            // Umpan beranda belum tiba: animasi merek, bukan halaman kosong.
-            item {
-                BrandLoading(modifier = Modifier.fillParentMaxHeight())
-            }
-        }
-        if (error != null) {
-            item {
-                Text(
-                    "Gagal memuat: $error",
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-            }
-        }
-        if (browsing) {
-            item { SectionTitle("Hasil") }
-            if (hasil.isEmpty() && error == null) {
-                item { Text("Belum ada judul yang cocok.", modifier = Modifier.padding(horizontal = 16.dp)) }
-            }
-            items(hasil.chunked(3)) { rowTitles ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    for (t in rowTitles) {
-                        Box(Modifier.weight(1f)) { PosterCard(t, onOpenTitle, Modifier.fillMaxWidth()) }
-                    }
-                    repeat(3 - rowTitles.size) { Spacer(Modifier.weight(1f)) }
+            if (browsing) {
+                item { SectionTitle("Hasil") }
+                if (hasil.isEmpty() && error == null) {
+                    item { Text("Belum ada judul yang cocok.", modifier = Modifier.padding(horizontal = 16.dp)) }
                 }
-            }
-        } else {
-            val hero = trending.firstOrNull() ?: terbaru.firstOrNull()
-            if (hero != null) {
-                item { HeroBanner(hero, onOpenTitle) }
-            }
-            if (lanjut.isNotEmpty()) {
-                item { SectionTitle("Lanjutkan Menonton") }
-                item {
-                    LazyRow(
+                items(hasil.chunked(3)) { rowTitles ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.padding(horizontal = 16.dp),
                     ) {
-                        items(lanjut) { h ->
-                            Column(modifier = Modifier.width(120.dp).clickable { onOpenEpisode(h.episodeId) }) {
-                                PosterImage(
-                                    url = h.posterUrl,
-                                    title = h.title,
-                                    modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
-                                        .clip(RoundedCornerShape(8.dp)),
-                                )
-                                Text(
-                                    h.title,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(top = 6.dp),
-                                )
-                                Text(
-                                    "Episode ${h.episodeNo} · ${h.positionSec / 60}:${(h.positionSec % 60).toString().padStart(2, '0')}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                        for (t in rowTitles) {
+                            Box(Modifier.weight(1f)) { PosterCard(t, onOpenTitle, Modifier.fillMaxWidth()) }
+                        }
+                        repeat(3 - rowTitles.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            } else {
+                val hero = trending.firstOrNull() ?: terbaru.firstOrNull()
+                if (hero != null) {
+                    item {
+                        HeroSection(
+                            hero = hero,
+                            repo = repo,
+                            authVersion = authVersion,
+                            onPlay = {
+                                scope.launch {
+                                    try {
+                                        val d = repo.titleDetail(hero.id)
+                                        val first = d.episodes.firstOrNull()
+                                        if (first != null) {
+                                            onOpenEpisode(first.id)
+                                        } else {
+                                            onOpenTitle(hero.id)
+                                        }
+                                    } catch (e: Exception) {
+                                        onOpenTitle(hero.id)
+                                    }
+                                }
+                            },
+                            onInfo = { onOpenTitle(hero.id) },
+                            onNeedLogin = onLogin,
+                        )
+                    }
+                }
+                if (lanjut.isNotEmpty()) {
+                    item { SectionTitle("Lanjutkan Menonton") }
+                    item {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        ) {
+                            items(lanjut) { h ->
+                                Column(modifier = Modifier.width(120.dp).clickable { onOpenEpisode(h.episodeId) }) {
+                                    PosterImage(
+                                        url = h.posterUrl,
+                                        title = h.title,
+                                        modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
+                                            .clip(RoundedCornerShape(8.dp)),
+                                    )
+                                    Text(
+                                        h.title,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.padding(top = 6.dp),
+                                    )
+                                    Text(
+                                        "Episode ${h.episodeNo} · ${h.positionSec / 60}:${(h.positionSec % 60).toString().padStart(2, '0')}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                     }
                 }
+                if (trending.isNotEmpty()) {
+                    item { SectionTitle("Sedang Tren") }
+                    item { PosterRow(trending, onOpenTitle) }
+                }
+                for ((t, label) in rowTypes) {
+                    val rows = perType[t].orEmpty()
+                    if (rows.isNotEmpty()) {
+                        item { SectionTitle(label) }
+                        item { PosterRow(rows, onOpenTitle) }
+                    }
+                }
+                if (terbaru.isNotEmpty()) {
+                    item { SectionTitle("Baru Ditambahkan") }
+                    item { PosterRow(terbaru, onOpenTitle) }
+                }
+                item { Spacer(Modifier.height(24.dp)) }
             }
-            if (trending.isNotEmpty()) {
-                item { SectionTitle("Sedang Tren") }
-                item { PosterRow(trending, onOpenTitle) }
-            }
-            for ((t, label) in rowTypes) {
-                val rows = perType[t].orEmpty()
-                if (rows.isNotEmpty()) {
-                    item { SectionTitle(label) }
-                    item { PosterRow(rows, onOpenTitle) }
+        }
+
+        // Header melayang ala Netflix: transparan bergradasi di atas
+        // hero; menjadi pekat saat menjelajah/mencari agar teks daftar
+        // di bawahnya tetap terbaca.
+        Column(
+            modifier = Modifier.fillMaxWidth().background(
+                if (browsing || searchOpen) {
+                    Brush.verticalGradient(listOf(Color(0xF2141414), Color(0xF2141414)))
+                } else {
+                    Brush.verticalGradient(listOf(Color(0xB3000000), Color.Transparent))
+                }
+            ),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "S",
+                    color = NetflixRed,
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = {
+                    searchOpen = !searchOpen
+                    if (!searchOpen) query = ""
+                }) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_search),
+                        contentDescription = "Cari",
+                        tint = Color.White,
+                    )
+                }
+                IconButton(onClick = onLogin) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_person),
+                        contentDescription = "Akun",
+                        tint = Color.White,
+                    )
                 }
             }
-            if (terbaru.isNotEmpty()) {
-                item { SectionTitle("Baru Ditambahkan") }
-                item { PosterRow(terbaru, onOpenTitle) }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+            ) {
+                typeFilters.forEach { (value, label) ->
+                    Text(
+                        label,
+                        color = if (type == value) Color.White else Color(0xFFB3B3B3),
+                        fontWeight = if (type == value) FontWeight.Bold else FontWeight.Normal,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.clickable { type = value }.padding(bottom = 10.dp),
+                    )
+                }
             }
-            item { Spacer(Modifier.height(24.dp)) }
+            if (searchOpen) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("Cari judul, genre…") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
         }
+    }
+}
+
+/** Hero layar penuh ala Netflix dengan aksi Daftar Saya/Putar/Info. */
+@Composable
+private fun HeroSection(
+    hero: TitleCard,
+    repo: CatalogRepository,
+    authVersion: Int,
+    onPlay: () -> Unit,
+    onInfo: () -> Unit,
+    onNeedLogin: () -> Unit,
+) {
+    var inList by remember(hero.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(hero.id, authVersion) {
+        inList = if (repo.isLoggedIn) {
+            try {
+                repo.watchlistCheck(hero.id)
+            } catch (e: Exception) {
+                false
+            }
+        } else {
+            false
+        }
+    }
+    Box(modifier = Modifier.fillMaxWidth().height(540.dp)) {
+        PosterImage(
+            url = hero.posterUrl,
+            title = hero.title,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        Color.Transparent,
+                        MaterialTheme.colorScheme.background,
+                    ),
+                    startY = 300f,
+                )
+            )
+        )
+        Column(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                hero.title,
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Black,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                listOfNotNull(
+                    hero.type.replaceFirstChar { it.uppercase() },
+                    hero.genres.joinToString(" • ").ifBlank { null },
+                ).joinToString("  •  "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFDDDDDD),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(vertical = 10.dp),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                HeroAction(
+                    icon = if (inList) R.drawable.ic_check else R.drawable.ic_add,
+                    label = "Daftar Saya",
+                    onClick = {
+                        if (!repo.isLoggedIn) {
+                            onNeedLogin()
+                        } else {
+                            scope.launch {
+                                try {
+                                    if (inList) {
+                                        repo.watchlistRemove(hero.id)
+                                        inList = false
+                                    } else {
+                                        repo.watchlistAdd(hero.id)
+                                        inList = true
+                                    }
+                                } catch (e: Exception) {
+                                    // Abaikan — status dibaca ulang saat hero berganti.
+                                }
+                            }
+                        }
+                    },
+                )
+                Button(
+                    onClick = onPlay,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black,
+                    ),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.height(46.dp).width(160.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_play),
+                        contentDescription = null,
+                        tint = Color.Black,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Putar", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                }
+                HeroAction(
+                    icon = R.drawable.ic_info,
+                    label = "Info",
+                    onClick = onInfo,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroAction(icon: Int, label: String, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable { onClick() }.padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = label,
+            tint = Color.White,
+            modifier = Modifier.size(26.dp),
+        )
+        Text(
+            label,
+            color = Color.White,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(top = 2.dp),
+        )
     }
 }
 
@@ -254,60 +461,10 @@ fun HomeScreen(
 private fun SectionTitle(text: String) {
     Text(
         text,
-        style = MaterialTheme.typography.titleMedium,
+        style = MaterialTheme.typography.titleLarge,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 10.dp),
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 10.dp),
     )
-}
-
-@Composable
-private fun HeroBanner(t: TitleCard, onOpen: (String) -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().height(430.dp).clickable { onOpen(t.id) }) {
-        AsyncImage(
-            model = t.posterUrl,
-            contentDescription = t.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-        Box(
-            modifier = Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    colors = listOf(Color.Transparent, Color.Transparent, MaterialTheme.colorScheme.background),
-                    startY = 120f,
-                )
-            )
-        )
-        Column(
-            modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
-        ) {
-            Text(
-                t.title,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Black,
-                color = Color.White,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                listOfNotNull(
-                    t.rating?.let { "★ $it" },
-                    t.year?.toString(),
-                    t.type.replaceFirstChar { it.uppercase() },
-                    t.genres.joinToString(", ").ifBlank { null },
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFFDDDDDD),
-                modifier = Modifier.padding(vertical = 6.dp),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    onClick = { onOpen(t.id) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
-                ) { Text("▶  Tonton", fontWeight = FontWeight.Bold) }
-                OutlinedButton(onClick = { onOpen(t.id) }) { Text("＋ Daftar Saya", color = Color.White) }
-            }
-        }
-    }
 }
 
 @Composable

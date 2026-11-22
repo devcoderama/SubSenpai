@@ -3,16 +3,27 @@ package com.subsenpai
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.subsenpai.data.AuthStore
@@ -33,11 +44,59 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             com.subsenpai.ui.SubSenpaiTheme {
-                Surface(color = MaterialTheme.colorScheme.background) {
-                    val context = LocalContext.current
-                    val nav = rememberNavController()
-                    val repo = remember { CatalogRepository(auth = AuthStore(context)) }
-                    var authVersion by remember { mutableStateOf(0) }
+                val context = LocalContext.current
+                val nav = rememberNavController()
+                val repo = remember { CatalogRepository(auth = AuthStore(context)) }
+                var authVersion by remember { mutableStateOf(0) }
+                val backEntry by nav.currentBackStackEntryAsState()
+                val route = backEntry?.destination?.route
+                // Bilah bawah ala Netflix: hanya di layar-layar utama.
+                val mainRoutes = setOf("home", "chat", "premium", "watchlist", "login")
+                val bottomItems = listOf(
+                    Triple("home", "Beranda", R.drawable.ic_home),
+                    Triple("chat", "Chat", R.drawable.ic_chat),
+                    Triple("premium", "Premium", R.drawable.ic_star),
+                    Triple("watchlist", "Daftar Saya", R.drawable.ic_bookmark),
+                    Triple("login", "Akun", R.drawable.ic_person),
+                )
+                Scaffold(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    bottomBar = {
+                        if (route in mainRoutes) {
+                            NavigationBar(containerColor = Color(0xFF0B0B0B)) {
+                                bottomItems.forEach { (dest, label, icon) ->
+                                    NavigationBarItem(
+                                        selected = route == dest,
+                                        onClick = {
+                                            nav.navigate(dest) {
+                                                popUpTo("home") { saveState = true }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        },
+                                        icon = {
+                                            Icon(
+                                                painter = painterResource(icon),
+                                                contentDescription = label,
+                                            )
+                                        },
+                                        label = {
+                                            Text(label, style = MaterialTheme.typography.labelSmall)
+                                        },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = Color.White,
+                                            selectedTextColor = Color.White,
+                                            unselectedIconColor = Color(0xFFB3B3B3),
+                                            unselectedTextColor = Color(0xFFB3B3B3),
+                                            indicatorColor = Color(0xFF2A2A2A),
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    },
+                ) { padding ->
+                    Box(Modifier.padding(padding)) {
                     NavHost(navController = nav, startDestination = "home") {
                         composable("home") {
                             HomeScreen(
@@ -46,9 +105,6 @@ class MainActivity : ComponentActivity() {
                                 onOpenTitle = { nav.navigate("detail/$it") },
                                 onOpenEpisode = { nav.navigate("player/$it") },
                                 onLogin = { nav.navigate("login") },
-                                onOpenWatchlist = { nav.navigate("watchlist") },
-                                onOpenPremium = { nav.navigate("premium") },
-                                onOpenChat = { nav.navigate("chat") },
                             )
                         }
                         composable("premium") {
@@ -129,6 +185,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenTitle = { nav.navigate("detail/$it") },
                             )
                         }
+                    }
                     }
                 }
             }
