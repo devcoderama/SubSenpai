@@ -171,7 +171,12 @@ fun LoginScreen(
                         loggedIn = true
                         onAuthChanged()
                     } catch (e: Exception) {
-                        error = e.message ?: "Masuk gagal."
+                        val blocked = com.subsenpai.data.parseBlockedMessage(e.message)
+                        error = if (blocked != null) {
+                            com.subsenpai.data.blockedDescription(blocked.first, blocked.second)
+                        } else {
+                            e.message ?: "Masuk gagal."
+                        }
                     } finally {
                         busy = false
                     }
@@ -282,7 +287,12 @@ fun LoginScreen(
                                 legacyLauncher.launch(client.signInIntent)
                             }
                         } catch (e: Exception) {
-                            error = e.message ?: "Masuk gagal."
+                            val blocked = com.subsenpai.data.parseBlockedMessage(e.message)
+                            error = if (blocked != null) {
+                                com.subsenpai.data.blockedDescription(blocked.first, blocked.second)
+                            } else {
+                                e.message ?: "Masuk gagal."
+                            }
                             busy = false
                         }
                     }

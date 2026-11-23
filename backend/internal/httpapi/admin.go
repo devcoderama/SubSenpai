@@ -75,8 +75,23 @@ type adminUser struct {
 	AvatarURL    string     `json:"avatar_url"`
 	Role         string     `json:"role"`
 	IsBanned     bool       `json:"is_banned"`
+	Status       string     `json:"status"`
+	AdminNote    string     `json:"admin_note"`
 	PremiumAktif bool       `json:"premium_aktif"`
 	PremiumUntil *time.Time `json:"premium_until,omitempty"`
+}
+
+const adminUserCols = `
+	id, coalesce(email, ''), coalesce(display_name, ''),
+	coalesce(avatar_url, ''), role, is_banned,
+	coalesce(status, 'active'), coalesce(admin_note, ''),
+	coalesce(premium_until > now(), false), premium_until`
+
+func scanAdminUser(row interface {
+	Scan(dest ...any) error
+}, u *adminUser) error {
+	return row.Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL,
+		&u.Role, &u.IsBanned, &u.Status, &u.AdminNote, &u.PremiumAktif, &u.PremiumUntil)
 }
 
 // handleAdminUsers: daftar pengguna (cari by email/nama).
@@ -95,9 +110,7 @@ func (a *API) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		offset = 0
 	}
 	rows, err := a.pool.Query(r.Context(), `
-		select id, coalesce(email, ''), coalesce(display_name, ''),
-		       coalesce(avatar_url, ''), role, is_banned,
-		       coalesce(premium_until > now(), false), premium_until
+		select `+adminUserCols+`
 		from profiles
 		where ($1 = '' or email ilike '%' || $1 || '%' or display_name ilike '%' || $1 || '%')
 		order by (role = 'admin') desc, email asc
@@ -110,14 +123,78 @@ func (a *API) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	out := []adminUser{}
 	for rows.Next() {
 		var u adminUser
-		if err := rows.Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL,
-			&u.Role, &u.IsBanned, &u.PremiumAktif, &u.PremiumUntil); err != nil {
+		if err := scanAdminUser(rows, &u); err != nil {
 			writeErr(w, http.StatusInternalServerError, "gagal membaca pengguna")
 			return
 		}
 		out = append(out, u)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"users": out})
+}
+
+// handleAdminUserGet: satu pengguna lengkap untuk halaman
+// detail Daftar Pengguna.
+func (a *API) handleAdminUserGet(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	var u adminUser
+	err := scanAdminUser(a.pool.QueryRow(r.Context(), `
+		select `+adminUserCols+`
+		from profiles where id = $1::uuid`, chi.URLParam(r, "id")), &u)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pengguna tidak ditemukan")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": u})
+}
+
+// handleAdminUserStatus: ubah status akun (active|banned|
+// suspended) + catatan admin. Akun nonaktif langsung kehilangan
+// akses: login ditolak dan middleware menolak sesi berjalannya.
+// Admin tidak bisa mengubah status akunnya sendiri (cegah
+// terkunci keluar). is_banned dijaga selaras dengan status.
+func (a *API) handleAdminUserStatus(w http.ResponseWriter, r *http.Request) {
+	p, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	targetID := chi.URLParam(r, "id")
+	var req struct {
+		Status string `json:"status"`
+		Note   string `json:"note"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil ||
+		(req.Status != "active" && req.Status != "banned" && req.Status != "suspended") {
+		writeErr(w, http.StatusBadRequest, "status harus 'active', 'banned', atau 'suspended'")
+		return
+	}
+	if len([]rune(req.Note)) > 1000 {
+		writeErr(w, http.StatusBadRequest, "catatan maksimal 1000 karakter")
+		return
+	}
+	if targetID == p.ID {
+		writeErr(w, http.StatusBadRequest, "tidak bisa mengubah status akun kamu sendiri")
+		return
+	}
+	ctx := r.Context()
+	var u adminUser
+	err := scanAdminUser(a.pool.QueryRow(ctx, `
+		update profiles
+		set status = $2, admin_note = $3, status_updated_at = now(),
+		    is_banned = ($2 = 'banned')
+		where id = $1::uuid
+		returning `+adminUserCols,
+		targetID, req.Status, req.Note), &u)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pengguna tidak ditemukan")
+		return
+	}
+	_, _ = a.pool.Exec(ctx, `
+		insert into admin_logs (admin_id, action, target, detail)
+		values ($1::uuid, 'user_status_change', $2, $3)`,
+		p.ID, targetID, map[string]any{"status": req.Status, "note": req.Note})
+	writeJSON(w, http.StatusOK, map[string]any{"user": u})
 }
 
 // handleAdminUserUpdate: ubah role pengguna (invite/promote admin
@@ -142,14 +219,10 @@ func (a *API) handleAdminUserUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	var u adminUser
-	err := a.pool.QueryRow(ctx, `
+	err := scanAdminUser(a.pool.QueryRow(ctx, `
 		update profiles set role = $2 where id = $1::uuid
-		returning id, coalesce(email, ''), coalesce(display_name, ''),
-		          coalesce(avatar_url, ''), role, is_banned,
-		          coalesce(premium_until > now(), false), premium_until`,
-		targetID, req.Role,
-	).Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL,
-		&u.Role, &u.IsBanned, &u.PremiumAktif, &u.PremiumUntil)
+		returning `+adminUserCols,
+		targetID, req.Role), &u)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "pengguna tidak ditemukan")
 		return
@@ -341,17 +414,17 @@ func (a *API) handleAdminTransactions(w http.ResponseWriter, r *http.Request) {
 }
 
 type adminVoucher struct {
-	ID            string     `json:"id"`
-	Code          string     `json:"code"`
-	Source        string     `json:"source"`
-	DurationDays  int        `json:"duration_days"`
-	Status        string     `json:"status"`
-	CreatedBy     string     `json:"created_by_email"`
-	AssignedTo    string     `json:"assigned_to_email,omitempty"`
-	RedeemedBy    string     `json:"redeemed_by_email,omitempty"`
-	RedeemedAt    *time.Time `json:"redeemed_at,omitempty"`
-	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID           string     `json:"id"`
+	Code         string     `json:"code"`
+	Source       string     `json:"source"`
+	DurationDays int        `json:"duration_days"`
+	Status       string     `json:"status"`
+	CreatedBy    string     `json:"created_by_email"`
+	AssignedTo   string     `json:"assigned_to_email,omitempty"`
+	RedeemedBy   string     `json:"redeemed_by_email,omitempty"`
+	RedeemedAt   *time.Time `json:"redeemed_at,omitempty"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 // handleAdminVouchers: daftar voucher semua sumber (terbaru dulu).
@@ -404,10 +477,10 @@ func (a *API) handleAdminVoucherCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		DurationDays int    `json:"duration_days"`
-		Quantity     int    `json:"quantity"`
+		DurationDays  int    `json:"duration_days"`
+		Quantity      int    `json:"quantity"`
 		AssignedEmail string `json:"assigned_email"`
-		ValidDays    int    `json:"valid_days"`
+		ValidDays     int    `json:"valid_days"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "format permintaan tidak valid")

@@ -324,7 +324,7 @@ function enterApp() {
 }
 
 const GROUP_LABELS = { va: 'Virtual Account', ewallet: 'E-Wallet', qris: 'QRIS', retail: 'Retail', pulsa: 'Pulsa' };
-const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', pengumuman: 'Pengumuman Banner', notifikasi: 'Notifikasi', laporan: 'Laporan User', 'laporan-detail': 'Detail Laporan', log: 'Log Admin', 'log-detail': 'Detail Log', 'judul-detail': 'Detail Judul', sistem: 'Info Sistem' };
+const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', pengumuman: 'Pengumuman Banner', notifikasi: 'Notifikasi', laporan: 'Laporan User', 'laporan-detail': 'Detail Laporan', log: 'Log Admin', 'log-detail': 'Detail Log', 'judul-detail': 'Detail Judul', 'pengguna-detail': 'Detail Pengguna', sistem: 'Info Sistem' };
 
 function route() {
   if (window.__pageTimer) { clearInterval(window.__pageTimer); window.__pageTimer = null; }
@@ -337,7 +337,7 @@ function route() {
     if (g.querySelector('a.active')) g.classList.add('open');
   });
   $('pageTitle').textContent = TITLES[page];
-  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, pengumuman: pagePengumuman, notifikasi: pageNotifikasi, laporan: pageLaporan, 'laporan-detail': pageLaporanDetail, log: pageLog, 'log-detail': pageLogDetail, 'judul-detail': pageJudulDetail, sistem: pageSistem })[page]();
+  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, pengumuman: pagePengumuman, notifikasi: pageNotifikasi, laporan: pageLaporan, 'laporan-detail': pageLaporanDetail, log: pageLog, 'log-detail': pageLogDetail, 'judul-detail': pageJudulDetail, 'pengguna-detail': pagePenggunaDetail, sistem: pageSistem })[page]();
 }
 
 // Poster katalog lewat proxy server: CDN sumber menolak hotlink
@@ -442,35 +442,87 @@ async function pagePengguna() {
     const q = encodeURIComponent($('userQ').value.trim());
     const r = await api('/api/v1/admin/users?limit=100&q=' + q);
     if (r.status !== 200) { $('userList').innerHTML = '<p class="error">Gagal memuat pengguna.</p>'; return; }
-    let html = '<div class="tscroll"><table><tr><th>Pengguna</th><th>Role</th><th>Premium</th><th>Aksi</th></tr>';
+    let html = '<div class="tscroll"><table><tr><th>Pengguna</th><th>Role</th><th>Status</th><th>Premium</th><th>Detail</th></tr>';
     for (const u of r.body.users || []) {
-      const isMe = me && u.id === me.id;
       html += '<tr><td>' + (u.avatar_url ? '<img class="avatar" src="' + esc(u.avatar_url) + '" referrerpolicy="no-referrer" alt="">' : '') +
         esc(u.display_name || '(tanpa nama)') + '<div class="muted small">' + esc(u.email) + '</div></td>' +
-        '<td><span class="badge ' + esc(u.role) + '">' + esc(u.role) + '</span>' + (u.is_banned ? ' <span class="badge expired">banned</span>' : '') + '</td>' +
+        '<td><span class="badge ' + esc(u.role) + '">' + esc(u.role) + '</span></td>' +
+        '<td>' + statusAkunBadge(u.status) + '</td>' +
         '<td>' + (u.premium_aktif ? '<span class="badge premium">aktif s.d. ' + esc(fmtDate(u.premium_until)) + '</span>' : '<span class="muted">—</span>') + '</td>' +
-        '<td>' + (isMe ? '<span class="muted small">(kamu)</span>' :
-          (u.role === 'admin'
-            ? '<button class="btn ghost small" data-role="' + esc(u.id) + '|user">Turunkan jadi User</button>'
-            : '<button class="btn purple small" data-role="' + esc(u.id) + '|admin">Jadikan Admin</button>')) + '</td></tr>';
+        '<td><a class="btn ghost small" href="#/pengguna-detail?id=' + esc(u.id) + '">Detail</a></td></tr>';
     }
     $('userList').innerHTML = html + '</table></div>';
-    document.querySelectorAll('button[data-role]').forEach((el) => {
-      el.addEventListener('click', async () => {
-        const [id, role] = el.dataset.role.split('|');
-        const msg = role === 'admin'
-          ? 'Angkat pengguna ini menjadi ADMIN? Ia akan bisa membuka dashboard ini.'
-          : 'Turunkan pengguna ini menjadi user biasa?';
-        if (!confirm(msg)) return;
-        const rr = await api('/api/v1/admin/users/' + encodeURIComponent(id), { method: 'PATCH', body: { role } });
-        if (rr.status === 200) { toast('Role diubah menjadi ' + role); load(); }
-        else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
-      });
-    });
   };
   $('userSearchBtn').addEventListener('click', load);
   $('userQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') load(); });
   load();
+}
+function statusAkunBadge(s) {
+  if (s === 'banned') return '<span class="badge expired">Ban</span>';
+  if (s === 'suspended') return '<span class="badge info">Ditangguhkan</span>';
+  return '<span class="badge premium">Aktif</span>';
+}
+// Halaman detail satu pengguna: role, status akun (aktif / ban /
+// ditangguhkan) + catatan admin diatur dari sini. Akun nonaktif
+// kehilangan akses aplikasi (login ditolak, sesi ditolak server).
+async function pagePenggunaDetail() {
+  const id = new URLSearchParams((location.hash.split('?')[1] || '')).get('id') || '';
+  $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
+  const r = await api('/api/v1/admin/users/' + encodeURIComponent(id));
+  if (r.status !== 200 || !r.body.user) {
+    $('pageBody').innerHTML = '<p class="error">Pengguna tidak ditemukan.</p>' +
+      '<p><a class="btn ghost" href="#/pengguna">← Kembali ke Daftar Pengguna</a></p>';
+    return;
+  }
+  const u = r.body.user;
+  const isMe = me && u.id === me.id;
+  const opt = (v, lbl) => '<option value="' + v + '"' + (u.status === v ? ' selected' : '') + '>' + lbl + '</option>';
+  $('pageBody').innerHTML =
+    '<p><a class="btn ghost small" href="#/pengguna">← Kembali ke Daftar Pengguna</a></p>' +
+    '<div class="card"><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">' +
+    (u.avatar_url ? '<img class="avatar" src="' + esc(u.avatar_url) + '" referrerpolicy="no-referrer" alt="" style="width:56px;height:56px">' : '') +
+    '<div><h2 style="margin:0">' + esc(u.display_name || '(tanpa nama)') + '</h2>' +
+    '<div class="muted">' + esc(u.email) + '</div></div></div>' +
+    '<dl class="kv" style="margin-top:16px">' +
+    '<dt>Role</dt><dd><span class="badge ' + esc(u.role) + '">' + esc(u.role) + '</span></dd>' +
+    '<dt>Premium</dt><dd>' + (u.premium_aktif ? 'Aktif s.d. ' + esc(fmtDate(u.premium_until)) : 'Tidak aktif') + '</dd>' +
+    '<dt>Status akun</dt><dd>' + statusAkunBadge(u.status) + '</dd>' +
+    '<dt>Catatan admin</dt><dd>' + esc(u.admin_note || '—') + '</dd>' +
+    '</dl>' +
+    (isMe ? '<p class="muted">Ini akunmu sendiri — role dan statusnya tidak bisa diubah dari sini.</p>' :
+      '<div class="toolbar">' +
+      (u.role === 'admin'
+        ? '<button class="btn ghost" id="pg-role">Turunkan jadi User</button>'
+        : '<button class="btn purple" id="pg-role">Jadikan Admin</button>') + '</div>' +
+      '<h3 style="margin-bottom:8px">Ubah Status & Catatan</h3>' +
+      '<div class="toolbar"><label>Status akun <select id="pg-status">' +
+      opt('active', 'Aktif') + opt('suspended', 'Ditangguhkan') + opt('banned', 'Ban') +
+      '</select></label></div>' +
+      '<textarea id="pg-note" rows="3" maxlength="1000" placeholder="Catatan admin — ditampilkan ke user saat akunnya ditahan" style="width:100%">' + esc(u.admin_note || '') + '</textarea>' +
+      '<p><button class="btn" id="pg-save">Simpan Status</button></p>') +
+    '</div>';
+  if (isMe) return;
+  $('pg-role').addEventListener('click', async () => {
+    const role = u.role === 'admin' ? 'user' : 'admin';
+    const msg = role === 'admin'
+      ? 'Angkat pengguna ini menjadi ADMIN? Ia akan bisa membuka dashboard ini.'
+      : 'Turunkan pengguna ini menjadi user biasa?';
+    if (!confirm(msg)) return;
+    const rr = await api('/api/v1/admin/users/' + encodeURIComponent(id), { method: 'PATCH', body: { role } });
+    if (rr.status === 200) { toast('Role diubah menjadi ' + role); pagePenggunaDetail(); }
+    else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+  });
+  $('pg-save').addEventListener('click', async () => {
+    const status = $('pg-status').value;
+    const note = $('pg-note').value.trim();
+    if (status !== 'active' && status !== u.status &&
+      !confirm('Tahan akun ini? User langsung kehilangan akses ke aplikasi (sesi yang berjalan ikut ditolak).')) return;
+    const rr = await api('/api/v1/admin/users/' + encodeURIComponent(id) + '/status', {
+      method: 'PATCH', body: { status, note },
+    });
+    if (rr.status === 200) { toast('Status akun disimpan: ' + status); pagePenggunaDetail(); }
+    else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+  });
 }
 
 /* ----- Transaksi ----- */

@@ -181,6 +181,34 @@ data class Playback(
 }
 
 /** Repositori katalog & akun — satu-satunya jalan UI ke API. */
+/**
+ * Ubah pesan penolakan akun nonaktif dari server
+ * ("akun_nonaktif:<status>:<catatan>") menjadi teks ramah untuk
+ * layar masuk & layar blokir. Pesan lain diteruskan apa adanya.
+ */
+fun parseBlockedMessage(msg: String?): Pair<String, String>? {
+    val m = msg.orEmpty()
+    if (!m.startsWith("akun_nonaktif:")) return null
+    val parts = m.split(":", limit = 3)
+    return (parts.getOrNull(1) ?: "") to (parts.getOrNull(2) ?: "")
+}
+
+fun blockedTitle(status: String): String = when (status) {
+    "banned" -> "Akun Dibekukan"
+    "suspended" -> "Akun Ditangguhkan"
+    else -> "Akun Tidak Aktif"
+}
+
+fun blockedDescription(status: String, note: String): String {
+    val base = when (status) {
+        "banned" -> "Akunmu dibekukan oleh admin dan tidak bisa digunakan untuk masuk atau menonton."
+        "suspended" -> "Akunmu sedang ditangguhkan oleh admin dan untuk sementara tidak bisa digunakan."
+        else -> "Akunmu sedang tidak aktif dan tidak bisa digunakan untuk masuk atau menonton."
+    }
+    val notePart = note.takeIf { it.isNotBlank() }?.let { "\n\nCatatan admin: $it" } ?: ""
+    return base + notePart + "\n\nHubungi admin SubSenpai bila menurutmu ini keliru."
+}
+
 class CatalogRepository(
     private val api: ApiClient = ApiClient(),
     val auth: AuthStore? = null,
@@ -264,6 +292,27 @@ class CatalogRepository(
 
     fun logout() {
         auth?.clear()
+    }
+
+    /**
+     * Profil sendiri dari server (GET /api/v1/me). Dipakai layar
+     * utama untuk memeriksa status akun tiap siklus poll: akun
+     * yang di-ban/ditangguhkan admin ditolak server di sini
+     * dengan ApiException "akun_nonaktif:..." (v0.24.15).
+     */
+    suspend fun me(): UserProfile {
+        val o = api.get("/api/v1/me")
+        val p = o.getJSONObject("profile")
+        return UserProfile(
+            id = p.getString("id"),
+            email = p.getString("email"),
+            displayName = p.optString("display_name").ifBlank { null },
+            avatarUrl = p.optString("avatar_url").ifBlank { null },
+            role = p.optString("role", "user"),
+            isPremium = p.optBoolean("is_premium"),
+            appLanguage = p.optString("app_language", "id"),
+            friendCode = p.optString("friend_code").ifBlank { null },
+        )
     }
 
     // ---------- Watchlist (Fase 3) ----------

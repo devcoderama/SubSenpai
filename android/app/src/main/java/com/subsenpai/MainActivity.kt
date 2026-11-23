@@ -165,6 +165,11 @@ class MainActivity : ComponentActivity() {
                 // memuat = aplikasi berjalan normal tanpa gerbang.
                 var appConfig by remember { mutableStateOf<com.subsenpai.data.AppConfig?>(null) }
                 var configLoaded by remember { mutableStateOf(false) }
+                // Status akun (v0.24.15): pasangan (status, catatan
+                // admin) bila akun di-ban/ditangguhkan — diperiksa
+                // lewat /me pada poll konfigurasi yang sama; layar
+                // blokir tampil selama status ini terisi.
+                var accountBlocked by remember { mutableStateOf<Pair<String, String>?>(null) }
                 var announcementDismissed by remember { mutableStateOf(false) }
                 // Izin notifikasi sistem (Android 13+) — diminta sekali
                 // agar pengumuman admin bisa muncul di bilah status.
@@ -196,6 +201,23 @@ class MainActivity : ComponentActivity() {
                             // Abaikan: tanpa konfigurasi, tanpa gerbang.
                         }
                         configLoaded = true
+                        // Status akun (v0.24.15): akun yang di-ban /
+                        // ditangguhkan admin ditolak server di semua
+                        // panggilan login — periksa /me tiap siklus
+                        // agar layar blokir tampil paling lambat 60
+                        // detik setelah status berubah, dan lepas
+                        // sendiri begitu admin mengaktifkan lagi.
+                        try {
+                            if (AuthStore(context).token != null) {
+                                repo.me()
+                                accountBlocked = null
+                            }
+                        } catch (e: com.subsenpai.data.ApiException) {
+                            val blocked = com.subsenpai.data.parseBlockedMessage(e.message)
+                            if (blocked != null) accountBlocked = blocked
+                        } catch (e: Exception) {
+                            // Abaikan: gangguan jaringan bukan blokir.
+                        }
                         // Notifikasi sistem (v0.22.4): bila jumlah belum
                         // dibaca BERTAMBAH (pengumuman admin / aktivitas
                         // sosial baru), tampilkan notifikasi Android.
@@ -282,6 +304,20 @@ class MainActivity : ComponentActivity() {
                     Box(Modifier.padding(padding)) {
                     when {
                         !configLoaded -> com.subsenpai.ui.BrandLoadingScreen()
+                        accountBlocked != null -> com.subsenpai.ui.GatePage(
+                            iconRes = R.drawable.ic_info,
+                            title = com.subsenpai.data.blockedTitle(accountBlocked!!.first),
+                            message = com.subsenpai.data.blockedDescription(
+                                accountBlocked!!.first,
+                                accountBlocked!!.second,
+                            ),
+                            buttonLabel = "Keluar dari Akun",
+                            onButton = {
+                                repo.logout()
+                                accountBlocked = null
+                                authVersion++
+                            },
+                        )
                         appConfig?.maintenanceMode == true -> com.subsenpai.ui.GatePage(
                             iconRes = R.drawable.ic_settings,
                             title = "Sedang Dalam Perawatan",

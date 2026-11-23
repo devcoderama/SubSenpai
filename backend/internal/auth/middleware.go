@@ -13,10 +13,22 @@ type ctxKey struct{}
 
 // Profile adalah identitas user yang terotentikasi pada satu request.
 type Profile struct {
-	ID     string
-	Email  string
-	Role   string
-	Banned bool
+	ID        string
+	Email     string
+	Role      string
+	Banned    bool
+	Status    string
+	AdminNote string
+}
+
+// blockedMessage menyusun pesan penolakan akun nonaktif yang
+// dipahami aplikasi: "akun_nonaktif:<status>:<catatan admin>".
+func blockedMessage(status, note string) string {
+	note = strings.ReplaceAll(note, "\n", " ")
+	if r := []rune(note); len(r) > 300 {
+		note = string(r[:300])
+	}
+	return "akun_nonaktif:" + status + ":" + note
 }
 
 // Authenticator memverifikasi JWT backend dan memuat profil dari database.
@@ -47,15 +59,20 @@ func (a *Authenticator) Require(next http.Handler) http.Handler {
 		}
 		var p Profile
 		err = a.Pool.QueryRow(r.Context(), `
-			select id, coalesce(email,''), role, is_banned
+			select id, coalesce(email,''), role, is_banned,
+			       coalesce(status, 'active'), coalesce(admin_note, '')
 			from profiles where id = $1::uuid`, profileID,
-		).Scan(&p.ID, &p.Email, &p.Role, &p.Banned)
+		).Scan(&p.ID, &p.Email, &p.Role, &p.Banned, &p.Status, &p.AdminNote)
 		if err != nil {
 			writeAuthErr(w, http.StatusUnauthorized, "profil tidak ditemukan")
 			return
 		}
-		if p.Banned {
-			writeAuthErr(w, http.StatusForbidden, "akun diblokir")
+		if p.Banned || p.Status != "active" {
+			st := p.Status
+			if p.Banned && st == "active" {
+				st = "banned"
+			}
+			writeAuthErr(w, http.StatusForbidden, blockedMessage(st, p.AdminNote))
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, &p)))
@@ -89,15 +106,20 @@ func (a *Authenticator) Optional(next http.Handler) http.Handler {
 		}
 		var p Profile
 		err = a.Pool.QueryRow(r.Context(), `
-			select id, coalesce(email,''), role, is_banned
+			select id, coalesce(email,''), role, is_banned,
+			       coalesce(status, 'active'), coalesce(admin_note, '')
 			from profiles where id = $1::uuid`, profileID,
-		).Scan(&p.ID, &p.Email, &p.Role, &p.Banned)
+		).Scan(&p.ID, &p.Email, &p.Role, &p.Banned, &p.Status, &p.AdminNote)
 		if err != nil {
 			writeAuthErr(w, http.StatusUnauthorized, "profil tidak ditemukan")
 			return
 		}
-		if p.Banned {
-			writeAuthErr(w, http.StatusForbidden, "akun diblokir")
+		if p.Banned || p.Status != "active" {
+			st := p.Status
+			if p.Banned && st == "active" {
+				st = "banned"
+			}
+			writeAuthErr(w, http.StatusForbidden, blockedMessage(st, p.AdminNote))
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, &p)))

@@ -59,6 +59,7 @@ func (a *API) handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var prof profileOut
 	var banned bool
+	var accStatus, accNote string
 	var isNew bool
 	upsert := func(code string) error {
 		return a.pool.QueryRow(ctx, `
@@ -69,10 +70,12 @@ func (a *API) handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 			      display_name = excluded.display_name,
 			      avatar_url = excluded.avatar_url
 			returning id, email, display_name, avatar_url, role, is_premium,
-			          premium_until, app_language, friend_code, is_banned, (xmax = 0)`,
+			          premium_until, app_language, friend_code, is_banned,
+			          coalesce(status, 'active'), coalesce(admin_note, ''), (xmax = 0)`,
 			claims.Email, claims.Sub, nullStr(claims.Name), nullStr(claims.Picture), code,
 		).Scan(&prof.ID, &prof.Email, &prof.DisplayName, &prof.AvatarURL, &prof.Role,
-			&prof.IsPremium, &prof.PremiumUntil, &prof.AppLanguage, &prof.FriendCode, &banned, &isNew)
+			&prof.IsPremium, &prof.PremiumUntil, &prof.AppLanguage, &prof.FriendCode, &banned,
+			&accStatus, &accNote, &isNew)
 	}
 	// Kode teman acak bisa bertabrakan (unik) — coba ulang beberapa kali.
 	err = upsert(newFriendCode())
@@ -83,8 +86,13 @@ func (a *API) handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "gagal membuat profil")
 		return
 	}
-	if banned {
-		writeErr(w, http.StatusForbidden, "akun diblokir")
+	if banned || accStatus != "active" {
+		st := accStatus
+		if banned && st == "active" {
+			st = "banned"
+		}
+		note := strings.ReplaceAll(accNote, "\n", " ")
+		writeErr(w, http.StatusForbidden, "akun_nonaktif:"+st+":"+note)
 		return
 	}
 	// Perangkat dicatat saat login; akun premium dibatasi 2 perangkat.

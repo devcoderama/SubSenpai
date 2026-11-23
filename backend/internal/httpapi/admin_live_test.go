@@ -215,6 +215,36 @@ func TestAdminLive(t *testing.T) {
 	if st, _ := call("PATCH", "/api/v1/admin/users/"+adminID, adminJWT, map[string]any{"role": "user"}); st != 400 {
 		t.Fatalf("self-demote harus 400, dapat %d", st)
 	}
+	// Status akun: tangguhkan user uji -> sesi berjalannya ditolak
+	// middleware (akun_nonaktif); aktifkan lagi -> pulih.
+	st, updStatus := call("PATCH", "/api/v1/admin/users/"+userID+"/status", adminJWT,
+		map[string]any{"status": "suspended", "note": "uji tangguh"})
+	if st != 200 || updStatus["user"].(map[string]any)["status"] != "suspended" {
+		t.Fatalf("tangguhkan user: status=%d body=%v", st, updStatus)
+	}
+	st, meBlocked := call("GET", "/api/v1/me", userJWT, nil)
+	if st != 403 || !strings.Contains(fmt.Sprint(meBlocked["error"]), "akun_nonaktif:suspended") {
+		t.Fatalf("sesi user ditangguhkan harus 403 akun_nonaktif, dapat %d %v", st, meBlocked)
+	}
+	if st, _ := call("PATCH", "/api/v1/admin/users/"+adminID+"/status", adminJWT,
+		map[string]any{"status": "banned"}); st != 400 {
+		t.Fatalf("ubah status sendiri harus 400, dapat %d", st)
+	}
+	if st, _ := call("PATCH", "/api/v1/admin/users/"+userID+"/status", adminJWT,
+		map[string]any{"status": "aneh"}); st != 400 {
+		t.Fatalf("status tidak dikenal harus 400, dapat %d", st)
+	}
+	st, satuUser := call("GET", "/api/v1/admin/users/"+userID, adminJWT, nil)
+	if st != 200 || satuUser["user"].(map[string]any)["admin_note"] != "uji tangguh" {
+		t.Fatalf("ambil satu user: status=%d body=%v", st, satuUser)
+	}
+	if st, _ := call("PATCH", "/api/v1/admin/users/"+userID+"/status", adminJWT,
+		map[string]any{"status": "active", "note": ""}); st != 200 {
+		t.Fatalf("aktifkan lagi user: status=%d", st)
+	}
+	if st, _ := call("GET", "/api/v1/me", userJWT, nil); st != 200 {
+		t.Fatalf("sesi user aktif harus pulih, dapat %d", st)
+	}
 	// Admin: transaksi memuat sesi uji.
 	st, trx := call("GET", "/api/v1/admin/transactions", adminJWT, nil)
 	if st != 200 || len(trx["transactions"].([]any)) < 1 {
