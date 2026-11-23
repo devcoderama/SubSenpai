@@ -1,0 +1,112 @@
+/* SubSenpai Admin — tema mengikuti situs dokumentasi:
+   latar #0B0F1A, panel #0e1424, aksen ungu #a78bfa & merah Netflix. */
+:root {
+  --bg: #0B0F1A;
+  --panel: #0e1424;
+  --panel-2: #131b30;
+  --border: #26314d;
+  --text: #e8ecf6;
+  --muted: #9aa7c7;
+  --purple: #a78bfa;
+  --pink: #ff6b9d;
+  --red: #E50914;
+  --green: #46d369;
+  --amber: #f5c518;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Zen Kaku Gothic New', system-ui, sans-serif;
+}
+h1, h2 { font-family: 'Shippori Mincho B1', serif; }
+a { color: var(--purple); }
+.muted { color: var(--muted); }
+.small { font-size: 0.82rem; }
+.error { color: #ff7a7a; }
+.logo { font-family: 'Shippori Mincho B1', serif; font-weight: 800; font-size: 1.5rem; }
+.logo span { color: var(--red); }
+.logo small { font-size: 0.8rem; color: var(--muted); font-family: 'Zen Kaku Gothic New', sans-serif; font-weight: 500; }
+
+/* ===== Login ===== */
+.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.login-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  padding: 36px 32px; max-width: 430px; width: 100%; text-align: center;
+}
+.login-card h1 { margin: 10px 0 6px; font-size: 1.45rem; }
+.google-btn { display: flex; justify-content: center; margin: 22px 0 6px; min-height: 44px; }
+
+/* ===== Layout ===== */
+.layout { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 250px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border);
+  padding: 22px 16px; display: flex; flex-direction: column; gap: 22px;
+  position: sticky; top: 0; height: 100vh;
+}
+.sidebar nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.sidebar nav a {
+  color: var(--text); text-decoration: none; padding: 10px 12px; border-radius: 10px; font-weight: 500;
+}
+.sidebar nav a:hover { background: var(--panel-2); }
+.sidebar nav a.active { background: var(--panel-2); color: var(--purple); }
+.side-user { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px; }
+.side-user img { width: 38px; height: 38px; border-radius: 50%; background: var(--panel-2); }
+.side-user-info { flex: 1; min-width: 0; }
+.side-user-info div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.content { flex: 1; padding: 26px 30px; max-width: 1080px; }
+.content h1 { margin-top: 0; font-size: 1.6rem; }
+
+/* ===== Komponen ===== */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 22px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+.card .num { font-size: 1.7rem; font-weight: 700; margin-top: 4px; }
+.card .lbl { color: var(--muted); font-size: 0.85rem; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+th, td { text-align: left; padding: 11px 13px; border-bottom: 1px solid var(--border); font-size: 0.92rem; vertical-align: middle; }
+th { color: var(--muted); font-weight: 500; background: var(--panel-2); }
+tr:last-child td { border-bottom: none; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; }
+.badge.paid, .badge.admin, .badge.premium { background: rgba(70, 211, 105, 0.15); color: var(--green); }
+.badge.pending { background: rgba(245, 197, 24, 0.15); color: var(--amber); }
+.badge.expired, .badge.user { background: rgba(154, 167, 199, 0.15); color: var(--muted); }
+.btn {
+  background: var(--red); color: #fff; border: none; border-radius: 9px;
+  padding: 8px 16px; font-weight: 700; cursor: pointer; font-family: inherit; font-size: 0.9rem;
+}
+.btn:hover { filter: brightness(1.12); }
+.btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn.small { padding: 5px 12px; font-size: 0.82rem; }
+.btn.purple { background: #6d28d9; }
+input[type="text"], input[type="number"], input[type="search"] {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 9px; padding: 9px 12px; font-family: inherit; font-size: 0.92rem;
+}
+.toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.toolbar input { flex: 1; min-width: 200px; }
+.group-title { margin: 22px 0 10px; font-size: 1.05rem; }
+.method-icon { width: 26px; height: 26px; border-radius: 6px; vertical-align: middle; margin-right: 9px; background: #fff; }
+.avatar { width: 30px; height: 30px; border-radius: 50%; vertical-align: middle; margin-right: 9px; background: var(--panel-2); }
+
+/* Saklar aktif/nonaktif */
+.switch { position: relative; display: inline-block; width: 46px; height: 25px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; inset: 0; border-radius: 999px; background: #3a4562; cursor: pointer; transition: 0.2s; }
+.slider::before { content: ""; position: absolute; width: 19px; height: 19px; border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: 0.2s; }
+.switch input:checked + .slider { background: var(--green); }
+.switch input:checked + .slider::before { transform: translateX(21px); }
+
+.toast {
+  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  padding: 11px 20px; border-radius: 11px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); z-index: 50;
+}
+
+@media (max-width: 760px) {
+  .layout { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; position: static; }
+  .sidebar nav { flex-direction: row; flex-wrap: wrap; }
+  .content { padding: 18px 14px; }
+  table { display: block; overflow-x: auto; }
+}

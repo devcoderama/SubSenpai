@@ -66,6 +66,11 @@ func New(pool *pgxpool.Pool, sessions *middleware.Sessions, cfg config.Config) *
 
 func (a *API) Router() http.Handler {
 	r := chi.NewRouter()
+	// CORS untuk klien web (dashboard admin) — aplikasi Android
+	// tidak terpengaruh; preflight OPTIONS dijawab di middleware.
+	r.Use(func(next http.Handler) http.Handler {
+		return middleware.CORS(a.cfg.WebOrigins, next)
+	})
 	r.Get("/healthz", func(w http.ResponseWriter, req *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -105,6 +110,12 @@ func (a *API) Router() http.Handler {
 			r.Use(a.authn.Require)
 			r.Get("/api/v1/admin/payment-methods", a.handleAdminPaymentMethods)
 			r.Patch("/api/v1/admin/payment-methods/{code}", a.handleAdminPaymentMethodUpdate)
+			r.Get("/api/v1/admin/stats", a.handleAdminStats)
+			r.Get("/api/v1/admin/users", a.handleAdminUsers)
+			r.Patch("/api/v1/admin/users/{id}", a.handleAdminUserUpdate)
+			r.Get("/api/v1/admin/transactions", a.handleAdminTransactions)
+			r.Get("/api/v1/admin/plans", a.handleAdminPlans)
+			r.Patch("/api/v1/admin/plans/{id}", a.handleAdminPlanUpdate)
 			r.Get("/api/v1/me", a.handleMe)
 			r.Get("/api/v1/watchlist", a.handleWatchlistList)
 			r.Get("/api/v1/watchlist/{titleId}", a.handleWatchlistCheck)

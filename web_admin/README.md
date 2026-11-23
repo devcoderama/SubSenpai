@@ -1,43 +1,42 @@
-# web_admin/ — Panel Admin Web SubSenpai
+# web_admin/ — Dashboard Admin Web SubSenpai
 
-Folder ini adalah rumah **panel admin SubSenpai: sebuah website terpisah khusus admin** — bukan bagian dari aplikasi Android (aplikasi user tidak memiliki layar maupun menu admin sama sekali), dan bukan versi web untuk user.
+Dashboard admin SubSenpai: **website terpisah khusus admin** (HTML + CSS +
+JavaScript murni, tanpa framework) — bukan bagian dari aplikasi Android,
+dan bukan versi web untuk user. Backend-nya **tetap backend Go yang sama**
+dengan aplikasi (`https://subsenpai-api.botlynk.id`, grup `/api/v1/admin/*`).
 
-Status saat ini: folder ini baru berisi README rancangan ini; kode panelnya dibuat pada fase pembangunan (lihat [PROGRES.md](../PROGRES.md)). Rincian fungsi tiap modul ada di [STRUKTUR_ADMIN.md](../STRUKTUR_ADMIN.md).
+## Isi
 
-## Akses & Keamanan (Ringkas)
+- `index.html` — kerangka halaman (login + layout dashboard).
+- `style.css` — tema mengikuti situs dokumentasi (latar `#0B0F1A`, aksen
+  ungu `#a78bfa`, merah Netflix untuk aksi utama).
+- `app.js` — seluruh logika: handshake ECDH + dekripsi envelope xdata
+  (X25519 ditulis manual dengan BigInt karena WebCrypto X25519 belum
+  merata; HKDF-SHA256 + AES-256-GCM memakai WebCrypto), login Google,
+  dan 5 halaman: Ringkasan, Metode Pembayaran, Paket Premium, Pengguna,
+  Transaksi.
 
-- Login memakai **Google OAuth**; hanya akun dengan `role = 'admin'` di tabel `profiles` yang bisa masuk — akun lain ditolak.
-- Setiap request diperiksa ulang di **backend Go** (grup API `/api/v1/admin/*`): sesi + role dicek di server, bukan mengandalkan tampilan.
-- Website admin di-deploy di **VPS yang sama di belakang Caddy**, pada alamat khusus admin yang tidak dipublikasikan ke user.
-- Panel **tidak memegang akses database** dan tidak menyimpan rahasia server (token bot, webhook, kredensial gateway tetap di server); semua aksi penting admin tercatat di tabel `admin_logs`.
+## Akses & keamanan
 
-## Struktur Folder (Rancangan)
+- Login hanya **Google** (Google Identity Services) dan hanya akun yang
+  `role`-nya **`admin`** di tabel `profiles` yang dibiarkan masuk; akun
+  lain ditolak di halaman login, dan semua endpoint admin tetap memeriksa
+  JWT + role di server (403 untuk non-admin).
+- **Tidak ada pendaftaran** di web ini. Admin baru diangkat oleh admin
+  yang sudah ada dari halaman **Pengguna** ("Jadikan Admin"), atau dengan
+  mengubah `role` langsung di database.
+- JWT disimpan di `sessionStorage` (hilang saat tab ditutup).
 
-```
-web_admin/
-├── README.md                  # Dokumen ini
-├── (konfigurasi proyek web)   # Teknologi frontend web ringan — diputuskan saat pembangunan
-└── src/
-    ├── pages/                 # Satu halaman per modul panel
-    │   ├── DashboardPage          # Ringkasan
-    │   ├── TitlesPage             # Kelola katalog (judul, episode, chapter, permintaan judul)
-    │   ├── SubtitlesPage          # Antrean & hasil subtitle
-    │   ├── UsersPage              # Kelola user, premium manual & perangkat akun
-    │   ├── SubscriptionsPage      # Langganan & transaksi
-    │   ├── VouchersPage           # Voucher premium (buat, bagikan, pantau klaim)
-    │   ├── ChatModerationPage     # Moderasi Chat Global (pesan, kanal, stiker)
-    │   ├── ReportsPage            # Laporan user (link mati, subtitle salah)
-    │   ├── MonitoringPage         # Kesehatan sistem & metrik
-    │   ├── NotificationsPage      # Broadcast notifikasi manual (promo/event)
-    │   └── SettingsPage           # Pengaturan platform
-    ├── components/            # Komponen tampilan bersama (tabel, formulir, grafik)
-    └── api/                   # Klien API admin — memanggil backend Go /api/v1/admin/*
-                               # dengan sesi login admin; tidak ada logika akses di sini
-```
+## Deploy (Netlify)
 
-## Cara Kerja
+Situs Netlify terpisah dari situs dokumentasi:
 
-1. Admin membuka alamat panel dan login dengan Google.
-2. Backend memverifikasi akun dan role-nya, lalu menerbitkan sesi admin.
-3. Semua data halaman diminta dari API admin backend; semua penulisan (ubah katalog, premium, retry subtitle, broadcast) dijalankan backend dan tercatat di `admin_logs`.
-4. Bila sesi berakhir atau role dicabut, akses panel tertutup pada request berikutnya.
+- Base/publish directory: `web_admin` (tanpa build command).
+- Backend mengizinkan CORS untuk origin `https://*.netlify.app`
+  (atau daftar eksplisit lewat env `WEB_ORIGINS` di server).
+
+Langkah wajib sekali di **Google Cloud Console** (project yang sama
+dengan login aplikasi): OAuth client ID web
+`673952283037-…` → **Authorized JavaScript origins** → tambahkan origin
+situs admin ini (mis. `https://subsenpai-admin.netlify.app`). Tanpa itu
+tombol login Google tidak akan berfungsi dari domain ini.

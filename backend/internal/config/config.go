@@ -12,6 +12,10 @@ type Config struct {
 	DatabaseURL     string
 	SessionTTLHours int
 	JWTSecret       string
+	// WebOrigins: daftar origin web yang diizinkan CORS (pisah koma,
+	// mis. dashboard admin di Netlify). Kosong = pola bawaan:
+	// https://*.netlify.app + http://localhost (lihat middleware.CORS).
+	WebOrigins string
 	// GoogleClientID adalah OAuth client ID (web) untuk verifikasi
 	// audiens token ID Google. Kosong = login Google nonaktif.
 	GoogleClientID string
@@ -59,6 +63,7 @@ func Load() Config {
 		DatabaseURL:     os.Getenv("DATABASE_URL"),
 		SessionTTLHours: ttl,
 		JWTSecret:       os.Getenv("JWT_SECRET"),
+		WebOrigins:      os.Getenv("WEB_ORIGINS"),
 		GoogleClientID:  os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleCertsURL:  getenv("GOOGLE_CERTS_URL", "https://www.googleapis.com/oauth2/v3/certs"),
 		JWTTTLHours:     jwtTTL,
