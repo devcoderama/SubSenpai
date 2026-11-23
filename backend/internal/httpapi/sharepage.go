@@ -34,6 +34,7 @@ type sharePageData struct {
 	GenresLine  string
 	Synopsis    string
 	IntentURL   template.URL
+	ID          string
 	Found       bool
 }
 
@@ -95,7 +96,25 @@ var shareTpl = template.Must(template.New("share").Parse(`<!DOCTYPE html>
       <div class="note">Kalau aplikasi tidak terbuka otomatis, ketuk tombol merah di atas. Belum punya aplikasinya? Download dulu — gratis.</div>
     </div>
   </div>
-  <script>setTimeout(function(){ location.href = "{{.IntentURL}}"; }, 700);</script>
+  <script>
+  // Buka aplikasi: coba intent:// (Chrome), lalu skema subsenpai://
+  // sebagai cadangan — peramban di dalam aplikasi chat (Telegram/
+  // WhatsApp) sering menelan intent:// tapi meneruskan skema khusus
+  // ke sistem. Tombol merah memakai urutan yang sama saat diketuk.
+  (function () {
+    var intent = "{{.IntentURL}}";
+    var scheme = "subsenpai://title/{{.ID}}";
+    function go(u) { try { location.href = u; } catch (e) {} }
+    setTimeout(function () { go(intent); }, 600);
+    setTimeout(function () { if (!document.hidden) go(scheme); }, 1700);
+    var btn = document.getElementById("openBtn");
+    if (btn) btn.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      go(intent);
+      setTimeout(function () { if (!document.hidden) go(scheme); }, 500);
+    });
+  })();
+  </script>
 {{else}}
   <div class="err"><b>Judul tidak ditemukan</b>Tautan ini mungkin sudah tidak berlaku. Jelajahi katalog lengkapnya di halaman utama.<div style="margin-top:16px"><a class="btn" href="https://www.subsenpai.web.id/">Ke Halaman Utama</a></div></div>
 {{end}}
@@ -119,6 +138,7 @@ func (a *API) handleSharePage(w http.ResponseWriter, r *http.Request) {
 		Title:       "SubSenpai",
 		Description: "Nonton anime, donghua & film subtitle Indonesia di aplikasi SubSenpai.",
 		PageURL:     "https://www.subsenpai.web.id/judul/" + id,
+		ID:          id,
 	}
 	status := http.StatusOK
 	if shareIDRe.MatchString(id) {

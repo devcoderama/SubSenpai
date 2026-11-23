@@ -70,6 +70,7 @@ func TestSharePageLive(t *testing.T) {
 		"Sinopsis film bagikan uji untuk pratinjau.",
 		"https://www.subsenpai.web.id/judul/" + id,
 		"intent://title/" + id,
+		"subsenpai://title/" + id,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("share page tidak memuat %q", want)
