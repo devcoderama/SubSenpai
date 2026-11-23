@@ -569,19 +569,38 @@ class CatalogRepository(
         year: Int? = null,
         country: String? = null,
         network: String? = null,
-    ): List<TitleCard> {
-        val params = StringBuilder("/api/v1/titles?limit=30")
+    ): List<TitleCard> = titlesPaged(type, query, genre, year, country, network, null).first
+
+    /**
+     * Satu halaman katalog dengan pagination kursor server —
+     * mengembalikan (item, kursor halaman berikutnya / null bila
+     * habis). Dipakai daftar Hasil agar memuat bertahap saat
+     * digulir (ala Netflix/YouTube), tidak sekaligus.
+     */
+    suspend fun titlesPaged(
+        type: String?,
+        query: String?,
+        genre: String? = null,
+        year: Int? = null,
+        country: String? = null,
+        network: String? = null,
+        cursor: String? = null,
+        limit: Int = 30,
+    ): Pair<List<TitleCard>, String?> {
+        val params = StringBuilder("/api/v1/titles?limit=").append(limit)
         if (!type.isNullOrBlank()) params.append("&type=").append(type)
         if (!query.isNullOrBlank()) params.append("&q=").append(java.net.URLEncoder.encode(query, "UTF-8"))
         if (!genre.isNullOrBlank()) params.append("&genre=").append(java.net.URLEncoder.encode(genre, "UTF-8"))
         if (year != null) params.append("&year=").append(year)
         if (!country.isNullOrBlank()) params.append("&country=").append(java.net.URLEncoder.encode(country, "UTF-8"))
         if (!network.isNullOrBlank()) params.append("&network=").append(java.net.URLEncoder.encode(network, "UTF-8"))
+        if (!cursor.isNullOrBlank()) params.append("&cursor=").append(java.net.URLEncoder.encode(cursor, "UTF-8"))
         val o = api.get(params.toString())
-        return buildList {
+        val items = buildList {
             val arr = o.optJSONArray("items")
             if (arr != null) for (i in 0 until arr.length()) add(TitleCard.fromJson(arr.getJSONObject(i)))
         }
+        return items to o.optString("next_cursor").ifBlank { null }
     }
 
     /** Satu judul hasil telusur langsung dari situs sumber. */

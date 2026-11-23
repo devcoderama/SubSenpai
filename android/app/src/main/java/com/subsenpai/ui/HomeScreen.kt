@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +36,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -239,14 +241,56 @@ fun HomeScreen(
             genreList = emptyList()
         }
     }
+    // Pagination Hasil: halaman pertama dimuat saat filter berubah;
+    // halaman berikutnya dimuat bertahap saat pengguna menggulir
+    // mendekati bawah (ala Netflix/YouTube) agar ringan & mulus.
+    var hasilCursor by remember { mutableStateOf<String?>(null) }
+    var hasilHasMore by remember { mutableStateOf(false) }
+    var hasilLoadingMore by remember { mutableStateOf(false) }
     LaunchedEffect(type, query, genre, year, country, network) {
         if (!browsing) return@LaunchedEffect
         try {
-            hasil = repo.titles(type, query.ifBlank { null }, genre, year, country, network)
+            val (page, next) = repo.titlesPaged(type, query.ifBlank { null }, genre, year, country, network, null)
+            hasil = page
+            hasilCursor = next
+            hasilHasMore = next != null
             error = null
         } catch (e: Exception) {
             error = friendlyInlineError(e)
         }
+    }
+    val loadMoreHasil: () -> Unit = {
+        val cur = hasilCursor
+        if (!hasilLoadingMore && hasilHasMore && cur != null) {
+            hasilLoadingMore = true
+            scope.launch {
+                try {
+                    val (more, next) = repo.titlesPaged(
+                        type, query.ifBlank { null }, genre, year, country, network, cur,
+                    )
+                    val have = hasil.map { it.id }.toSet()
+                    hasil = hasil + more.filter { it.id !in have }
+                    hasilCursor = next
+                    hasilHasMore = next != null
+                } catch (e: Exception) {
+                    // Gagal memuat lanjutan: berhenti diam-diam,
+                    // dicoba lagi pada guliran berikutnya.
+                } finally {
+                    hasilLoadingMore = false
+                }
+            }
+        }
+    }
+    val listState = rememberLazyListState()
+    val nearEnd by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            info.totalItemsCount > 0 && last >= info.totalItemsCount - 5
+        }
+    }
+    LaunchedEffect(nearEnd, hasilHasMore, hasilLoadingMore) {
+        if (nearEnd && browsing) loadMoreHasil()
     }
 
     LaunchedEffect(fatalKind) { onFatalChange(fatalKind != null) }
@@ -263,7 +307,7 @@ fun HomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(modifier = Modifier.fillMaxSize(), state = listState) {
             if (browsing) {
                 // Ruang untuk header melayang (lebih tinggi saat kolom
                 // cari terbuka).
@@ -325,6 +369,16 @@ fun HomeScreen(
                             Box(Modifier.weight(1f)) { PosterCard(t, onOpenTitle, Modifier.fillMaxWidth()) }
                         }
                         repeat(3 - rowTitles.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+                if (hasilLoadingMore) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(color = NetflixRed, modifier = Modifier.size(24.dp))
+                        }
                     }
                 }
                 // Bagian langsung dari situs sumber (genre terpilih):
