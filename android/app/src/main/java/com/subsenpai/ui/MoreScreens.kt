@@ -157,6 +157,17 @@ fun MoreScreen(
         item {
             MoreRow(R.drawable.ic_chat, "Grup Chat", "Grup & obrolan global", onOpenGroups)
         }
+        item { MoreSectionLabel("Komunitas") }
+        item {
+            MoreRow(R.drawable.ic_discord, "Discord", "Gabung server Discord SubSenpai") {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://discord.gg/yJebKEGNh")))
+            }
+        }
+        item {
+            MoreRow(R.drawable.ic_telegram, "Telegram", "Gabung channel Telegram SubSenpai") {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/subsenpaianime")))
+            }
+        }
         item { MoreSectionLabel("Umum") }
         item {
             MoreRow(R.drawable.ic_settings, "Pengaturan", "Kualitas poster, penyimpanan, tentang", onOpenSettings)
