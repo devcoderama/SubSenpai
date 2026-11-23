@@ -80,10 +80,28 @@ let aesKey = null;
 let jwt = sessionStorage.getItem(JWT_KEY) || null;
 let me = null;
 
+/* fetch dengan batas waktu — tanpa ini, jaringan yang menggantung
+ * (mis. VPN/aplikasi perekam di HP) membuat login diam selamanya. */
+async function fetchTimeout(url, opts = {}, ms = 20000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctl.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new Error('Koneksi ke server timeout. Matikan dulu VPN/aplikasi ' +
+        'perekam lalu lintas (mis. HttpCanary) bila sedang aktif, lalu coba lagi.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function handshake() {
   const priv = crypto.getRandomValues(new Uint8Array(32));
   const pub = x25519(priv, X25519_BASE);
-  const res = await fetch(API_BASE + '/api/v1/session', {
+  const res = await fetchTimeout(API_BASE + '/api/v1/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ client_public_key: b64urlEncode(pub) }),
@@ -112,7 +130,7 @@ async function api(path, opts = {}) {
   const attempt = async () => {
     const headers = { 'X-Session-Id': sessionId, 'Content-Type': 'application/json' };
     if (jwt) headers['Authorization'] = 'Bearer ' + jwt;
-    const res = await fetch(API_BASE + path, {
+    const res = await fetchTimeout(API_BASE + path, {
       method: opts.method || 'GET', headers,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
@@ -152,6 +170,7 @@ function showLogin(msg) {
   sessionStorage.removeItem(JWT_KEY);
   $('appView').hidden = true;
   $('loginView').hidden = false;
+  $('loginHint').textContent = 'Gunakan akun Google admin kamu.';
   const err = $('loginError');
   if (msg) { err.textContent = msg; err.hidden = false; } else { err.hidden = true; }
 }
