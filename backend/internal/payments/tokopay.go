@@ -1,7 +1,6 @@
 package payments
 
 import (
-	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/subtle"
@@ -11,14 +10,17 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
 // Tokopay adalah gateway utama SubSenpai (dipilih Rams 2026-11-22
 // karena biaya admin & fee lebih murah dari Midtrans/Xendit).
-// Dokumentasi: https://docs.tokopay.id — API Order Advanced (POST JSON),
-// signature md5(merchant_id:secret:reff_id), callback diverifikasi
-// dengan rumus yang sama, status lunas = "Success" atau "Completed".
+// Pembuatan order memakai API GET /v1/order (lihat CreateOrder —
+// API POST JSON di dokumentasi tidak bekerja untuk merchant ini),
+// cek status GET /v1/check-order, callback diverifikasi dengan
+// signature md5(merchant_id:secret:reff_id), status lunas =
+// "Success" atau "Completed".
 
 // Channels: kode channel pembayaran Tokopay (docs: Metode Pembayaran).
 var TokopayChannels = map[string]string{
@@ -84,29 +86,35 @@ type OrderResult struct {
 	TotalTerima int
 }
 
-// CreateOrder membuat order Advanced. ReffID adalah id sesi pembayaran
-// kita (tanpa tanda hubung agar aman sebagai ref alfanumerik).
+// CreateOrder membuat order lewat API GET /v1/order dengan
+// parameter merchant, secret, ref_id, nominal, metode — format
+// yang dicontohkan halaman integrasi dashboard Tokopay dan yang
+// terbukti bekerja untuk merchant ini. ReffID adalah id sesi
+// pembayaran kita (tanpa tanda hubung agar aman sebagai ref
+// alfanumerik). Parameter name/email/phone/expiredUnix tidak
+// dipakai API GET ini (tetap diterima demi kompatibilitas
+// pemanggil).
+//
+// CATATAN 2026-11-23: API POST JSON "Order Advanced" dari
+// dokumentasi selalu membalas {"error_msg":"JSON not valid"}
+// untuk SEMUA request (terverifikasi dari VM agen + VPS yang
+// sudah di-whitelist, body valid/sampah, signature benar/salah),
+// sedangkan GET check-order normal — jadi pembuatan order
+// dialihkan ke API GET ini. Bentuk responsnya sama persis
+// (status "Success" + data trx_id/qr/total), sehingga parsing
+// respons di bawah tidak berubah.
 func (c *TokopayClient) CreateOrder(ctx context.Context, channel, reffID string, amount int, name, email, phone string, expiredUnix int64) (*OrderResult, error) {
-	payload := map[string]any{
-		"merchant_id":    c.MerchantID,
-		"kode_channel":   channel,
-		"reff_id":        reffID,
-		"amount":         amount,
-		"customer_name":  name,
-		"customer_email": email,
-		"customer_phone": phone,
-		"expired_ts":     expiredUnix,
-		"signature":      TokopaySignature(c.MerchantID, c.Secret, reffID),
-		"items": []map[string]any{
-			{"product_code": "PREMIUM", "name": "SubSenpai Premium", "price": amount},
-		},
+	q := url.Values{
+		"merchant": {c.MerchantID},
+		"secret":   {c.Secret},
+		"ref_id":   {reffID},
+		"nominal":  {strconv.Itoa(amount)},
+		"metode":   {channel},
 	}
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/v1/order", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/v1/order?"+q.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err
