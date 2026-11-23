@@ -55,6 +55,15 @@ data class WatchHistoryItem(
 
 data class PlanItem(val id: String, val days: Int, val price: Int, val label: String)
 
+/** Konfigurasi aplikasi dari server (dashboard admin › Pengaturan). */
+data class AppConfig(
+    val maintenanceMode: Boolean,
+    val maintenanceMessage: String,
+    val minVersionCode: Int,
+    val updateUrl: String,
+    val announcement: String,
+)
+
 /** Metode pembayaran Tokopay dari database (migrasi 0015). */
 data class PaymentMethodItem(val code: String, val name: String, val group: String, val iconUrl: String)
 

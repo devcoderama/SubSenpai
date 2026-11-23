@@ -201,3 +201,58 @@ fun ErrorPage(kind: AppErrorKind, onRetry: () -> Unit) {
         }
     }
 }
+
+/**
+ * Halaman gerbang layar penuh dari konfigurasi server: mode
+ * perawatan & paksa perbarui (dashboard admin › Pengaturan).
+ * Tanpa tombol = pengguna hanya bisa menunggu / menutup aplikasi.
+ */
+@Composable
+fun GatePage(
+    iconRes: Int,
+    title: String,
+    message: String,
+    buttonLabel: String? = null,
+    onButton: (() -> Unit)? = null,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier.size(96.dp).clip(CircleShape).background(Color(0xFF1F1F1F)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = Color(0xFFE87C7C),
+                modifier = Modifier.size(48.dp),
+            )
+        }
+        Text(
+            title,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 24.dp),
+        )
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        if (buttonLabel != null && onButton != null) {
+            Button(
+                onClick = onButton,
+                colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
+                modifier = Modifier.fillMaxWidth().padding(top = 28.dp),
+            ) {
+                Text(buttonLabel)
+            }
+        }
+    }
+}

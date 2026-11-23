@@ -291,6 +291,23 @@ class CatalogRepository(
 
     // ---------- Premium & pembayaran (Fase 4) ----------
 
+    /** Konfigurasi aplikasi (perawatan / paksa perbarui / pengumuman). */
+    suspend fun appConfig(): AppConfig {
+        val o = api.get("/api/v1/app-config")
+        return AppConfig(
+            maintenanceMode = o.optBoolean("maintenance_mode"),
+            maintenanceMessage = o.optString("maintenance_message"),
+            minVersionCode = o.optInt("min_version_code"),
+            updateUrl = o.optString("update_url"),
+            announcement = o.optString("announcement"),
+        )
+    }
+
+    /** Unggah satu laporan crash yang disimpan CrashReporter. */
+    suspend fun uploadCrashReport(body: org.json.JSONObject) {
+        api.post("/api/v1/crashes", body)
+    }
+
     suspend fun plans(): List<PlanItem> {
         val o = api.get("/api/v1/plans")
         return buildList {
