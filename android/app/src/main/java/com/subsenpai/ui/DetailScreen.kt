@@ -352,7 +352,8 @@ fun DetailScreen(
                                             type = "text/plain"
                                             putExtra(
                                                 Intent.EXTRA_TEXT,
-                                                "Nonton ${d.card.title} di SubSenpai" +
+                                                "Nonton ${d.card.title} di SubSenpai\n" +
+                                                    "https://www.subsenpai.web.id/judul/${d.card.id}" +
                                                     (d.synopsis?.let { "\n\n$it" } ?: ""),
                                             )
                                         }

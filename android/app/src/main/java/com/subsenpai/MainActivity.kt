@@ -65,10 +65,21 @@ class MainActivity : ComponentActivity() {
 
     private fun captureDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
-        if (data.scheme == "subsenpai" && data.host == "title") {
-            val id = data.pathSegments.firstOrNull().orEmpty()
-            if (id.matches(Regex("[A-Za-z0-9-]{8,}"))) deepLinkTitle.value = id
+        // Dua bentuk tautan resmi:
+        // 1) subsenpai://title/{id} — dari poster halaman download.
+        // 2) https://www.subsenpai.web.id/judul/{id} — tautan yang
+        //    dibagikan dari halaman detail (Android App Links,
+        //    terverifikasi lewat assetlinks.json di domain itu).
+        val id = when {
+            data.scheme == "subsenpai" && data.host == "title" ->
+                data.pathSegments.firstOrNull().orEmpty()
+            data.scheme == "https" &&
+                (data.host == "www.subsenpai.web.id" || data.host == "subsenpai.web.id") &&
+                data.pathSegments.firstOrNull() == "judul" ->
+                data.pathSegments.getOrNull(1).orEmpty()
+            else -> ""
         }
+        if (id.matches(Regex("[A-Za-z0-9-]{8,}"))) deepLinkTitle.value = id
     }
 
     override fun onNewIntent(intent: Intent) {

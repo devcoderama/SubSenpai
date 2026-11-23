@@ -30,6 +30,16 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="subsenpai" android:host="title" />
             </intent-filter>
+            <!-- App Links: tautan bagikan https://www.subsenpai.web.id/judul/{id}
+                 membuka detail judul langsung di aplikasi (terverifikasi
+                 lewat /.well-known/assetlinks.json di domain itu). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="www.subsenpai.web.id" android:pathPrefix="/judul/" />
+                <data android:scheme="https" android:host="subsenpai.web.id" android:pathPrefix="/judul/" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>
