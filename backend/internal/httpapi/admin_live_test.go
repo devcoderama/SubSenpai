@@ -464,6 +464,25 @@ func TestAdminLive(t *testing.T) {
 		t.Fatalf("daftar crash admin: status=%d body=%v", st, crashes)
 	}
 	crashID := crashes["crashes"].([]any)[0].(map[string]any)["id"].(string)
+	// Penanda perbaikan: tandai sudah -> filter sudah memuatnya,
+	// filter belum kosong; user biasa tidak boleh menandai.
+	if st, _ := call("PATCH", "/api/v1/admin/crashes/"+crashID, adminJWT,
+		map[string]any{"is_fixed": true}); st != 200 {
+		t.Fatalf("tandai crash diperbaiki: status=%d", st)
+	}
+	st, crashesFixed := call("GET", "/api/v1/admin/crashes?fixed=sudah", adminJWT, nil)
+	if st != 200 || len(crashesFixed["crashes"].([]any)) != 1 ||
+		crashesFixed["counts"].(map[string]any)["sudah"].(float64) != 1 {
+		t.Fatalf("daftar crash sudah diperbaiki: status=%d body=%v", st, crashesFixed)
+	}
+	st, crashesBelum := call("GET", "/api/v1/admin/crashes?fixed=belum", adminJWT, nil)
+	if st != 200 || len(crashesBelum["crashes"].([]any)) != 0 {
+		t.Fatalf("daftar crash belum diperbaiki harus kosong: status=%d body=%v", st, crashesBelum)
+	}
+	if st, _ := call("PATCH", "/api/v1/admin/crashes/"+crashID, userJWT,
+		map[string]any{"is_fixed": false}); st != 403 {
+		t.Fatalf("tandai crash oleh user harus 403, dapat %d", st)
+	}
 	if st, _ := call("DELETE", "/api/v1/admin/crashes/"+crashID, adminJWT, nil); st != 200 {
 		t.Fatalf("hapus crash: status=%d", st)
 	}

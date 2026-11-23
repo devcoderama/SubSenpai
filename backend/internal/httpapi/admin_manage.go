@@ -270,15 +270,17 @@ func (a *API) handleCrashReport(w http.ResponseWriter, r *http.Request) {
 }
 
 type adminCrash struct {
-	ID             string    `json:"id"`
-	UserEmail      string    `json:"user_email,omitempty"`
-	AppVersion     string    `json:"app_version"`
-	VersionCode    int       `json:"version_code"`
-	AndroidVersion string    `json:"android_version"`
-	Device         string    `json:"device"`
-	Message        string    `json:"message"`
-	StackTrace     string    `json:"stack_trace"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             string     `json:"id"`
+	UserEmail      string     `json:"user_email,omitempty"`
+	AppVersion     string     `json:"app_version"`
+	VersionCode    int        `json:"version_code"`
+	AndroidVersion string     `json:"android_version"`
+	Device         string     `json:"device"`
+	Message        string     `json:"message"`
+	StackTrace     string     `json:"stack_trace"`
+	IsFixed        bool       `json:"is_fixed"`
+	FixedAt        *time.Time `json:"fixed_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 func (a *API) handleAdminCrashes(w http.ResponseWriter, r *http.Request) {
@@ -289,11 +291,27 @@ func (a *API) handleAdminCrashes(w http.ResponseWriter, r *http.Request) {
 	if limit <= 0 || limit > 200 {
 		limit = 100
 	}
-	rows, err := a.pool.Query(r.Context(), `
+	fixedFilter := r.URL.Query().Get("fixed") // "" | belum | sudah
+	where := ""
+	switch fixedFilter {
+	case "belum":
+		where = "where not c.is_fixed"
+	case "sudah":
+		where = "where c.is_fixed"
+	}
+	ctx := r.Context()
+	var nTotal, nBelum, nSudah int
+	_ = a.pool.QueryRow(ctx, `
+		select count(*), count(*) filter (where not is_fixed),
+		       count(*) filter (where is_fixed)
+		from crash_reports`).Scan(&nTotal, &nBelum, &nSudah)
+	rows, err := a.pool.Query(ctx, `
 		select c.id, coalesce(p.email, ''), c.app_version, c.version_code,
-		       c.android_version, c.device, c.message, c.stack_trace, c.created_at
+		       c.android_version, c.device, c.message, c.stack_trace,
+		       c.is_fixed, c.fixed_at, c.created_at
 		from crash_reports c
 		left join profiles p on p.id = c.user_id
+		`+where+`
 		order by c.created_at desc limit $1`, limit)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "gagal memuat laporan crash")
@@ -304,13 +322,47 @@ func (a *API) handleAdminCrashes(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var c adminCrash
 		if err := rows.Scan(&c.ID, &c.UserEmail, &c.AppVersion, &c.VersionCode,
-			&c.AndroidVersion, &c.Device, &c.Message, &c.StackTrace, &c.CreatedAt); err != nil {
+			&c.AndroidVersion, &c.Device, &c.Message, &c.StackTrace,
+			&c.IsFixed, &c.FixedAt, &c.CreatedAt); err != nil {
 			writeErr(w, http.StatusInternalServerError, "gagal membaca laporan crash")
 			return
 		}
 		out = append(out, c)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"crashes": out})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"crashes": out,
+		"counts":  map[string]any{"total": nTotal, "belum": nBelum, "sudah": nSudah},
+	})
+}
+
+// handleAdminCrashUpdate: tandai laporan crash sudah diperbaiki
+// atau kembalikan ke belum (permintaan Rams 2026-11-23 malam).
+func (a *API) handleAdminCrashUpdate(w http.ResponseWriter, r *http.Request) {
+	p, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	var req struct {
+		IsFixed *bool `json:"is_fixed"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.IsFixed == nil {
+		writeErr(w, http.StatusBadRequest, "is_fixed wajib diisi")
+		return
+	}
+	ct, err := a.pool.Exec(r.Context(), `
+		update crash_reports
+		set is_fixed = $2, fixed_at = case when $2 then now() else null end
+		where id = $1::uuid`, id, *req.IsFixed)
+	if err != nil || ct.RowsAffected() == 0 {
+		writeErr(w, http.StatusNotFound, "laporan crash tidak ditemukan")
+		return
+	}
+	_, _ = a.pool.Exec(r.Context(), `
+		insert into admin_logs (admin_id, action, target, detail)
+		values ($1::uuid, 'crash_fixed', $2, $3)`,
+		p.ID, id, map[string]any{"is_fixed": *req.IsFixed})
+	writeJSON(w, http.StatusOK, map[string]any{"is_fixed": *req.IsFixed})
 }
 
 func (a *API) handleAdminCrashDelete(w http.ResponseWriter, r *http.Request) {
@@ -549,6 +601,7 @@ func (a *API) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 			"transactions":    count(`select count(*) from payment_sessions`),
 			"vouchers_active": count(`select count(*) from vouchers where status = 'active'`),
 			"crash_reports":   count(`select count(*) from crash_reports`),
+			"crash_unfixed":   count(`select count(*) from crash_reports where not is_fixed`),
 			"feed_posts":      count(`select count(*) from feed_posts`),
 		},
 		"config": map[string]any{

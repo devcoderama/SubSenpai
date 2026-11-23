@@ -147,6 +147,7 @@ func (a *API) Router() http.Handler {
 			r.Delete("/api/v1/admin/reports/{id}", a.handleAdminReportDelete)
 			r.Patch("/api/v1/admin/titles/{id}", a.handleAdminTitleUpdate)
 			r.Get("/api/v1/admin/crashes", a.handleAdminCrashes)
+			r.Patch("/api/v1/admin/crashes/{id}", a.handleAdminCrashUpdate)
 			r.Delete("/api/v1/admin/crashes", a.handleAdminCrashesClear)
 			r.Delete("/api/v1/admin/crashes/{id}", a.handleAdminCrashDelete)
 			r.Get("/api/v1/admin/settings", a.handleAdminSettings)

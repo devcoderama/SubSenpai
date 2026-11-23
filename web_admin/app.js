@@ -836,34 +836,61 @@ async function laporanAksi(act, id) {
 }
 
 /* ----- Laporan Crash ----- */
+let crashFilter = '';
 async function pageCrash() {
   $('pageBody').innerHTML =
-    '<div class="toolbar"><p class="muted" style="flex:1">Laporan crash dari aplikasi (v0.22.0+). Ketuk satu laporan untuk melihat stack trace-nya.</p>' +
-    '<button class="btn" id="cr-clear">Kosongkan Semua</button></div><div id="cr-list"><p class="muted">Memuat…</p></div>';
+    '<div class="toolbar"><p class="muted" style="flex:1">Laporan crash dari aplikasi (v0.22.0+). Ketuk "Stack trace" untuk detail teknisnya, lalu tandai sudah diperbaiki setelah ditangani.</p>' +
+    '<button class="btn" id="cr-clear">Kosongkan Semua</button></div>' +
+    '<div class="chiprow" id="cr-filters"></div><div id="cr-list"><p class="muted">Memuat…</p></div>';
   $('cr-clear').addEventListener('click', async () => {
     if (!confirm('Hapus SEMUA laporan crash?')) return;
     const rr = await api('/api/v1/admin/crashes', { method: 'DELETE' });
     if (rr.status === 200) { toast('Dihapus: ' + rr.body.deleted + ' laporan.'); pageCrash(); }
     else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
   });
-  const r = await api('/api/v1/admin/crashes?limit=100');
+  loadCrashes();
+}
+async function loadCrashes() {
+  const r = await api('/api/v1/admin/crashes?limit=100&fixed=' + encodeURIComponent(crashFilter));
   if (r.status !== 200) { $('cr-list').innerHTML = '<p class="error">Gagal memuat laporan.</p>'; return; }
+  const c = r.body.counts || {};
+  const chip = (val, lbl, n) => '<button class="fchip' + (crashFilter === val ? ' on' : '') +
+    '" data-cr-filter="' + val + '">' + lbl + ' (' + n + ')</button>';
+  $('cr-filters').innerHTML = chip('', 'Semua', c.total || 0) + chip('belum', 'Belum Diperbaiki', c.belum || 0) +
+    chip('sudah', 'Sudah Diperbaiki', c.sudah || 0);
+  $('cr-filters').querySelectorAll('[data-cr-filter]').forEach((b) => b.addEventListener('click', () => {
+    crashFilter = b.dataset.crFilter;
+    loadCrashes();
+  }));
   const list = r.body.crashes || [];
-  if (!list.length) { $('cr-list').innerHTML = '<p class="muted">Belum ada laporan crash. 🎉</p>'; return; }
+  if (!list.length) { $('cr-list').innerHTML = '<p class="muted">Tidak ada laporan crash pada filter ini.</p>'; return; }
   let html = '';
   for (const c of list) {
     const firstLine = (c.message || c.stack_trace || '').split('\n')[0];
     html += '<div class="card" style="margin-bottom:12px">' +
-      '<div class="toolbar" style="align-items:flex-start"><div style="flex:1"><b>' + esc(firstLine || '(tanpa pesan)') + '</b>' +
+      '<div class="toolbar" style="align-items:flex-start"><div style="flex:1"><b>' + esc(firstLine || '(tanpa pesan)') + '</b> ' +
+      '<span class="badge ' + (c.is_fixed ? 'premium' : 'expired') + '">' + (c.is_fixed ? 'Sudah diperbaiki' : 'Belum diperbaiki') + '</span>' +
       '<div class="muted small">' + esc(fmtDate(c.created_at)) + ' • v' + esc(c.app_version) + ' (' + c.version_code + ') • ' +
-      esc(c.device) + ' • ' + esc(c.android_version) + (c.user_email ? ' • ' + esc(c.user_email) : '') + '</div></div>' +
+      esc(c.device) + ' • ' + esc(c.android_version) + (c.user_email ? ' • ' + esc(c.user_email) : '') +
+      (c.is_fixed && c.fixed_at ? ' • ditandai selesai ' + esc(fmtDate(c.fixed_at)) : '') + '</div></div>' +
       '<button class="btn ghost small" data-cr-toggle="' + esc(c.id) + '">Stack trace</button>' +
+      '<button class="btn ' + (c.is_fixed ? 'ghost' : '') + ' small" data-cr-fix="' + esc(c.id) + '|' + (c.is_fixed ? '0' : '1') + '">' +
+      (c.is_fixed ? 'Tandai Belum' : 'Tandai Sudah Diperbaiki') + '</button>' +
       '<button class="btn small" data-cr-del="' + esc(c.id) + '">Hapus</button></div>' +
       '<pre id="cr-stack-' + esc(c.id) + '" hidden style="white-space:pre-wrap;word-break:break-word;font-size:0.78rem;max-height:320px;overflow:auto;background:var(--panel-2);padding:12px;border-radius:9px">' + esc(c.stack_trace) + '</pre></div>';
   }
   $('cr-list').innerHTML = html;
   document.querySelectorAll('button[data-cr-toggle]').forEach((el) =>
     el.addEventListener('click', () => { const p = $('cr-stack-' + el.dataset.crToggle); p.hidden = !p.hidden; }));
+  document.querySelectorAll('button[data-cr-fix]').forEach((el) =>
+    el.addEventListener('click', async () => {
+      const [id, to] = el.dataset.crFix.split('|');
+      const rr = await api('/api/v1/admin/crashes/' + encodeURIComponent(id), {
+        method: 'PATCH', body: { is_fixed: to === '1' },
+      });
+      if (rr.status === 200) { toast(to === '1' ? 'Ditandai sudah diperbaiki.' : 'Ditandai belum diperbaiki.'); loadCrashes(); }
+      else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+    }));
   document.querySelectorAll('button[data-cr-del]').forEach((el) =>
     el.addEventListener('click', async () => {
       const rr = await api('/api/v1/admin/crashes/' + encodeURIComponent(el.dataset.crDel), { method: 'DELETE' });
@@ -1064,7 +1091,7 @@ async function pageSistem(keep) {
     card('Pengguna', c.users) + card('Admin', c.admins) + card('Premium aktif', c.premium_users) +
     card('Judul', c.titles) + card('Judul tersembunyi', c.titles_hidden) + card('Episode', c.episodes) +
     card('Transaksi', c.transactions) + card('Voucher aktif', c.vouchers_active) +
-    card('Laporan crash', c.crash_reports) + card('Postingan feed', c.feed_posts) + '</div>';
+    card('Laporan crash', c.crash_reports, c.crash_unfixed ? c.crash_unfixed + ' belum diperbaiki' : '') + card('Postingan feed', c.feed_posts) + '</div>';
   html += '<div class="card"><h2 style="margin-top:0">Server</h2><table>' +
     '<tr><th>Go</th><td>' + esc(b.go_version) + '</td></tr>' +
     '<tr><th>Migrasi terakhir</th><td>' + esc(b.latest_migration || '—') + '</td></tr>' +
