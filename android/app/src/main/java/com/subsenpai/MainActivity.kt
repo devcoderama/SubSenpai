@@ -315,19 +315,11 @@ class MainActivity : ComponentActivity() {
                                 onOpenSettings = { nav.navigate("settings") },
                                 onOpenTransactions = { nav.navigate("transactions") },
                                 onOpenMyVouchers = { nav.navigate("myvouchers") },
-                                onOpenSchedule = {
-                                    nav.navigate("schedule") {
-                                        popUpTo("home") { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
                             )
                         }
                         composable("schedule") {
                             com.subsenpai.ui.ScheduleScreen(
                                 repo,
-                                onBack = { nav.popBackStack() },
                                 onOpenTitle = { nav.navigate("detail/$it") },
                             )
                         }
@@ -346,7 +338,6 @@ class MainActivity : ComponentActivity() {
                         composable("history") {
                             com.subsenpai.ui.HistoryScreen(
                                 repo,
-                                onBack = { nav.popBackStack() },
                                 onOpenEpisode = { nav.navigate("player/$it") },
                                 onNeedLogin = { nav.navigate("login") },
                             )
@@ -369,7 +360,6 @@ class MainActivity : ComponentActivity() {
                                 onNeedLogin = { nav.navigate("login") },
                                 onOpenComments = { postId -> nav.navigate("comments/$postId") },
                                 onOpenNotifications = { nav.navigate("feednotif") },
-                                onBack = { nav.popBackStack() },
                                 onOpenTitle = { nav.navigate("detail/$it") },
                             )
                         }

@@ -325,7 +325,6 @@ fun FeedScreen(
     onNeedLogin: () -> Unit,
     onOpenComments: (String) -> Unit,
     onOpenNotifications: () -> Unit,
-    onBack: () -> Unit,
     onOpenTitle: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -606,9 +605,6 @@ fun FeedScreen(
     ) {
         item {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onBack) {
-                    Text("← Kembali", color = Color(0xFFE50914), fontWeight = FontWeight.Bold)
-                }
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,

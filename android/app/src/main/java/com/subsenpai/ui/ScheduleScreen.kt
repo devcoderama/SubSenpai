@@ -64,7 +64,6 @@ private fun todayLabel(): String = when (Calendar.getInstance().get(Calendar.DAY
 @Composable
 fun ScheduleScreen(
     repo: CatalogRepository,
-    onBack: () -> Unit,
     onOpenTitle: (String) -> Unit,
 ) {
     val types = listOf("anime" to "Anime", "donghua" to "Donghua", "film" to "Film")
@@ -101,11 +100,8 @@ fun ScheduleScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            IconButton(onClick = onBack) {
-                Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Kembali", tint = Color.White)
-            }
             Text(
                 "Jadwal Rilis",
                 style = MaterialTheme.typography.headlineSmall,

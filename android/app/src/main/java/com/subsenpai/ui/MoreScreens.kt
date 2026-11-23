@@ -70,7 +70,6 @@ fun MoreScreen(
     onOpenSettings: () -> Unit,
     onOpenTransactions: () -> Unit,
     onOpenMyVouchers: () -> Unit,
-    onOpenSchedule: () -> Unit,
 ) {
     val context = LocalContext.current
     val auth = remember { AuthStore(context) }
@@ -144,9 +143,6 @@ fun MoreScreen(
             MoreRow(R.drawable.ic_bookmark, "Daftar Saya", "Watchlist tersimpan", onOpenWatchlist)
         }
         item {
-            MoreRow(R.drawable.ic_calendar, "Jadwal Rilis", "Jadwal tayang anime, donghua & film", onOpenSchedule)
-        }
-        item {
             MoreRow(R.drawable.ic_star, "Premium", "Paket & langganan", onOpenPremium)
         }
         item {
@@ -218,7 +214,6 @@ private fun MoreRow(icon: Int, label: String, subtitle: String, onClick: () -> U
 @Composable
 fun HistoryScreen(
     repo: CatalogRepository,
-    onBack: () -> Unit,
     onOpenEpisode: (String) -> Unit,
     onNeedLogin: () -> Unit,
 ) {
@@ -244,7 +239,6 @@ fun HistoryScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onBack) { Text("←", color = Color.White) }
                 Text(
                     "Riwayat Tontonan",
                     style = MaterialTheme.typography.titleLarge,

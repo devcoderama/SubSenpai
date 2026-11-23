@@ -214,7 +214,13 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        TextButton(onClick = { if (step > 1) step-- else onBack() }) { Text("← Kembali") }
+        // Di langkah 1 tak ada tombol kembali: halaman ini kini
+        // sejajar tab (bilah bawah selalu tampil — permintaan Rams
+        // 2026-11-23). Di dalam langkah pembayaran tombolnya tetap
+        // ada sebagai penurun langkah.
+        if (step > 1) {
+            TextButton(onClick = { step-- }) { Text("← Kembali") }
+        }
         Text("Premium", style = MaterialTheme.typography.headlineSmall)
 
         // Kategori: langganan langsung / beli voucher.
