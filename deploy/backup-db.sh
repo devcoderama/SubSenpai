@@ -3,9 +3,10 @@
 #
 # Hasil: /root/backups/subsenpai-YYYYmmdd-HHMMSS.sql.gz
 # Rotasi: hanya 14 berkas terbaru yang disimpan.
-# Bila rclone dengan remote bernama "r2" sudah terkonfigurasi,
-# salinan terbaru ikut diunggah ke bucket "subsenpai-backups"
-# (salinan di luar VPS — pelindung bila VPS-nya yang mati).
+# Bila rclone punya remote "r2" (Cloudflare R2) atau "gdrive"
+# (Google Drive), salinan terbaru ikut diunggah ke folder
+# "subsenpai-backups" di sana (salinan di luar VPS — pelindung
+# bila VPS-nya yang mati).
 #
 # Pasang (sebagai root di VPS):
 #   curl -fsSL https://raw.githubusercontent.com/devcoderama/SubSenpai/main/deploy/backup-db.sh -o /usr/local/bin/subsenpai-backup
@@ -30,7 +31,15 @@ echo "backup selesai: $OUT ($(du -h "$OUT" | cut -f1))"
 ls -1t "$DIR"/subsenpai-*.sql.gz | tail -n +15 | xargs -r rm -f
 
 # Salinan luar VPS (opsional, aktif sendiri bila rclone remote
-# "r2" ada): rclone copy ke Cloudflare R2.
-if command -v rclone >/dev/null 2>&1 && rclone listremotes 2>/dev/null | grep -qx 'r2:'; then
-  rclone copy "$OUT" r2:subsenpai-backups/ --quiet && echo "tersalin ke R2: subsenpai-backups/"
+# "r2" atau "gdrive" ada).
+REMOTE=""
+if command -v rclone >/dev/null 2>&1; then
+  if rclone listremotes 2>/dev/null | grep -qx 'r2:'; then
+    REMOTE="r2:subsenpai-backups/"
+  elif rclone listremotes 2>/dev/null | grep -qx 'gdrive:'; then
+    REMOTE="gdrive:subsenpai-backups/"
+  fi
+fi
+if [ -n "$REMOTE" ]; then
+  rclone copy "$OUT" "$REMOTE" --quiet && echo "tersalin ke luar VPS: $REMOTE"
 fi
