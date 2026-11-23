@@ -272,7 +272,7 @@ function enterApp() {
 }
 
 const GROUP_LABELS = { va: 'Virtual Account', ewallet: 'E-Wallet', qris: 'QRIS', retail: 'Retail', pulsa: 'Pulsa' };
-const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher' };
+const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', log: 'Log Admin', sistem: 'Info Sistem' };
 
 function route() {
   const name = (location.hash.replace('#/', '') || 'ringkasan').split('?')[0];
@@ -280,7 +280,7 @@ function route() {
   document.querySelectorAll('#mainNav a').forEach((a) =>
     a.classList.toggle('active', a.dataset.route === page));
   $('pageTitle').textContent = TITLES[page];
-  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher })[page]();
+  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, log: pageLog, sistem: pageSistem })[page]();
 }
 
 function bodyError(r) {
@@ -595,6 +595,167 @@ async function loadVoucherList() {
       if (rr.status === 200) { toast('Voucher dihapus.'); loadVoucherList(); }
       else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
     }));
+}
+
+/* ----- Kelola Judul ----- */
+let judulOffset = 0;
+async function pageJudul() {
+  $('pageBody').innerHTML =
+    '<p class="muted">Judul tersembunyi hilang dari aplikasi (beranda, katalog, pencarian, jadwal, detail, putar) tanpa menghapus datanya.</p>' +
+    '<div class="toolbar"><input type="search" id="jd-q" placeholder="Cari judul…" style="flex:1">' +
+    '<select id="jd-type"><option value="">Semua jenis</option><option value="anime">Anime</option><option value="donghua">Donghua</option><option value="film">Film</option></select>' +
+    '<button class="btn" id="jd-search">Cari</button></div>' +
+    '<div id="jd-list"><p class="muted">Memuat…</p></div>' +
+    '<div style="margin-top:14px"><button class="btn ghost" id="jd-more">Muat lebih banyak</button></div>';
+  judulOffset = 0;
+  $('jd-search').addEventListener('click', () => { judulOffset = 0; loadJudul(true); });
+  $('jd-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { judulOffset = 0; loadJudul(true); } });
+  $('jd-more').addEventListener('click', () => loadJudul(false));
+  loadJudul(true);
+}
+async function loadJudul(reset) {
+  const q = encodeURIComponent($('jd-q').value.trim());
+  const t = encodeURIComponent($('jd-type').value);
+  const r = await api('/api/v1/admin/titles?q=' + q + '&type=' + t + '&limit=50&offset=' + judulOffset);
+  if (r.status !== 200) { if (reset) $('jd-list').innerHTML = '<p class="error">Gagal memuat judul.</p>'; return; }
+  const list = r.body.titles || [];
+  judulOffset += list.length;
+  let html = reset ? '<p class="muted">' + (r.body.total || 0) + ' judul</p><table><tr><th>Poster</th><th>Judul</th><th>Jenis</th><th>Tahun</th><th>Episode</th><th>Visibilitas</th><th>Aksi</th></tr>' : '';
+  for (const x of list) {
+    html += '<tr><td>' + (x.poster_url ? '<img src="' + esc(x.poster_url) + '" alt="" style="width:38px;height:54px;object-fit:cover;border-radius:6px" loading="lazy">' : '—') + '</td>' +
+      '<td>' + esc(x.title) + '<div class="muted small">' + esc(x.slug) + '</div></td>' +
+      '<td>' + esc(x.type) + '</td><td>' + (x.year || '—') + '</td><td>' + x.episode_count + '</td>' +
+      '<td><span class="badge ' + (x.is_hidden ? 'expired' : 'premium') + '">' + (x.is_hidden ? 'Tersembunyi' : 'Tampil') + '</span></td>' +
+      '<td><button class="btn ' + (x.is_hidden ? '' : 'ghost') + ' small" data-jd-toggle="' + esc(x.id) + '|' + (x.is_hidden ? 'show' : 'hide') + '">' +
+      (x.is_hidden ? 'Tampilkan' : 'Sembunyikan') + '</button></td></tr>';
+  }
+  if (reset) { $('jd-list').innerHTML = html + '</table>'; }
+  else { $('jd-list').querySelector('table').insertAdjacentHTML('beforeend', html); }
+  document.querySelectorAll('button[data-jd-toggle]').forEach((el) => {
+    if (el.dataset.wired) return;
+    el.dataset.wired = '1';
+    el.addEventListener('click', async () => {
+      const [id, act] = el.dataset.jdToggle.split('|');
+      const rr = await api('/api/v1/admin/titles/' + encodeURIComponent(id), {
+        method: 'PATCH', body: { is_hidden: act === 'hide' },
+      });
+      if (rr.status === 200) { toast(act === 'hide' ? 'Judul disembunyikan.' : 'Judul ditampilkan.'); judulOffset = 0; loadJudul(true); }
+      else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+    });
+  });
+}
+
+/* ----- Laporan Crash ----- */
+async function pageCrash() {
+  $('pageBody').innerHTML =
+    '<div class="toolbar"><p class="muted" style="flex:1">Laporan crash dari aplikasi (v0.22.0+). Ketuk satu laporan untuk melihat stack trace-nya.</p>' +
+    '<button class="btn" id="cr-clear">Kosongkan Semua</button></div><div id="cr-list"><p class="muted">Memuat…</p></div>';
+  $('cr-clear').addEventListener('click', async () => {
+    if (!confirm('Hapus SEMUA laporan crash?')) return;
+    const rr = await api('/api/v1/admin/crashes', { method: 'DELETE' });
+    if (rr.status === 200) { toast('Dihapus: ' + rr.body.deleted + ' laporan.'); pageCrash(); }
+    else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+  });
+  const r = await api('/api/v1/admin/crashes?limit=100');
+  if (r.status !== 200) { $('cr-list').innerHTML = '<p class="error">Gagal memuat laporan.</p>'; return; }
+  const list = r.body.crashes || [];
+  if (!list.length) { $('cr-list').innerHTML = '<p class="muted">Belum ada laporan crash. 🎉</p>'; return; }
+  let html = '';
+  for (const c of list) {
+    const firstLine = (c.message || c.stack_trace || '').split('\n')[0];
+    html += '<div class="card" style="margin-bottom:12px">' +
+      '<div class="toolbar" style="align-items:flex-start"><div style="flex:1"><b>' + esc(firstLine || '(tanpa pesan)') + '</b>' +
+      '<div class="muted small">' + esc(fmtDate(c.created_at)) + ' • v' + esc(c.app_version) + ' (' + c.version_code + ') • ' +
+      esc(c.device) + ' • ' + esc(c.android_version) + (c.user_email ? ' • ' + esc(c.user_email) : '') + '</div></div>' +
+      '<button class="btn ghost small" data-cr-toggle="' + esc(c.id) + '">Stack trace</button>' +
+      '<button class="btn small" data-cr-del="' + esc(c.id) + '">Hapus</button></div>' +
+      '<pre id="cr-stack-' + esc(c.id) + '" hidden style="white-space:pre-wrap;word-break:break-word;font-size:0.78rem;max-height:320px;overflow:auto;background:var(--panel-2);padding:12px;border-radius:9px">' + esc(c.stack_trace) + '</pre></div>';
+  }
+  $('cr-list').innerHTML = html;
+  document.querySelectorAll('button[data-cr-toggle]').forEach((el) =>
+    el.addEventListener('click', () => { const p = $('cr-stack-' + el.dataset.crToggle); p.hidden = !p.hidden; }));
+  document.querySelectorAll('button[data-cr-del]').forEach((el) =>
+    el.addEventListener('click', async () => {
+      const rr = await api('/api/v1/admin/crashes/' + encodeURIComponent(el.dataset.crDel), { method: 'DELETE' });
+      if (rr.status === 200) { toast('Laporan dihapus.'); pageCrash(); }
+      else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+    }));
+}
+
+/* ----- Pengaturan Aplikasi ----- */
+async function pagePengaturan() {
+  $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
+  const r = await api('/api/v1/admin/settings');
+  if (r.status !== 200) return bodyError(r);
+  const s = r.body.settings || {};
+  $('pageBody').innerHTML =
+    '<div class="card"><h2 style="margin-top:0">Mode Perawatan</h2>' +
+    '<p class="muted">Saat aktif, aplikasi (v0.22.0+) hanya menampilkan halaman perawatan — pengguna tidak bisa menonton sampai dimatikan.</p>' +
+    '<div class="toolbar"><label class="switch"><input type="checkbox" id="st-maint"' + (s.maintenance_mode === 'true' ? ' checked' : '') + '><span></span></label><span>Mode perawatan aktif</span></div>' +
+    '<label>Pesan perawatan<br><input type="text" id="st-maint-msg" value="' + esc(s.maintenance_message || '') + '" style="width:100%"></label></div>' +
+    '<div class="card" style="margin-top:18px"><h2 style="margin-top:0">Paksa Perbarui</h2>' +
+    '<p class="muted">Pengguna dengan kode versi aplikasi di bawah angka ini wajib memperbarui. v0.22.0 = kode 49. Isi 0 untuk menonaktifkan.</p>' +
+    '<div class="toolbar"><label>Kode versi minimum<br><input type="number" id="st-minver" value="' + esc(s.min_version_code || '0') + '" min="0" style="width:140px"></label>' +
+    '<label style="flex:1">Tautan unduh versi baru<br><input type="text" id="st-url" value="' + esc(s.update_url || '') + '" style="width:100%"></label></div></div>' +
+    '<div class="card" style="margin-top:18px"><h2 style="margin-top:0">Pengumuman</h2>' +
+    '<p class="muted">Teks ini tampil sebagai banner di Beranda aplikasi. Kosongkan untuk menyembunyikan.</p>' +
+    '<input type="text" id="st-ann" value="' + esc(s.announcement || '') + '" placeholder="cth: Server pindah — selamat menonton!" style="width:100%"></div>' +
+    '<div style="margin-top:18px"><button class="btn" id="st-save">Simpan Pengaturan</button></div>';
+  $('st-save').addEventListener('click', async () => {
+    const body = {
+      maintenance_mode: $('st-maint').checked,
+      maintenance_message: $('st-maint-msg').value,
+      min_version_code: parseInt($('st-minver').value, 10) || 0,
+      update_url: $('st-url').value.trim(),
+      announcement: $('st-ann').value,
+    };
+    const rr = await api('/api/v1/admin/settings', { method: 'PATCH', body });
+    if (rr.status === 200) toast('Pengaturan disimpan.');
+    else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+  });
+}
+
+/* ----- Log Admin ----- */
+async function pageLog() {
+  $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
+  const r = await api('/api/v1/admin/logs?limit=100');
+  if (r.status !== 200) return bodyError(r);
+  const list = r.body.logs || [];
+  if (!list.length) { $('pageBody').innerHTML = '<p class="muted">Belum ada aktivitas admin tercatat.</p>'; return; }
+  let html = '<table><tr><th>Waktu</th><th>Admin</th><th>Aksi</th><th>Target</th><th>Rincian</th></tr>';
+  for (const l of list) {
+    let detail = '';
+    try { detail = JSON.stringify(l.detail); } catch (e) { detail = ''; }
+    if (detail.length > 90) detail = detail.slice(0, 90) + '…';
+    html += '<tr><td>' + esc(fmtDate(l.created_at)) + '</td><td>' + esc(l.admin_email) + '</td>' +
+      '<td><span class="badge info">' + esc(l.action) + '</span></td><td class="small">' + esc(l.target || '—') + '</td>' +
+      '<td class="small muted">' + esc(detail) + '</td></tr>';
+  }
+  $('pageBody').innerHTML = html + '</table>';
+}
+
+/* ----- Info Sistem ----- */
+async function pageSistem() {
+  $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
+  const r = await api('/api/v1/admin/system');
+  if (r.status !== 200) return bodyError(r);
+  const b = r.body, c = b.counts || {}, cfg = b.config || {};
+  const flag = (v) => v ? '<span class="badge premium">terhubung</span>' : '<span class="badge expired">belum diatur</span>';
+  let html = '<div class="cards">' +
+    statCard('Pengguna', c.users) + statCard('Admin', c.admins) + statCard('Premium aktif', c.premium_users) +
+    statCard('Judul', c.titles) + statCard('Judul tersembunyi', c.titles_hidden) + statCard('Episode', c.episodes) +
+    statCard('Transaksi', c.transactions) + statCard('Voucher aktif', c.vouchers_active) +
+    statCard('Laporan crash', c.crash_reports) + statCard('Postingan feed', c.feed_posts) + '</div>';
+  html += '<div class="card"><h2 style="margin-top:0">Server</h2><table>' +
+    '<tr><th>Go</th><td>' + esc(b.go_version) + '</td></tr>' +
+    '<tr><th>Migrasi terakhir</th><td>' + esc(b.latest_migration || '—') + '</td></tr>' +
+    '<tr><th>Waktu server</th><td>' + esc(fmtDate(b.server_time)) + '</td></tr></table></div>';
+  html += '<div class="card" style="margin-top:18px"><h2 style="margin-top:0">Konfigurasi</h2><table>' +
+    '<tr><th>Login Google</th><td>' + flag(cfg.google_login) + '</td></tr>' +
+    '<tr><th>Tokopay</th><td>' + flag(cfg.tokopay) + '</td></tr>' +
+    '<tr><th>ImgBB (gambar feed)</th><td>' + flag(cfg.imgbb) + '</td></tr></table>' +
+    '<p class="muted">Konfigurasi diatur lewat berkas env di VPS (<code>/etc/subsenpai/backend.env</code>), bukan dari halaman ini.</p></div>';
+  $('pageBody').innerHTML = html;
 }
 
 /* ================= Boot ================= */
