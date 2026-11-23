@@ -8,6 +8,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -17,20 +18,47 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"subsenpai/backend/internal/auth"
+	"subsenpai/backend/internal/jobs"
 )
 
 /* ---------- Kelola judul (tampilkan / sembunyikan) ---------- */
 
 type adminTitle struct {
-	ID           string  `json:"id"`
-	Slug         string  `json:"slug"`
-	Type         string  `json:"type"`
-	Title        string  `json:"title"`
-	Poster       *string `json:"poster_url,omitempty"`
-	Year         *int    `json:"year,omitempty"`
-	Status       string  `json:"status"`
-	IsHidden     bool    `json:"is_hidden"`
-	EpisodeCount int     `json:"episode_count"`
+	ID           string   `json:"id"`
+	Slug         string   `json:"slug"`
+	Type         string   `json:"type"`
+	Title        string   `json:"title"`
+	Poster       *string  `json:"poster_url,omitempty"`
+	Year         *int     `json:"year,omitempty"`
+	Status       string   `json:"status"`
+	IsHidden     bool     `json:"is_hidden"`
+	EpisodeCount int      `json:"episode_count"`
+	Complete     bool     `json:"complete"`
+	Missing      []string `json:"missing"`
+}
+
+// missingLabels menyusun label kekurangan satu judul (definisi
+// sama dengan audit RepairCatalog di paket jobs).
+func missingLabels(noPoster, noSynopsis, noYear, noGenres bool, epCount, unsourced int) []string {
+	m := []string{}
+	if noPoster {
+		m = append(m, "poster")
+	}
+	if noSynopsis {
+		m = append(m, "sinopsis")
+	}
+	if noYear {
+		m = append(m, "tahun")
+	}
+	if noGenres {
+		m = append(m, "genre")
+	}
+	if epCount == 0 {
+		m = append(m, "episode kosong")
+	} else if unsourced > 0 {
+		m = append(m, fmt.Sprintf("%d episode tanpa sumber", unsourced))
+	}
+	return m
 }
 
 // handleAdminTitles: cari judul TERMASUK yang tersembunyi (untuk
@@ -41,6 +69,7 @@ func (a *API) handleAdminTitles(w http.ResponseWriter, r *http.Request) {
 	}
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	typ := r.URL.Query().Get("type")
+	filter := r.URL.Query().Get("filter") // "" | komplit | belum | kosong
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit <= 0 || limit > 100 {
 		limit = 50
@@ -59,19 +88,58 @@ func (a *API) handleAdminTitles(w http.ResponseWriter, r *http.Request) {
 		args = append(args, typ)
 		where += " and t.type = $" + strconv.Itoa(len(args))
 	}
-	var total int
-	if err := a.pool.QueryRow(r.Context(),
-		"select count(*) from titles t "+where, args...).Scan(&total); err != nil {
+	// Basis kelengkapan (definisi sama dengan audit RepairCatalog):
+	// komplit = poster + sinopsis + tahun + genre + ada episode dan
+	// semua episode punya sumber putar; kosong ("judul saja") =
+	// belum ada sinopsis dan belum ada episode — umpan antrean
+	// penyelesaian worker.
+	base := `
+		select t.id, t.slug, t.type, t.title, t.poster_url, t.year, t.status,
+		       t.is_hidden, t.updated_at,
+		       coalesce(t.poster_url,'') = '' as no_poster,
+		       coalesce(t.synopsis,'') = '' as no_synopsis,
+		       t.year is null as no_year,
+		       coalesce(cardinality(t.genres),0) = 0 as no_genres,
+		       ec.cnt as ep_count, ec.unsourced as unsourced,
+		       (coalesce(t.poster_url,'') <> '' and coalesce(t.synopsis,'') <> ''
+		        and t.year is not null and coalesce(cardinality(t.genres),0) > 0
+		        and ec.cnt > 0 and ec.unsourced = 0) as complete,
+		       (ec.cnt = 0 and coalesce(t.synopsis,'') = '') as bare
+		from titles t
+		join lateral (
+			select count(*) as cnt,
+			       count(*) filter (
+			           where not exists (select 1 from episode_sources es where es.episode_id = e.id)
+			             and coalesce(e.video_url,'') = ''
+			       ) as unsourced
+			from episodes e where e.title_id = t.id
+		) ec on true
+		` + where
+	var nTotal, nKomplit, nBelum, nKosong int
+	if err := a.pool.QueryRow(r.Context(), `
+		select count(*), count(*) filter (where complete),
+		       count(*) filter (where not complete),
+		       count(*) filter (where bare)
+		from (`+base+`) b`, args...).Scan(&nTotal, &nKomplit, &nBelum, &nKosong); err != nil {
 		writeErr(w, http.StatusInternalServerError, "gagal menghitung judul")
 		return
 	}
+	total := nTotal
+	filterSQL := ""
+	switch filter {
+	case "komplit":
+		filterSQL, total = " where complete", nKomplit
+	case "belum":
+		filterSQL, total = " where not complete", nBelum
+	case "kosong":
+		filterSQL, total = " where bare", nKosong
+	}
 	args = append(args, limit, offset)
 	rows, err := a.pool.Query(r.Context(), `
-		select t.id, t.slug, t.type, t.title, t.poster_url, t.year, t.status,
-		       t.is_hidden,
-		       (select count(*) from episodes e where e.title_id = t.id)
-		from titles t `+where+`
-		order by t.updated_at desc
+		select id, slug, type, title, poster_url, year, status, is_hidden, ep_count,
+		       no_poster, no_synopsis, no_year, no_genres, unsourced, complete
+		from (`+base+`) b`+filterSQL+`
+		order by updated_at desc
 		limit $`+strconv.Itoa(len(args)-1)+` offset $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "gagal memuat judul")
@@ -81,14 +149,51 @@ func (a *API) handleAdminTitles(w http.ResponseWriter, r *http.Request) {
 	out := []adminTitle{}
 	for rows.Next() {
 		var t adminTitle
+		var noPoster, noSynopsis, noYear, noGenres bool
+		var unsourced int
 		if err := rows.Scan(&t.ID, &t.Slug, &t.Type, &t.Title, &t.Poster,
-			&t.Year, &t.Status, &t.IsHidden, &t.EpisodeCount); err != nil {
+			&t.Year, &t.Status, &t.IsHidden, &t.EpisodeCount,
+			&noPoster, &noSynopsis, &noYear, &noGenres, &unsourced, &t.Complete); err != nil {
 			writeErr(w, http.StatusInternalServerError, "gagal membaca judul")
 			return
 		}
+		t.Missing = missingLabels(noPoster, noSynopsis, noYear, noGenres, t.EpisodeCount, unsourced)
 		out = append(out, t)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"titles": out, "total": total})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"titles": out, "total": total,
+		"counts": map[string]any{
+			"total": nTotal, "komplit": nKomplit, "belum": nBelum, "kosong": nKosong,
+		},
+	})
+}
+
+// handleAdminWorker: status proses worker (fase yang sedang
+// berjalan + judul yang sedang diproses) dan antrean kelengkapan
+// katalog, untuk kartu pantauan di halaman Kelola Judul.
+func (a *API) handleAdminWorker(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	ctx := r.Context()
+	var total, komplit, kosong int
+	_ = a.pool.QueryRow(ctx, `
+		select count(*),
+		  count(*) filter (where coalesce(poster_url,'') <> '' and coalesce(synopsis,'') <> ''
+		     and year is not null and coalesce(cardinality(genres),0) > 0
+		     and exists (select 1 from episodes e where e.title_id = titles.id)
+		     and not exists (select 1 from episodes e where e.title_id = titles.id
+		        and not exists (select 1 from episode_sources es where es.episode_id = e.id)
+		        and coalesce(e.video_url,'') = '')),
+		  count(*) filter (where coalesce(synopsis,'') = ''
+		     and not exists (select 1 from episodes e where e.title_id = titles.id))
+		from titles where type in ('anime','donghua','film')`).Scan(&total, &komplit, &kosong)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status": jobs.ReadWorkerStatus(ctx, a.pool),
+		"queue": map[string]any{
+			"total": total, "komplit": komplit, "belum": total - komplit, "kosong": kosong,
+		},
+	})
 }
 
 // handleAdminTitleUpdate: tampilkan/sembunyikan judul dari aplikasi.

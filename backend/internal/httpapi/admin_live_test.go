@@ -370,6 +370,85 @@ func TestAdminLive(t *testing.T) {
 		t.Fatalf("sembunyikan judul oleh user harus 403, dapat %d", st)
 	}
 
+	// Kelengkapan katalog + status worker: filter komplit /
+	// belum / judul saja, hitungan, label kekurangan, dan
+	// endpoint pantauan worker.
+	for _, slug := range []string{"uji-kelengkapan-komplit", "uji-kelengkapan-sebagian", "uji-kelengkapan-saja"} {
+		_, _ = pool.Exec(ctx, `delete from titles where slug = $1`, slug)
+	}
+	var komplitID string
+	if err := pool.QueryRow(ctx, `
+		insert into titles (slug, type, title, poster_url, synopsis, year, genres, status)
+		values ('uji-kelengkapan-komplit', 'anime', 'Uji Kelengkapan Komplit',
+		        'https://cdn.invalid/k.jpg', 'Sinopsis lengkap.', 2024, '{Action}', 'ongoing')
+		returning id`).Scan(&komplitID); err != nil {
+		t.Fatalf("seed judul komplit: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into episodes (title_id, episode_no, video_url)
+		values ($1::uuid, 1, 'https://cdn.invalid/v.mp4')`, komplitID); err != nil {
+		t.Fatalf("seed episode komplit: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into titles (slug, type, title, poster_url, synopsis, year, genres, status)
+		values ('uji-kelengkapan-sebagian', 'anime', 'Uji Kelengkapan Sebagian',
+		        'https://cdn.invalid/s.jpg', 'Sinopsis ada.', 2023, '{Drama}', 'ongoing'),
+		       ('uji-kelengkapan-saja', 'anime', 'Uji Kelengkapan Saja', null, null, null, '{}', 'ongoing')`); err != nil {
+		t.Fatalf("seed judul sebagian/saja: %v", err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, `delete from titles where slug like 'uji-kelengkapan-%'`)
+	}()
+	slugAda := func(body map[string]any, slug string) bool {
+		for _, it := range body["titles"].([]any) {
+			if it.(map[string]any)["slug"] == slug {
+				return true
+			}
+		}
+		return false
+	}
+	st, fKomplit := call("GET", "/api/v1/admin/titles?q=Kelengkapan&filter=komplit", adminJWT, nil)
+	if st != 200 || !slugAda(fKomplit, "uji-kelengkapan-komplit") ||
+		slugAda(fKomplit, "uji-kelengkapan-sebagian") || slugAda(fKomplit, "uji-kelengkapan-saja") {
+		t.Fatalf("filter komplit: status=%d body=%v", st, fKomplit)
+	}
+	st, fKosong := call("GET", "/api/v1/admin/titles?q=Kelengkapan&filter=kosong", adminJWT, nil)
+	if st != 200 || !slugAda(fKosong, "uji-kelengkapan-saja") ||
+		slugAda(fKosong, "uji-kelengkapan-komplit") || slugAda(fKosong, "uji-kelengkapan-sebagian") {
+		t.Fatalf("filter judul saja: status=%d body=%v", st, fKosong)
+	}
+	st, fSemua := call("GET", "/api/v1/admin/titles?q=Kelengkapan", adminJWT, nil)
+	cnt := fSemua["counts"].(map[string]any)
+	if st != 200 || cnt["komplit"].(float64) < 1 || cnt["kosong"].(float64) < 1 || cnt["belum"].(float64) < 2 {
+		t.Fatalf("hitungan kelengkapan: status=%d counts=%v", st, cnt)
+	}
+	for _, it := range fSemua["titles"].([]any) {
+		m := it.(map[string]any)
+		if m["slug"] == "uji-kelengkapan-sebagian" &&
+			!strings.Contains(fmt.Sprint(m["missing"]), "episode kosong") {
+			t.Fatalf("label kekurangan sebagian salah: %v", m["missing"])
+		}
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into app_settings (key, value)
+		values ('worker_status', '{"phase":"Uji Fase","done":2,"total":5,"current":"Judul Uji","updated_at":"2026-11-23T00:00:00Z"}')
+		on conflict (key) do update set value = excluded.value`); err != nil {
+		t.Fatalf("seed status worker: %v", err)
+	}
+	st, wk := call("GET", "/api/v1/admin/worker", adminJWT, nil)
+	if st != 200 {
+		t.Fatalf("admin worker: status=%d", st)
+	}
+	if s, _ := wk["status"].(map[string]any); s == nil || s["phase"] != "Uji Fase" {
+		t.Fatalf("status worker terbaca salah: %v", wk["status"])
+	}
+	if qn, _ := wk["queue"].(map[string]any); qn == nil || qn["total"].(float64) < 3 {
+		t.Fatalf("antrean worker: %v", wk["queue"])
+	}
+	if st, _ := call("GET", "/api/v1/admin/worker", userJWT, nil); st != 403 {
+		t.Fatalf("admin worker oleh user harus 403, dapat %d", st)
+	}
+
 	// Crash: user mengunggah laporan -> admin melihat -> menghapus.
 	st, _ = call("POST", "/api/v1/crashes", userJWT, map[string]any{
 		"app_version": "0.22.0", "version_code": 49,

@@ -23,14 +23,14 @@ import (
 const repairPerCycle = 12
 
 type repairCandidate struct {
-	id       string
-	typ      string
-	name     string
-	score    int
-	missing  []string
-	epCount  int
+	id        string
+	typ       string
+	name      string
+	score     int
+	missing   []string
+	epCount   int
 	unsourced int
-	attempts int
+	attempts  int
 }
 
 const auditColumns = `
@@ -161,7 +161,8 @@ func RepairCatalog(ctx context.Context, pool *pgxpool.Pool) error {
 		return nil
 	}
 	fixed, still := 0, 0
-	for _, c := range cands {
+	for i, c := range cands {
+		ReportProgress(ctx, pool, "Memperbaiki katalog", i+1, len(cands), c.name)
 		repairOneTitle(ctx, pool, c)
 		after, err := auditTitle(ctx, pool, c.id)
 		if err != nil {

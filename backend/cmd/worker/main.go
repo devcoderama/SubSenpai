@@ -46,6 +46,7 @@ func main() {
 		log.Printf("tren awal: %v", err)
 	}
 	runSources := func() {
+		jobs.ReportProgress(ctx, pool, "Mengecek sumber", 0, 0, "")
 		if err := jobs.CheckSources(ctx, pool); err != nil {
 			log.Printf("cek sumber: %v", err)
 		}
@@ -79,6 +80,7 @@ func main() {
 		// terbaru yang belum diumumkan diposting ke #update-apk
 		// (penanda versi di app_settings; no-op bila token kosong).
 		jobs.PostUpdateToDiscordIfNew(ctx, pool, cfg)
+		jobs.ReportProgress(ctx, pool, "Selesai", 0, 0, "")
 	}
 	runSources()
 	var gopayClient *payments.GoPayClient

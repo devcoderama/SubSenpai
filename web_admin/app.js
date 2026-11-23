@@ -664,32 +664,79 @@ async function loadVoucherList() {
 
 /* ----- Kelola Judul ----- */
 let judulOffset = 0;
+let judulFilter = '';
 async function pageJudul() {
   $('pageBody').innerHTML =
+    '<div class="card" id="jd-worker" style="margin-bottom:16px"><p class="muted">Memuat status worker…</p></div>' +
     '<p class="muted">Judul tersembunyi hilang dari aplikasi (beranda, katalog, pencarian, jadwal, detail, putar) tanpa menghapus datanya.</p>' +
     '<div class="toolbar"><input type="search" id="jd-q" placeholder="Cari judul…" style="flex:1">' +
     '<select id="jd-type"><option value="">Semua jenis</option><option value="anime">Anime</option><option value="donghua">Donghua</option><option value="film">Film</option></select>' +
     '<button class="btn" id="jd-search">Cari</button></div>' +
+    '<div class="chiprow" id="jd-filters"></div>' +
     '<div id="jd-list"><p class="muted">Memuat…</p></div>' +
     '<div style="margin-top:14px"><button class="btn ghost" id="jd-more">Muat lebih banyak</button></div>';
   judulOffset = 0;
+  judulFilter = '';
   $('jd-search').addEventListener('click', () => { judulOffset = 0; loadJudul(true); });
   $('jd-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { judulOffset = 0; loadJudul(true); } });
   $('jd-more').addEventListener('click', () => loadJudul(false));
+  loadWorkerStatus();
+  if (window.__pageTimer) clearInterval(window.__pageTimer);
+  window.__pageTimer = setInterval(loadWorkerStatus, 5000);
   loadJudul(true);
+}
+async function loadWorkerStatus() {
+  const el = $('jd-worker');
+  if (!el) return;
+  const r = await api('/api/v1/admin/worker');
+  if (r.status !== 200) { el.innerHTML = '<h2 style="margin-top:0">Proses Worker</h2><p class="muted">Status worker tidak tersedia.</p>'; return; }
+  const st = r.body.status, q = r.body.queue || {};
+  let html = '<h2 style="margin-top:0">Proses Worker</h2>';
+  if (st) {
+    html += '<p style="margin:4px 0"><b>' + esc(st.phase) + '</b>' +
+      (st.current ? ' — sedang memproses: <b>' + esc(st.current) + '</b>' : '') + '</p>';
+    if (st.total > 0) {
+      const pct = Math.min(100, Math.round(st.done / st.total * 100));
+      html += '<div class="bar"><div style="width:' + pct + '%"></div></div>' +
+        '<p class="muted small">' + st.done + ' dari ' + st.total + ' judul pada fase ini</p>';
+    }
+    html += '<p class="muted small">Terakhir diperbarui ' + esc(fmtDate(st.updated_at)) + ' · kartu ini menyegar tiap 5 detik</p>';
+  } else {
+    html += '<p class="muted">Worker belum melaporkan status (mulai tercatat setelah backend diperbarui dan worker berjalan).</p>';
+  }
+  html += '<p class="muted" style="margin-bottom:0">Antrean kelengkapan: <b>' + (q.total || 0) + '</b> judul · ' +
+    '<b>' + (q.komplit || 0) + '</b> komplit · <b>' + (q.belum || 0) + '</b> belum komplit · ' +
+    '<b>' + (q.kosong || 0) + '</b> judul saja (antre dilengkapi worker)</p>';
+  el.innerHTML = html;
+}
+function renderJudulFilters(counts) {
+  const el = $('jd-filters');
+  if (!el || !counts) return;
+  const chip = (val, lbl, n) => '<button class="fchip' + (judulFilter === val ? ' on' : '') +
+    '" data-jd-filter="' + val + '">' + lbl + ' (' + n + ')</button>';
+  el.innerHTML = chip('', 'Semua', counts.total) + chip('komplit', 'Komplit', counts.komplit) +
+    chip('belum', 'Belum Komplit', counts.belum) + chip('kosong', 'Judul Saja', counts.kosong);
+  el.querySelectorAll('[data-jd-filter]').forEach((b) => b.addEventListener('click', () => {
+    judulFilter = b.dataset.jdFilter;
+    judulOffset = 0;
+    loadJudul(true);
+  }));
 }
 async function loadJudul(reset) {
   const q = encodeURIComponent($('jd-q').value.trim());
   const t = encodeURIComponent($('jd-type').value);
-  const r = await api('/api/v1/admin/titles?q=' + q + '&type=' + t + '&limit=50&offset=' + judulOffset);
+  const r = await api('/api/v1/admin/titles?q=' + q + '&type=' + t + '&filter=' + encodeURIComponent(judulFilter) + '&limit=50&offset=' + judulOffset);
   if (r.status !== 200) { if (reset) $('jd-list').innerHTML = '<p class="error">Gagal memuat judul.</p>'; return; }
+  if (reset) renderJudulFilters(r.body.counts);
   const list = r.body.titles || [];
   judulOffset += list.length;
-  let html = reset ? '<p class="muted">' + (r.body.total || 0) + ' judul</p><table><tr><th>Poster</th><th>Judul</th><th>Jenis</th><th>Tahun</th><th>Episode</th><th>Visibilitas</th><th>Aksi</th></tr>' : '';
+  let html = reset ? '<p class="muted">' + (r.body.total || 0) + ' judul</p><table><tr><th>Poster</th><th>Judul</th><th>Jenis</th><th>Tahun</th><th>Episode</th><th>Kelengkapan</th><th>Visibilitas</th><th>Aksi</th></tr>' : '';
   for (const x of list) {
     html += '<tr><td>' + (x.poster_url ? '<img src="' + esc(posterSrc(x.poster_url)) + '" alt="" style="width:38px;height:54px;object-fit:cover;border-radius:6px" loading="lazy">' : '—') + '</td>' +
       '<td>' + esc(x.title) + '<div class="muted small">' + esc(x.slug) + '</div></td>' +
       '<td>' + esc(x.type) + '</td><td>' + (x.year || '—') + '</td><td>' + x.episode_count + '</td>' +
+      '<td>' + (x.complete ? '<span class="badge premium">Komplit</span>' :
+        (x.missing || []).map((m) => '<span class="badge expired" style="margin:0 4px 4px 0">' + esc(m) + '</span>').join('')) + '</td>' +
       '<td><span class="badge ' + (x.is_hidden ? 'expired' : 'premium') + '">' + (x.is_hidden ? 'Tersembunyi' : 'Tampil') + '</span></td>' +
       '<td><button class="btn ' + (x.is_hidden ? '' : 'ghost') + ' small" data-jd-toggle="' + esc(x.id) + '|' + (x.is_hidden ? 'show' : 'hide') + '">' +
       (x.is_hidden ? 'Tampilkan' : 'Sembunyikan') + '</button></td></tr>';

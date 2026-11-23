@@ -155,7 +155,7 @@ func PurgePosterless(ctx context.Context, pool *pgxpool.Pool) error {
 // applySeriesMeta menimpa sinopsis boilerplate dengan yang sah.
 func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 	rows, err := pool.Query(ctx, `
-		select t.id, ts.source_url,
+		select t.id, t.title, ts.source_url,
 		       cs.id, cs.name, cs.content_type, cs.lang, coalesce(cs.base_url,''),
 		       cs.resolver, cs.fetch_mode, cs.subtitle_kind, cs.priority
 		from titles t
@@ -168,14 +168,14 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 	type job struct {
-		titleID, url string
-		src          sources.Source
+		titleID, name, url string
+		src                sources.Source
 	}
 	jobs := []job{}
 	seen := map[string]bool{}
 	for rows.Next() {
 		var j job
-		if err := rows.Scan(&j.titleID, &j.url, &j.src.ID, &j.src.Name,
+		if err := rows.Scan(&j.titleID, &j.name, &j.url, &j.src.ID, &j.src.Name,
 			&j.src.ContentType, &j.src.Lang, &j.src.BaseURL, &j.src.Resolver,
 			&j.src.FetchMode, &j.src.SubtitleKind, &j.src.Priority); err != nil {
 			continue
@@ -192,10 +192,13 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 	done := 0
+	attempt := 0
 	for _, j := range jobs {
 		if done >= 30 {
 			break
 		}
+		attempt++
+		ReportProgress(ctx, pool, "Melengkapi metadata", attempt, min(len(jobs), 30), j.name)
 		resolver, ok := sources.ByKey(j.src.Resolver)
 		if !ok {
 			log.Printf("enrich %s: resolver %q sumber %s tidak ditemukan, dilewati", j.titleID, j.src.Resolver, j.src.Name)
@@ -532,7 +535,8 @@ func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
 	trows.Close()
 
 	resolved := 0
-	for _, t := range titles {
+	for i, t := range titles {
+		ReportProgress(ctx, pool, "Mengisi episode", i+1, len(titles), t.name)
 		srcs, err := loadSources(ctx, pool, t.typ)
 		if err != nil {
 			return err
