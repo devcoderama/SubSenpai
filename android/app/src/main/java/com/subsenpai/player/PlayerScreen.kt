@@ -243,18 +243,40 @@ fun PlayerScreen(
         player.prepare()
     }
 
-    // Lapor progres tonton berkala (Fase 3) agar "Lanjutkan" akurat.
+    // Lapor progres tonton berkala (Fase 3) agar "Lanjutkan" akurat
+    // dan riwayat terisi. Sumber embed (WebView — film & donghua)
+    // tidak memutar ExoPlayer sehingga posisinya selalu 0 dan
+    // riwayat tidak pernah tercatat (keluhan Rams 2026-11-23);
+    // untuk embed dipakai lama episode dibuka sebagai posisi.
+    var embedWatchedSec by remember(epId) { mutableStateOf(0) }
+    var anyReportSent by remember(epId) { mutableStateOf(false) }
+    fun reportPosNow(): Int {
+        val src = playback?.sources?.getOrNull(sourceIdx)
+        return if (src != null && isEmbedUrl(src.url)) embedWatchedSec
+        else (player.currentPosition / 1000).toInt()
+    }
     LaunchedEffect(epId) {
+        var first = true
         while (true) {
-            kotlinx.coroutines.delay(15_000)
-            val pos = (player.currentPosition / 1000).toInt()
-            if (pos > 0) repo.reportWatch(epId, pos)
+            kotlinx.coroutines.delay(5_000)
+            val src = playback?.sources?.getOrNull(sourceIdx)
+            if (src != null && isEmbedUrl(src.url)) embedWatchedSec += 5
+            val pos = reportPosNow()
+            // Tik pertama selalu melapor (walau posisi masih 0)
+            // agar episode yang dibuka langsung masuk riwayat;
+            // server menjaga posisi terbesar, jadi laporan awal
+            // tidak menimpa progres lama.
+            if (first || pos > 0) {
+                repo.reportWatch(epId, pos)
+                anyReportSent = true
+            }
+            first = false
         }
     }
     DisposableEffect(epId) {
         onDispose {
-            val pos = (player.currentPosition / 1000).toInt()
-            if (pos > 0) {
+            val pos = reportPosNow()
+            if (pos > 0 || anyReportSent) {
                 scope.launch { repo.reportWatch(epId, pos) }
             }
         }

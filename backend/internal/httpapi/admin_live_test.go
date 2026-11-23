@@ -387,6 +387,37 @@ func TestAdminLive(t *testing.T) {
 		t.Fatalf("info sistem oleh user harus 403, dapat %d", st)
 	}
 
+	// Riwayat tonton: lapor progres -> muncul di daftar riwayat
+	// (regresi keluhan Rams 2026-11-23: sudah menonton tapi Riwayat
+	// kosong — sisi server harus terbukti sehat).
+	if _, err := pool.Exec(ctx, `
+		insert into viewing_profiles (account_id, name) values ($1::uuid, 'Utama')`, userID); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = pool.Exec(ctx, `delete from titles where slug = 'judul-riwayat-uji'`)
+	var histEpisodeID string
+	if err := pool.QueryRow(ctx, `
+		with t as (
+			insert into titles (slug, type, title)
+			values ('judul-riwayat-uji', 'film', 'Film Riwayat Uji') returning id
+		)
+		insert into episodes (title_id, episode_no, video_url)
+		select id, 1, 'https://cdn.example/v.mp4' from t returning id`).Scan(&histEpisodeID); err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Exec(ctx, `delete from titles where slug = 'judul-riwayat-uji'`)
+	st, _ = call("POST", "/api/v1/history/watch", userJWT, map[string]any{
+		"episode_id": histEpisodeID, "position_sec": 120,
+	})
+	if st != 200 {
+		t.Fatalf("lapor riwayat tonton: status=%d", st)
+	}
+	st, hist := call("GET", "/api/v1/history/watch?limit=10", userJWT, nil)
+	if st != 200 || len(hist["items"].([]any)) != 1 ||
+		hist["items"].([]any)[0].(map[string]any)["title"] != "Film Riwayat Uji" {
+		t.Fatalf("daftar riwayat: status=%d body=%v", st, hist)
+	}
+
 	// CORS: preflight dari origin Netlify dijawab dengan echo origin;
 	// origin asing tidak mendapat izin.
 	for _, tc := range []struct {

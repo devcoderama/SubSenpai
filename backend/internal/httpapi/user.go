@@ -137,7 +137,8 @@ func (a *API) handleHistoryWatchReport(w http.ResponseWriter, r *http.Request) {
 		insert into watch_history (user_id, viewing_profile_id, episode_id, position_sec, updated_at)
 		values ($1::uuid, $2::uuid, $3::uuid, $4, now())
 		on conflict (user_id, viewing_profile_id, episode_id)
-		do update set position_sec = excluded.position_sec, updated_at = now()`,
+		do update set position_sec = greatest(watch_history.position_sec, excluded.position_sec),
+		              updated_at = now()`,
 		p.ID, vp, req.EpisodeID, req.PositionSec)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "episode tidak ditemukan")
