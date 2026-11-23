@@ -36,8 +36,12 @@ const (
 	// episode per episode tetap dicoba di depan sebentar).
 	onDemandBackgroundTimeout = 3 * time.Minute
 	// onDemandCooldown adalah jeda sebelum judul (atau kata
-	// pencarian) yang tarikannya gagal boleh dicoba lagi.
-	onDemandCooldown = 10 * time.Minute
+	// pencarian) yang tarikannya gagal boleh dicoba lagi. Dulu 10
+	// menit: satu kegagalan sesaat di sumber membuat judul
+	// "beracun" selama itu — episode tidak pernah muncul walau
+	// ditunggu (keluhan Rams 2026-11-23). 3 menit cukup melindungi
+	// sumber tanpa mengunci judul terlalu lama.
+	onDemandCooldown = 3 * time.Minute
 	// discoverTimeout membatasi percobaan discovery katalog yang
 	// dilakukan selagi user menunggu respons daftar.
 	discoverTimeout = 12 * time.Second

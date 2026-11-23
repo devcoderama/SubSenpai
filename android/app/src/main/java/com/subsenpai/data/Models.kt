@@ -193,6 +193,47 @@ class CatalogRepository(
 
     val isLoggedIn: Boolean get() = auth?.isLoggedIn == true
 
+    // Cache kartu judul di memori: kartu yang sudah tampil di
+    // Beranda/daftar dipakai halaman detail untuk menggambar
+    // kepala halaman SEKETIKA saat poster diketuk, selagi detail
+    // penuh masih dimuat (optimasi 2026-11-23).
+    private val cardCache = HashMap<String, TitleCard>()
+
+    /** Kartu judul yang sudah dikenal aplikasi, bila ada. */
+    fun cachedCard(id: String): TitleCard? = cardCache[id]
+
+    private fun cacheCards(cards: List<TitleCard>) {
+        for (c in cards) cardCache[c.id] = c
+    }
+
+    // Hasil playback yang di-prefetch dari halaman detail agar
+    // tombol Putar tidak menunggu satu perjalanan jaringan lagi.
+    // Sekali pakai dan kedaluwarsa cepat (URL aliran bisa berubah).
+    private var playbackPrefetch: Triple<String, Playback, Long>? = null
+
+    /** Ambil di latar hasil playback satu episode untuk Putar nanti. */
+    suspend fun prefetchPlayback(episodeId: String) {
+        try {
+            val pb = playback(episodeId)
+            playbackPrefetch = Triple(episodeId, pb, System.currentTimeMillis())
+        } catch (e: Exception) {
+            // Prefetch gagal tidak masalah: pemutar mengambil sendiri.
+        }
+    }
+
+    /** Ambil hasil prefetch (sekali pakai, maks 3 menit) bila cocok. */
+    fun takeCachedPlayback(episodeId: String): Playback? {
+        val p = playbackPrefetch ?: return null
+        playbackPrefetch = null
+        return if (p.first == episodeId &&
+            System.currentTimeMillis() - p.third < 180_000
+        ) {
+            p.second
+        } else {
+            null
+        }
+    }
+
     // ---------- Akun (Fase 3) ----------
 
     /** Tukar token ID Google dengan JWT backend; sesi disimpan di AuthStore. */
@@ -559,7 +600,10 @@ class CatalogRepository(
             val arr = o.optJSONArray(key)
             if (arr != null) for (i in 0 until arr.length()) add(TitleCard.fromJson(arr.getJSONObject(i)))
         }
-        return cards("trending") to cards("terbaru")
+        val result = cards("trending") to cards("terbaru")
+        cacheCards(result.first)
+        cacheCards(result.second)
+        return result
     }
 
     suspend fun titles(
@@ -600,6 +644,7 @@ class CatalogRepository(
             val arr = o.optJSONArray("items")
             if (arr != null) for (i in 0 until arr.length()) add(TitleCard.fromJson(arr.getJSONObject(i)))
         }
+        cacheCards(items)
         return items to o.optString("next_cursor").ifBlank { null }
     }
 
@@ -692,7 +737,11 @@ class CatalogRepository(
         return TitleFacets(names("genres"), years, options("countries"), names("networks"))
     }
 
-    suspend fun titleDetail(id: String): TitleDetail = TitleDetail.fromJson(api.get("/api/v1/titles/$id"))
+    suspend fun titleDetail(id: String): TitleDetail {
+        val d = TitleDetail.fromJson(api.get("/api/v1/titles/$id"))
+        cardCache[d.card.id] = d.card
+        return d
+    }
 
     suspend fun playback(episodeId: String): Playback = Playback.fromJson(api.get("/api/v1/episodes/$episodeId/playback"))
 

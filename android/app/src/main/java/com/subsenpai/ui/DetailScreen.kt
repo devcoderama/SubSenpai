@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CardDefaults
@@ -71,57 +72,38 @@ fun DetailScreen(
     var error by remember { mutableStateOf<String?>(null) }
     // Episode masih ditarik server dari sumber di latar belakang.
     var epLoading by remember { mutableStateOf(false) }
+    // Episode tak kunjung muncul setelah jendela polling panjang:
+    // tampilkan tombol coba lagi (dulu polling berhenti diam-diam
+    // setelah ±30 detik dan halaman mandek selamanya).
+    var epFailed by remember { mutableStateOf(false) }
+    var epRetry by remember { mutableStateOf(0) }
     var inWatchlist by remember { mutableStateOf(false) }
     var wlBusy by remember { mutableStateOf(false) }
     var serupa by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val detailContext = LocalContext.current
     val posterHiRes = remember { SettingsStore(detailContext).posterHiRes }
+    // Kartu yang diketuk di Beranda/daftar: kepalanya digambar
+    // SEKETIKA dari cache selagi detail penuh masih dimuat.
+    val cachedCard = remember(titleId) { repo.cachedCard(titleId) }
 
-    // "Judul Serupa" ala Netflix: judul lain berjenis sama.
-    LaunchedEffect(detail?.card?.type) {
-        val t = detail?.card?.type ?: return@LaunchedEffect
+    // "Judul Serupa" ala Netflix: judul lain berjenis sama. Sengaja
+    // ditunda sampai episode selesai dimuat (bukan prioritas) dan
+    // cukup mengambil 12 kartu, bukan satu halaman penuh 30.
+    LaunchedEffect(detail?.card?.type, epLoading) {
+        val d = detail ?: return@LaunchedEffect
+        if (epLoading) return@LaunchedEffect
         try {
-            serupa = repo.titles(t, null).filter { it.id != titleId }.take(9)
+            serupa = repo.titlesPaged(d.card.type, null, limit = 12).first
+                .filter { it.id != titleId }.take(9)
         } catch (e: Exception) {
             // Bagian ini hiasan — abaikan bila gagal.
         }
     }
 
+    // Status Daftar Saya dicek sejajar dengan pemuatan detail,
+    // tidak mengantre di belakangnya.
     LaunchedEffect(titleId) {
-        try {
-            var d = repo.titleDetail(titleId)
-            detail = d
-            // Episode kosong untuk judul video: server menariknya
-            // dari sumber saat detail dibuka (bisa selesai di latar
-            // beberapa detik sesudah respons pertama) — muat ulang
-            // beberapa kali sampai episode muncul, agar halaman
-            // detail yang terbuka langsung berisi episode
-            // (permintaan Rams 2026-11-22).
-            if (d.episodes.isEmpty() &&
-                (d.card.type == "anime" || d.card.type == "donghua" || d.card.type == "film")
-            ) {
-                epLoading = true
-                var tries = 0
-                // Server kini mengisi di latar (respons detail
-                // seketika) dan penyelesaiannya paralel — episode
-                // biasanya tiba dalam hitungan detik. Muat ulang
-                // rapat di awal, total jendela ±30 detik.
-                while (d.episodes.isEmpty() && tries < 12) {
-                    delay(if (tries == 0) 2000 else 2500)
-                    tries++
-                    try {
-                        d = repo.titleDetail(titleId)
-                        detail = d
-                    } catch (e: Exception) {
-                        // Abaikan — percobaan berikutnya / keadaan terakhir dipakai.
-                    }
-                }
-                epLoading = false
-            }
-        } catch (e: Exception) {
-            error = e.message
-        }
         if (repo.isLoggedIn) {
             try {
                 inWatchlist = repo.watchlistCheck(titleId)
@@ -131,11 +113,88 @@ fun DetailScreen(
         }
     }
 
+    // Prefetch playback episode pertama begitu daftar episode tiba:
+    // tombol Putar nanti tinggal memakai hasilnya, memangkas satu
+    // perjalanan jaringan penuh sebelum video mulai.
+    LaunchedEffect(detail?.episodes?.firstOrNull()?.id) {
+        val first = detail?.episodes?.firstOrNull() ?: return@LaunchedEffect
+        if (!first.locked) {
+            launch { repo.prefetchPlayback(first.id) }
+        }
+    }
+
+    LaunchedEffect(titleId, epRetry) {
+        try {
+            var d = repo.titleDetail(titleId)
+            detail = d
+            // Episode kosong untuk judul video: server menariknya
+            // dari sumber saat detail dibuka (bisa selesai di latar
+            // beberapa detik sesudah respons pertama) — muat ulang
+            // sampai episode muncul, agar halaman detail yang
+            // terbuka langsung berisi episode (permintaan Rams
+            // 2026-11-22). Jendela polling PANJANG dengan jeda
+            // membesar (1 dtk → 2,5 dtk → 5 dtk, total ±2,7 menit):
+            // pengisian judul panjang di server bisa melewati
+            // jendela pendek, dan halaman tidak boleh mandek
+            // selamanya (keluhan Rams 2026-11-23).
+            if (d.episodes.isEmpty() &&
+                (d.card.type == "anime" || d.card.type == "donghua" || d.card.type == "film")
+            ) {
+                epLoading = true
+                epFailed = false
+                var tries = 0
+                while (d.episodes.isEmpty() && tries < 50) {
+                    delay(
+                        when {
+                            tries == 0 -> 800
+                            tries < 10 -> 1000
+                            tries < 30 -> 2500
+                            else -> 5000
+                        },
+                    )
+                    tries++
+                    try {
+                        d = repo.titleDetail(titleId)
+                        detail = d
+                    } catch (e: Exception) {
+                        // Abaikan — percobaan berikutnya / keadaan terakhir dipakai.
+                    }
+                }
+                epLoading = false
+                epFailed = d.episodes.isEmpty()
+            }
+        } catch (e: Exception) {
+            error = e.message
+        }
+    }
+
     LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (detail == null && error == null) {
-            // Selama detail dimuat: animasi merek, bukan halaman kosong.
-            item {
-                BrandLoading(modifier = Modifier.fillParentMaxHeight())
+            val c = cachedCard
+            if (c != null) {
+                // Kepala instan dari kartu yang diketuk: poster,
+                // judul, dan meta langsung tampil; sisanya menyusul.
+                item {
+                    DetailBackdrop(url = c.posterUrl, title = c.title, onBack = onBack, hiRes = posterHiRes)
+                }
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        DetailHeading(card = c, durationMin = null)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 16.dp),
+                        ) {
+                            CircularProgressIndicator(color = NetflixRed, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.size(10.dp))
+                            Text("Memuat detail…", color = Color(0xFFB3B3B3))
+                        }
+                    }
+                }
+            } else {
+                // Tanpa kartu cache: animasi merek, bukan halaman kosong.
+                item {
+                    BrandLoading(modifier = Modifier.fillParentMaxHeight())
+                }
             }
         }
         if (error != null) {
@@ -162,45 +221,7 @@ fun DetailScreen(
                     // Blok judul & aksi ala Netflix: judul besar, baris
                     // meta, genre bertitik, tombol Putar putih selebar
                     // layar, lalu baris ikon Daftar Saya / Bagikan.
-                    Text(
-                        d.card.title,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White,
-                    )
-                    d.card.titleAlt?.let {
-                        Text(it, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB3B3B3))
-                    }
-                    Text(
-                        listOfNotNull(
-                            d.card.rating?.let { "★ $it" },
-                            d.card.year?.toString(),
-                            d.durationMin?.let { m ->
-                                when {
-                                    d.card.type == "film" && m >= 60 -> "${m / 60}j ${m % 60}mnt"
-                                    d.card.type == "film" -> "$m mnt"
-                                    else -> "$m mnt/ep"
-                                }
-                            },
-                            d.card.type.replaceFirstChar { it.uppercase() },
-                            when (d.card.status) {
-                                "completed" -> "Tamat"
-                                "ongoing" -> "Berlanjut"
-                                else -> d.card.status
-                            },
-                        ).joinToString(" · "),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFDDDDDD),
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                    if (d.card.genres.isNotEmpty()) {
-                        Text(
-                            d.card.genres.joinToString(" • "),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFFB3B3B3),
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
-                    }
+                    DetailHeading(card = d.card, durationMin = d.durationMin)
                     if (d.episodes.isNotEmpty()) {
                         val firstLocked = d.episodes.first().locked
                         Button(
@@ -354,6 +375,20 @@ fun DetailScreen(
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
                 }
+                if (!epLoading && epFailed) {
+                    item {
+                        OutlinedButton(
+                            onClick = {
+                                epFailed = false
+                                epRetry++
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = NetflixRed),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        ) {
+                            Text("Coba Lagi", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
             // Film tidak butuh daftar episode — tombol Putar di atas
             // sudah cukup (Netflix pun begitu untuk film).
@@ -467,6 +502,54 @@ fun DetailScreen(
 }
 
 /**
+ * Blok judul + judul lain + baris meta + genre halaman detail.
+ * Dipakai detail penuh maupun kepala sementara dari kartu cache
+ * (durationMin belum dikenal pada kepala sementara).
+ */
+@Composable
+private fun DetailHeading(card: TitleCard, durationMin: Int?) {
+    Text(
+        card.title,
+        style = MaterialTheme.typography.headlineSmall,
+        fontWeight = FontWeight.Black,
+        color = Color.White,
+    )
+    card.titleAlt?.let {
+        Text(it, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB3B3B3))
+    }
+    Text(
+        listOfNotNull(
+            card.rating?.let { "★ $it" },
+            card.year?.toString(),
+            durationMin?.let { m ->
+                when {
+                    card.type == "film" && m >= 60 -> "${m / 60}j ${m % 60}mnt"
+                    card.type == "film" -> "$m mnt"
+                    else -> "$m mnt/ep"
+                }
+            },
+            card.type.replaceFirstChar { it.uppercase() },
+            when (card.status) {
+                "completed" -> "Tamat"
+                "ongoing" -> "Berlanjut"
+                else -> card.status
+            },
+        ).joinToString(" · "),
+        style = MaterialTheme.typography.bodyMedium,
+        color = Color(0xFFDDDDDD),
+        modifier = Modifier.padding(top = 6.dp),
+    )
+    if (card.genres.isNotEmpty()) {
+        Text(
+            card.genres.joinToString(" • "),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFFB3B3B3),
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+}
+
+/**
  * Kepala halaman detail: poster yang sama diburamkan memenuhi latar
  * (menutupi keterbatasan resolusi sumber kecil seperti 225px),
  * poster tajamnya berdiri di tengah setinggi kepala, gradasi ke
@@ -474,10 +557,14 @@ fun DetailScreen(
  */
 @Composable
 private fun DetailBackdrop(url: String?, title: String, onBack: () -> Unit, hiRes: Boolean) {
-    val shown = if (hiRes) hiResPosterUrl(url) else url
     Box(modifier = Modifier.fillMaxWidth().height(340.dp)) {
+        // Lapisan buram memakai URL poster biasa: sudah terunduh
+        // untuk kartu di Beranda (cache Coil), jadi tampil seketika.
+        // Hanya poster tajam di tengah yang memakai varian resolusi
+        // tinggi bila diatur (dulu keduanya URL hi-res yang sama —
+        // poster film terunduh dua kali).
         PosterImage(
-            url = shown,
+            url = url,
             title = title,
             modifier = Modifier.fillMaxSize().blur(30.dp),
         )
@@ -486,7 +573,7 @@ private fun DetailBackdrop(url: String?, title: String, onBack: () -> Unit, hiRe
                 .background(Color(0x59000000)),
         )
         PosterImage(
-            url = shown,
+            url = if (hiRes) hiResPosterUrl(url) else url,
             title = title,
             modifier = Modifier.fillMaxHeight().aspectRatio(2f / 3f)
                 .align(Alignment.Center),

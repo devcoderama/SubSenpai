@@ -169,7 +169,9 @@ fun PlayerScreen(
         locked = null
         descExpanded = false
         try {
-            val pb = repo.playback(epId)
+            // Hasil prefetch dari halaman detail dipakai bila ada:
+            // Putar mulai tanpa menunggu jaringan lagi.
+            val pb = repo.takeCachedPlayback(epId) ?: repo.playback(epId)
             playback = pb
             pb.subtitles.firstOrNull { it.status == "done" && it.fileUrl != null }?.let {
                 subChoice = SubChoice.Remote(it)
