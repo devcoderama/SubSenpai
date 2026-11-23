@@ -267,7 +267,10 @@ fun DetailScreen(
                         val firstLocked = d.episodes.first().locked
                         Button(
                             onClick = {
-                                if (firstLocked) lockedEp = d.episodes.first() else onPlay(d.episodes.first().id)
+                                // Tombol utama judul terkunci langsung
+                                // ke unlock iklan (permintaan Rams
+                                // 2026-11-23: labelnya "Buka dengan Iklan").
+                                if (firstLocked) onOpenAdUnlock(d.episodes.first().id) else onPlay(d.episodes.first().id)
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.White,
@@ -286,7 +289,7 @@ fun DetailScreen(
                             )
                             Spacer(Modifier.size(6.dp))
                             Text(
-                                if (firstLocked) "Khusus Premium" else "Putar",
+                                if (firstLocked) "Buka dengan Iklan" else "Putar",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 17.sp,
                             )
