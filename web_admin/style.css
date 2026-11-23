@@ -178,6 +178,7 @@ input:focus, select:focus { outline: none; border-color: var(--red); box-shadow:
    utuhnya hidup di halaman detail. */
 .tscroll { overflow-x: auto; border-radius: 8px; }
 .tscroll > table { min-width: 720px; }
+.tscroll.fit > table { min-width: 0; }
 .tscroll td, .tscroll th { white-space: nowrap; }
 .tscroll td.ellipsis { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .ltable { min-width: 820px; }

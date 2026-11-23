@@ -35,6 +35,9 @@ type adminTitle struct {
 	EpisodeCount int      `json:"episode_count"`
 	Complete     bool     `json:"complete"`
 	Missing      []string `json:"missing"`
+	// Dua kolom berikut hanya diisi endpoint detail judul.
+	Synopsis string   `json:"synopsis"`
+	Genres   []string `json:"genres"`
 }
 
 // missingLabels menyusun label kekurangan satu judul (definisi
@@ -166,6 +169,49 @@ func (a *API) handleAdminTitles(w http.ResponseWriter, r *http.Request) {
 			"total": nTotal, "komplit": nKomplit, "belum": nBelum, "kosong": nKosong,
 		},
 	})
+}
+
+// handleAdminTitleGet: satu judul lengkap untuk halaman detail
+// Kelola Judul (sinopsis, genre, kelengkapan) — tabel daftar kini
+// hanya memuat poster + judul + tombol Detail.
+func (a *API) handleAdminTitleGet(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	var t adminTitle
+	var noPoster, noSynopsis, noYear, noGenres bool
+	var unsourced int
+	err := a.pool.QueryRow(r.Context(), `
+		select t.id, t.slug, t.type, t.title, t.poster_url, t.year, t.status, t.is_hidden,
+		       coalesce(t.synopsis, ''), coalesce(t.genres, '{}'),
+		       ec.cnt,
+		       coalesce(t.poster_url,'') = '' as no_poster,
+		       coalesce(t.synopsis,'') = '' as no_synopsis,
+		       t.year is null as no_year,
+		       coalesce(cardinality(t.genres),0) = 0 as no_genres,
+		       ec.unsourced,
+		       (coalesce(t.poster_url,'') <> '' and coalesce(t.synopsis,'') <> ''
+		        and t.year is not null and coalesce(cardinality(t.genres),0) > 0
+		        and ec.cnt > 0 and ec.unsourced = 0) as complete
+		from titles t
+		join lateral (
+			select count(*) as cnt,
+			       count(*) filter (
+			           where not exists (select 1 from episode_sources es where es.episode_id = e.id)
+			             and coalesce(e.video_url,'') = ''
+			       ) as unsourced
+			from episodes e where e.title_id = t.id
+		) ec on true
+		where t.id = $1::uuid`, chi.URLParam(r, "id")).Scan(
+		&t.ID, &t.Slug, &t.Type, &t.Title, &t.Poster, &t.Year, &t.Status, &t.IsHidden,
+		&t.Synopsis, &t.Genres, &t.EpisodeCount,
+		&noPoster, &noSynopsis, &noYear, &noGenres, &unsourced, &t.Complete)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "judul tidak ditemukan")
+		return
+	}
+	t.Missing = missingLabels(noPoster, noSynopsis, noYear, noGenres, t.EpisodeCount, unsourced)
+	writeJSON(w, http.StatusOK, map[string]any{"title": t})
 }
 
 // handleAdminWorker: status proses worker (fase yang sedang

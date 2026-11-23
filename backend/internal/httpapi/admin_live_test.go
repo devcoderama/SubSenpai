@@ -365,6 +365,17 @@ func TestAdminLive(t *testing.T) {
 	if st, _ := call("GET", "/api/v1/titles/"+titleID, userJWT, nil); st != 200 {
 		t.Fatalf("detail judul tampil harus 200, dapat %d", st)
 	}
+	// Halaman detail Kelola Judul: ambil satu judul admin.
+	st, satuJudul := call("GET", "/api/v1/admin/titles/"+titleID, adminJWT, nil)
+	if st != 200 || satuJudul["title"].(map[string]any)["id"] != titleID {
+		t.Fatalf("ambil satu judul admin: status=%d body=%v", st, satuJudul)
+	}
+	if _, ok := satuJudul["title"].(map[string]any)["synopsis"]; !ok {
+		t.Fatalf("detail judul harus membawa synopsis: %v", satuJudul)
+	}
+	if st, _ := call("GET", "/api/v1/admin/titles/00000000-0000-0000-0000-000000000000", adminJWT, nil); st != 404 {
+		t.Fatalf("judul asing harus 404, dapat %d", st)
+	}
 	if st, _ := call("PATCH", "/api/v1/admin/titles/"+titleID, userJWT,
 		map[string]any{"is_hidden": true}); st != 403 {
 		t.Fatalf("sembunyikan judul oleh user harus 403, dapat %d", st)

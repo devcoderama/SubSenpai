@@ -324,7 +324,7 @@ function enterApp() {
 }
 
 const GROUP_LABELS = { va: 'Virtual Account', ewallet: 'E-Wallet', qris: 'QRIS', retail: 'Retail', pulsa: 'Pulsa' };
-const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', pengumuman: 'Pengumuman Banner', notifikasi: 'Notifikasi', laporan: 'Laporan User', 'laporan-detail': 'Detail Laporan', log: 'Log Admin', 'log-detail': 'Detail Log', sistem: 'Info Sistem' };
+const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', pengumuman: 'Pengumuman Banner', notifikasi: 'Notifikasi', laporan: 'Laporan User', 'laporan-detail': 'Detail Laporan', log: 'Log Admin', 'log-detail': 'Detail Log', 'judul-detail': 'Detail Judul', sistem: 'Info Sistem' };
 
 function route() {
   if (window.__pageTimer) { clearInterval(window.__pageTimer); window.__pageTimer = null; }
@@ -337,7 +337,7 @@ function route() {
     if (g.querySelector('a.active')) g.classList.add('open');
   });
   $('pageTitle').textContent = TITLES[page];
-  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, pengumuman: pagePengumuman, notifikasi: pageNotifikasi, laporan: pageLaporan, 'laporan-detail': pageLaporanDetail, log: pageLog, 'log-detail': pageLogDetail, sistem: pageSistem })[page]();
+  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, pengumuman: pagePengumuman, notifikasi: pageNotifikasi, laporan: pageLaporan, 'laporan-detail': pageLaporanDetail, log: pageLog, 'log-detail': pageLogDetail, 'judul-detail': pageJudulDetail, sistem: pageSistem })[page]();
 }
 
 // Poster katalog lewat proxy server: CDN sumber menolak hotlink
@@ -730,30 +730,55 @@ async function loadJudul(reset) {
   if (reset) renderJudulFilters(r.body.counts);
   const list = r.body.titles || [];
   judulOffset += list.length;
-  let html = reset ? '<p class="muted">' + (r.body.total || 0) + ' judul</p><div class="tscroll"><table><tr><th>Poster</th><th>Judul</th><th>Jenis</th><th>Tahun</th><th>Episode</th><th>Kelengkapan</th><th>Visibilitas</th><th>Aksi</th></tr>' : '';
+  let html = reset ? '<p class="muted">' + (r.body.total || 0) + ' judul</p><div class="tscroll fit"><table><tr><th>Poster</th><th>Judul</th><th>Detail</th></tr>' : '';
   for (const x of list) {
     html += '<tr><td>' + (x.poster_url ? '<img src="' + esc(posterSrc(x.poster_url)) + '" alt="" style="width:38px;height:54px;object-fit:cover;border-radius:6px" loading="lazy">' : '—') + '</td>' +
-      '<td>' + esc(x.title) + '<div class="muted small">' + esc(x.slug) + '</div></td>' +
-      '<td>' + esc(x.type) + '</td><td>' + (x.year || '—') + '</td><td>' + x.episode_count + '</td>' +
-      '<td>' + (x.complete ? '<span class="badge premium">Komplit</span>' :
-        (x.missing || []).map((m) => '<span class="badge expired" style="margin:0 4px 4px 0">' + esc(m) + '</span>').join('')) + '</td>' +
-      '<td><span class="badge ' + (x.is_hidden ? 'expired' : 'premium') + '">' + (x.is_hidden ? 'Tersembunyi' : 'Tampil') + '</span></td>' +
-      '<td><button class="btn ' + (x.is_hidden ? '' : 'ghost') + ' small" data-jd-toggle="' + esc(x.id) + '|' + (x.is_hidden ? 'show' : 'hide') + '">' +
-      (x.is_hidden ? 'Tampilkan' : 'Sembunyikan') + '</button></td></tr>';
+      '<td class="ellipsis">' + esc(x.title) + '<div class="muted small">' + esc(x.slug) + '</div></td>' +
+      '<td><a class="btn ghost small" href="#/judul-detail?id=' + esc(x.id) + '">Detail</a></td></tr>';
   }
   if (reset) { $('jd-list').innerHTML = html + '</table></div>'; }
   else { $('jd-list').querySelector('table').insertAdjacentHTML('beforeend', html); }
-  document.querySelectorAll('button[data-jd-toggle]').forEach((el) => {
-    if (el.dataset.wired) return;
-    el.dataset.wired = '1';
-    el.addEventListener('click', async () => {
-      const [id, act] = el.dataset.jdToggle.split('|');
-      const rr = await api('/api/v1/admin/titles/' + encodeURIComponent(id), {
-        method: 'PATCH', body: { is_hidden: act === 'hide' },
-      });
-      if (rr.status === 200) { toast(act === 'hide' ? 'Judul disembunyikan.' : 'Judul ditampilkan.'); judulOffset = 0; loadJudul(true); }
-      else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+}
+// Halaman detail satu judul: semua informasi (jenis, tahun,
+// episode, kelengkapan, genre, sinopsis) tampil di sini; tabel
+// Kelola Judul hanya poster + judul + Detail. Visibilitas diatur
+// sakelar geser seperti tabel-tabel sebelumnya.
+async function pageJudulDetail() {
+  const id = new URLSearchParams((location.hash.split('?')[1] || '')).get('id') || '';
+  $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
+  const r = await api('/api/v1/admin/titles/' + encodeURIComponent(id));
+  if (r.status !== 200 || !r.body.title) {
+    $('pageBody').innerHTML = '<p class="error">Judul tidak ditemukan.</p>' +
+      '<p><a class="btn ghost" href="#/judul">← Kembali ke Kelola Judul</a></p>';
+    return;
+  }
+  const x = r.body.title;
+  $('pageBody').innerHTML =
+    '<p><a class="btn ghost small" href="#/judul">← Kembali ke Kelola Judul</a></p>' +
+    '<div class="card"><div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">' +
+    (x.poster_url ? '<img src="' + esc(posterSrc(x.poster_url)) + '" alt="" style="width:110px;height:156px;object-fit:cover;border-radius:10px">' : '') +
+    '<div style="flex:1;min-width:200px"><h2 style="margin:0 0 6px">' + esc(x.title) + '</h2>' +
+    '<div class="muted small">' + esc(x.slug) + '</div>' +
+    '<p style="margin:10px 0 0">' + (x.complete ? '<span class="badge premium">Metadata komplit</span>' :
+      (x.missing || []).map((m) => '<span class="badge expired" style="margin:0 4px 4px 0">' + esc(m) + '</span>').join('')) + '</p></div></div>' +
+    '<dl class="kv" style="margin-top:16px">' +
+    '<dt>Jenis</dt><dd>' + esc(x.type) + '</dd>' +
+    '<dt>Tahun</dt><dd>' + (x.year || '—') + '</dd>' +
+    '<dt>Status rilis</dt><dd>' + esc(x.status || '—') + '</dd>' +
+    '<dt>Episode</dt><dd>' + x.episode_count + ' episode</dd>' +
+    '<dt>Genre</dt><dd>' + esc((x.genres || []).join(', ') || '—') + '</dd>' +
+    '<dt>Sinopsis</dt><dd>' + esc(x.synopsis || '—') + '</dd>' +
+    '<dt>Tampil di aplikasi</dt><dd><label class="switch"><input type="checkbox" id="jd-vis"' + (x.is_hidden ? '' : ' checked') + '><span class="slider"></span></label> ' +
+    '<span class="muted small">' + (x.is_hidden ? 'sedang tersembunyi' : 'tampil') + '</span></dd>' +
+    '</dl></div>';
+  $('jd-vis').addEventListener('change', async (ev) => {
+    const show = ev.target.checked;
+    if (!show && !confirm('Sembunyikan judul ini dari aplikasi?')) { ev.target.checked = true; return; }
+    const rr = await api('/api/v1/admin/titles/' + encodeURIComponent(id), {
+      method: 'PATCH', body: { is_hidden: !show },
     });
+    if (rr.status === 200) { toast(show ? 'Judul ditampilkan.' : 'Judul disembunyikan.'); pageJudulDetail(); }
+    else { toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status)); ev.target.checked = !show; }
   });
 }
 
