@@ -107,6 +107,16 @@ type GenreBrowser interface {
 	BrowseGenre(ctx context.Context, src Source, genre string, page int) ([]DiscoveredTitle, error)
 }
 
+// TitleSearcher adalah kemampuan opsional resolver: mencari judul
+// LANGSUNG di halaman pencarian situs sumber dan mengembalikan
+// hasil kaya (poster/tahun/genre), untuk pencarian live aplikasi —
+// judul yang belum ada di katalog dicari ke sumbernya, disimpan,
+// lalu pencarian berikutnya dilayani dari katalog. Berbeda dengan
+// Search (Candidate ramping untuk pencocokan internal).
+type TitleSearcher interface {
+	SearchTitles(ctx context.Context, src Source, query string) ([]DiscoveredTitle, error)
+}
+
 // SeriesMeta adalah metadata kaya dari halaman seri sumber untuk
 // memperkaya halaman detail (sinopsis, genre, studio, dsb.).
 type SeriesMeta struct {

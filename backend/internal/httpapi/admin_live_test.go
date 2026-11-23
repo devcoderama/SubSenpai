@@ -610,6 +610,64 @@ func TestAdminLive(t *testing.T) {
 		t.Fatalf("live-browse tanpa genre: status=%d body=%v", st, lb)
 	}
 
+	// Pencarian live (permintaan Rams 2026-11-23): kata yang belum
+	// ada di katalog memicu scraping halaman pencarian sumber;
+	// hasilnya DISIMPAN ke katalog (poster ikut), dan pencarian
+	// kedua dilayani dari database tanpa menghubungi sumber lagi.
+	cariHits := 0
+	var cariSrv *httptest.Server
+	cariSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cariHits++
+		_, _ = w.Write([]byte(`<article class="bs"><div class="bsx">
+			<a href="` + cariSrv.URL + `/anime/zztop-cari-uji/" title="Zztop Cari Uji">
+			<div class="limit"><img src="https://i1.wp.com/img.example/zztop.webp"></div>
+			<div class="tt"><h2>Zztop Cari Uji</h2></div></a></div></article>`))
+	}))
+	defer cariSrv.Close()
+	if _, err := pool.Exec(ctx, `
+		insert into content_sources (name, content_type, lang, base_url, resolver, fetch_mode, subtitle_kind, priority, is_active)
+		values ('Sumber Cari Uji', 'anime', 'zz', $1, 'kuronime', 'server', 'hard', 1, true)`, cariSrv.URL); err != nil {
+		t.Fatalf("seed sumber cari uji: %v", err)
+	}
+	defer pool.Exec(ctx, `delete from content_sources where name = 'Sumber Cari Uji'`)
+	defer pool.Exec(ctx, `delete from titles where slug = 'zztop-cari-uji'`)
+	// Sumber anime lain dinonaktifkan selama seksi ini (id-nya
+	// dicatat agar dipulihkan persis seperti semula).
+	offRows, err := pool.Query(ctx, `
+		update content_sources set is_active = false
+		where content_type = 'anime' and is_active and base_url <> $1
+		returning id`, cariSrv.URL)
+	if err != nil {
+		t.Fatalf("nonaktifkan sumber anime lain: %v", err)
+	}
+	var offIDs []string
+	for offRows.Next() {
+		var id string
+		if err := offRows.Scan(&id); err == nil {
+			offIDs = append(offIDs, id)
+		}
+	}
+	offRows.Close()
+	defer pool.Exec(ctx, `update content_sources set is_active = true where id = any($1::uuid[])`, offIDs)
+	st, cari := call("GET", "/api/v1/titles?type=anime&q=zztop", userJWT, nil)
+	cariItems, _ := cari["items"].([]any)
+	if st != 200 || len(cariItems) != 1 {
+		t.Fatalf("pencarian live pertama: status=%d body=%v", st, cari)
+	}
+	cariFirst := cariItems[0].(map[string]any)
+	if cariFirst["title"] != "Zztop Cari Uji" || cariFirst["poster_url"] == nil || cariFirst["poster_url"] == "" {
+		t.Fatalf("hasil pencarian live harus berjudul benar + berposter: %v", cariFirst)
+	}
+	if cariHits < 1 {
+		t.Fatalf("sumber pencarian tidak pernah dihubungi")
+	}
+	hitsBefore := cariHits
+	st, cari2 := call("GET", "/api/v1/titles?type=anime&q=zztop", userJWT, nil)
+	if st != 200 || len(cari2["items"].([]any)) != 1 || cariHits != hitsBefore {
+		t.Fatalf("pencarian kedua harus dari DB: status=%d hits %d->%d body=%v",
+			st, hitsBefore, cariHits, cari2)
+	}
+
 	// CORS: preflight dari origin Netlify dijawab dengan echo origin;
 	// origin asing tidak mendapat izin.
 	for _, tc := range []struct {

@@ -244,12 +244,78 @@ func slugFromCandidate(c sources.Candidate) string {
 	return slugify(c.Title)
 }
 
+// searchHit adalah satu kandidat hasil pencarian live yang siap
+// disimpan ke katalog. Hasil TitleSearcher membawa poster, tahun,
+// dan genre; hasil Search lama hanya judul + URL (+ ref).
+type searchHit struct {
+	slug, title, poster string
+	year                int
+	genres              []string
+	url, ref            string
+}
+
+// storeSearchHit menyimpan satu kandidat: insert titles (slug unik,
+// on conflict do nothing) + pemetaan title_sources, meniru pola
+// DiscoverTitles/SyncSources. Judul yang sudah ada dengan slug sama
+// hanya dipetakan bila jenisnya sama — dan posternya yang masih
+// kosong diisi dari hasil pencarian. true bila tersimpan/terpetakan.
+func storeSearchHit(ctx context.Context, pool *pgxpool.Pool, contentType string, src sources.Source, h searchHit) bool {
+	if h.slug == "" || h.title == "" || h.url == "" {
+		return false
+	}
+	genres := h.genres
+	if genres == nil {
+		genres = []string{}
+	}
+	var year any
+	if h.year > 0 {
+		year = h.year
+	}
+	var id, typ string
+	err := pool.QueryRow(ctx, `
+		insert into titles (slug, type, title, poster_url, year, genres, status)
+		values ($1, $2, $3, $4, $5, $6, 'ongoing')
+		on conflict (slug) do nothing
+		returning id, type`,
+		h.slug, contentType, h.title, nullIfEmpty(h.poster), year, genres).Scan(&id, &typ)
+	if err != nil {
+		// Sudah ada di katalog dengan slug sama: petakan saja
+		// bila jenisnya sama.
+		if err := pool.QueryRow(ctx, `
+			select id, type from titles where slug = $1`, h.slug).Scan(&id, &typ); err != nil {
+			return false
+		}
+		if typ != contentType {
+			return false
+		}
+		if h.poster != "" {
+			_, _ = pool.Exec(ctx, `
+				update titles set poster_url = $2
+				where id = $1::uuid and coalesce(poster_url, '') = ''`,
+				id, h.poster)
+		}
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into title_sources (title_id, source_id, source_url, source_ref)
+		values ($1::uuid, $2::uuid, $3, $4)
+		on conflict (title_id, source_id) do nothing`,
+		id, src.ID, h.url, nullIfEmpty(h.ref)); err != nil {
+		log.Printf("petakan hasil live %s: %v", h.title, err)
+		return false
+	}
+	return true
+}
+
 // LiveSearchStore menjalankan pencarian live ke semua sumber server
 // aktif untuk satu jenis konten dan menyimpan kandidat yang belum
-// ada ke katalog: insert titles (slug unik, on conflict do nothing)
-// + pemetaan title_sources, meniru pola DiscoverTitles/SyncSources.
-// Mengembalikan jumlah kandidat yang tersimpan/terpetakan. Kegagalan
-// satu sumber dicatat dan tidak menghentikan sumber lain.
+// ada ke katalog. Resolver yang mampu TitleSearcher dicari lewat
+// halaman pencarian situs sumbernya (hasil kaya: poster/tahun/
+// genre ikut tersimpan — permintaan Rams 2026-11-23: kata yang
+// belum ada di database dicari ke web utamanya, disimpan, dan
+// pencarian kedua langsung tersedia dari database); resolver lain
+// jatuh ke Search lama. Mengembalikan jumlah kandidat yang
+// tersimpan/terpetakan. Kegagalan satu sumber dicatat dan tidak
+// menghentikan sumber lain.
 func LiveSearchStore(ctx context.Context, pool *pgxpool.Pool, contentType, query string) (int, error) {
 	srcs, err := loadSources(ctx, pool, contentType)
 	if err != nil {
@@ -261,46 +327,39 @@ func LiveSearchStore(ctx context.Context, pool *pgxpool.Pool, contentType, query
 		if !ok {
 			continue
 		}
-		cands, err := resolver.Search(ctx, src, query)
-		if err != nil {
-			log.Printf("pencarian live %s di %s: %v", query, src.Name, err)
-			continue
-		}
-		for _, c := range cands {
-			if c.Title == "" || c.URL == "" {
-				continue
-			}
-			slug := slugFromCandidate(c)
-			if slug == "" {
-				continue
-			}
-			var id, typ string
-			err := pool.QueryRow(ctx, `
-				insert into titles (slug, type, title, genres, status)
-				values ($1, $2, $3, $4, 'ongoing')
-				on conflict (slug) do nothing
-				returning id, type`,
-				slug, contentType, c.Title, []string{}).Scan(&id, &typ)
+		var hits []searchHit
+		if ts, ok := resolver.(sources.TitleSearcher); ok {
+			found, err := ts.SearchTitles(ctx, src, query)
 			if err != nil {
-				// Sudah ada di katalog dengan slug sama: petakan saja
-				// bila jenisnya sama.
-				if err := pool.QueryRow(ctx, `
-					select id, type from titles where slug = $1`, slug).Scan(&id, &typ); err != nil {
-					continue
-				}
-				if typ != contentType {
-					continue
-				}
-			}
-			if _, err := pool.Exec(ctx, `
-				insert into title_sources (title_id, source_id, source_url, source_ref)
-				values ($1::uuid, $2::uuid, $3, $4)
-				on conflict (title_id, source_id) do nothing`,
-				id, src.ID, c.URL, nullIfEmpty(c.Ref)); err != nil {
-				log.Printf("petakan hasil live %s: %v", c.Title, err)
+				log.Printf("pencarian live %s di %s: %v", query, src.Name, err)
 				continue
 			}
-			stored++
+			for _, d := range found {
+				slug := d.Slug
+				if slug == "" {
+					slug = slugFromCandidate(sources.Candidate{Title: d.Title, URL: d.URL})
+				}
+				hits = append(hits, searchHit{
+					slug: slug, title: d.Title, poster: d.Poster,
+					year: d.Year, genres: d.Genres, url: d.URL,
+				})
+			}
+		} else {
+			cands, err := resolver.Search(ctx, src, query)
+			if err != nil {
+				log.Printf("pencarian live %s di %s: %v", query, src.Name, err)
+				continue
+			}
+			for _, c := range cands {
+				hits = append(hits, searchHit{
+					slug: slugFromCandidate(c), title: c.Title, url: c.URL, ref: c.Ref,
+				})
+			}
+		}
+		for _, h := range hits {
+			if storeSearchHit(ctx, pool, contentType, src, h) {
+				stored++
+			}
 		}
 	}
 	return stored, nil
