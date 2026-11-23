@@ -469,7 +469,7 @@ func (a *API) loadTitleDetail(ctx context.Context, id string) (titleDetail, []ep
 	episodes := []episodeItem{}
 	erows, err := a.pool.Query(ctx, `
 		select id, episode_no, title, duration_sec from episodes
-		where title_id = $1::uuid order by episode_no`, id)
+		where title_id = $1::uuid and not is_hidden order by episode_no`, id)
 	if err == nil {
 		defer erows.Close()
 		for erows.Next() {
@@ -566,7 +566,7 @@ func (a *API) handlePlayback(w http.ResponseWriter, r *http.Request) {
 	err := a.pool.QueryRow(ctx, `
 		select id, title_id, episode_no, video_url, intro_start_sec, intro_end_sec,
 		       outro_start_sec, outro_end_sec
-		from episodes where id = $1::uuid`, id,
+		from episodes where id = $1::uuid and not is_hidden`, id,
 	).Scan(&ep.ID, &ep.TitleID, &ep.EpisodeNo, &ep.VideoURL, &ep.IntroS, &ep.IntroE, &ep.OutroS, &ep.OutroE)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "episode tidak ditemukan")

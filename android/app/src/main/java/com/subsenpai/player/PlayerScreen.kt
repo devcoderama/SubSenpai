@@ -30,9 +30,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.widget.Toast
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -156,6 +159,10 @@ fun PlayerScreen(
     var sheet by remember { mutableStateOf<SheetKind?>(null) }
     var fullscreen by remember { mutableStateOf(false) }
     var descExpanded by remember { mutableStateOf(false) }
+    var showReport by remember { mutableStateOf(false) }
+    var reportReason by remember { mutableStateOf("semua_server_gagal") }
+    var reportNote by remember { mutableStateOf("") }
+    var reportSending by remember { mutableStateOf(false) }
 
     val player = remember {
         ExoPlayer.Builder(context).build().apply { playWhenReady = true }
@@ -455,6 +462,7 @@ fun PlayerScreen(
                             onOpenServer = { sheet = SheetKind.Server },
                             onOpenSubtitle = { sheet = SheetKind.Subtitle },
                             onOpenParty = { sheet = SheetKind.Party },
+                            onReport = { showReport = true },
                             onShareToPost = { detail?.let { onShareToPost(it) } },
                             onShareSystem = {
                                 val d = detail
@@ -539,6 +547,66 @@ fun PlayerScreen(
     }
 
     // ---------- BottomSheet pengaturan ----------
+    if (showReport) {
+        AlertDialog(
+            onDismissRequest = { showReport = false },
+            title = { Text("Laporkan Masalah") },
+            text = {
+                Column {
+                    Text(
+                        "Ada masalah dengan episode ini? Ceritakan ke admin biar segera diperbaiki.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    listOf(
+                        "semua_server_gagal" to "Semua server tidak bisa diputar",
+                        "link_rusak" to "Link rusak / video tidak muncul",
+                        "video_salah" to "Video salah / tidak sesuai episode",
+                        "subtitle" to "Subtitle bermasalah",
+                        "lainnya" to "Lainnya",
+                    ).forEach { (value, label) ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().clickable { reportReason = value },
+                        ) {
+                            RadioButton(selected = reportReason == value, onClick = { reportReason = value })
+                            Text(label, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = reportNote,
+                        onValueChange = { reportNote = it },
+                        label = { Text("Catatan (opsional)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 3,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !reportSending,
+                    onClick = {
+                        reportSending = true
+                        scope.launch {
+                            val ok = repo.createReport(epId, reportReason, reportNote.trim())
+                            reportSending = false
+                            showReport = false
+                            Toast.makeText(
+                                context,
+                                if (ok) "Laporan terkirim. Terima kasih!" else "Gagal mengirim laporan, coba lagi.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
+                ) { Text(if (reportSending) "Mengirim…" else "Kirim Laporan") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReport = false }) { Text("Batal") }
+            },
+        )
+    }
+
     when (sheet) {
         SheetKind.Server -> if (pb != null) {
             ServerSheet(
@@ -906,6 +974,7 @@ private fun PlayerActions(
     onTranslate: () -> Unit,
     onShareToPost: () -> Unit,
     onShareSystem: () -> Unit,
+    onReport: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -949,6 +1018,7 @@ private fun PlayerActions(
                 )
             }
         }
+        ActionButton(text = "Laporkan", onClick = onReport)
     }
 }
 

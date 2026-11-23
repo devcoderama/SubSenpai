@@ -121,6 +121,7 @@ func (a *API) Router() http.Handler {
 		r.Get("/api/v1/payment-methods", a.handlePaymentMethods)
 		r.Get("/api/v1/app-config", a.handleAppConfig)
 		r.With(a.authn.Optional).Post("/api/v1/crashes", a.handleCrashReport)
+		r.With(a.authn.Optional).Post("/api/v1/reports", a.handleCreateReport)
 		// Endpoint khusus user login (Fase 3–4).
 		r.Group(func(r chi.Router) {
 			r.Use(a.authn.Require)
@@ -138,6 +139,12 @@ func (a *API) Router() http.Handler {
 			r.Get("/api/v1/admin/plans", a.handleAdminPlans)
 			r.Get("/api/v1/admin/titles", a.handleAdminTitles)
 			r.Get("/api/v1/admin/worker", a.handleAdminWorker)
+			r.Get("/api/v1/admin/reports", a.handleAdminReports)
+			r.Patch("/api/v1/admin/reports/{id}", a.handleAdminReportUpdate)
+			r.Post("/api/v1/admin/reports/{id}/fix-links", a.handleAdminReportFixLinks)
+			r.Post("/api/v1/admin/reports/{id}/hide-title", a.handleAdminReportHideTitle)
+			r.Post("/api/v1/admin/reports/{id}/hide-episode", a.handleAdminReportHideEpisode)
+			r.Delete("/api/v1/admin/reports/{id}", a.handleAdminReportDelete)
 			r.Patch("/api/v1/admin/titles/{id}", a.handleAdminTitleUpdate)
 			r.Get("/api/v1/admin/crashes", a.handleAdminCrashes)
 			r.Delete("/api/v1/admin/crashes", a.handleAdminCrashesClear)

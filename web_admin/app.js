@@ -337,7 +337,7 @@ function route() {
     if (g.querySelector('a.active')) g.classList.add('open');
   });
   $('pageTitle').textContent = TITLES[page];
-  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, pengumuman: pagePengumuman, notifikasi: pageNotifikasi, log: pageLog, sistem: pageSistem })[page]();
+  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, pengumuman: pagePengumuman, notifikasi: pageNotifikasi, laporan: pageLaporan, log: pageLog, sistem: pageSistem })[page]();
 }
 
 // Poster katalog lewat proxy server: CDN sumber menolak hotlink
@@ -755,6 +755,84 @@ async function loadJudul(reset) {
       else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
     });
   });
+}
+
+/* ----- Laporan User ----- */
+let laporanStatus = '';
+const LAPORAN_ALASAN = {
+  semua_server_gagal: 'Semua server gagal', link_rusak: 'Link rusak',
+  video_salah: 'Video salah', subtitle: 'Subtitle bermasalah', lainnya: 'Lainnya',
+};
+const LAPORAN_STATUS = { baru: 'Baru', diproses: 'Diproses', selesai: 'Selesai', diabaikan: 'Diabaikan' };
+async function pageLaporan() {
+  $('pageBody').innerHTML =
+    '<p class="muted">Laporan masalah dari pengguna (tombol Laporkan di pemutar). Tindak langsung dari sini: perbaiki link episode, sembunyikan episode atau judulnya, tandai selesai, atau abaikan.</p>' +
+    '<div class="chiprow" id="lp-filters"></div>' +
+    '<div id="lp-list"><p class="muted">Memuat…</p></div>';
+  loadLaporan();
+}
+async function loadLaporan() {
+  const r = await api('/api/v1/admin/reports?status=' + encodeURIComponent(laporanStatus) + '&limit=50');
+  if (r.status !== 200) { $('lp-list').innerHTML = '<p class="error">Gagal memuat laporan.</p>'; return; }
+  const c = r.body.counts || {};
+  const chip = (val, lbl, n) => '<button class="fchip' + (laporanStatus === val ? ' on' : '') +
+    '" data-lp-filter="' + val + '">' + lbl + ' (' + n + ')</button>';
+  $('lp-filters').innerHTML = chip('', 'Semua', c.total || 0) + chip('baru', 'Baru', c.baru || 0) +
+    chip('diproses', 'Diproses', c.diproses || 0) + chip('selesai', 'Selesai', c.selesai || 0) +
+    chip('diabaikan', 'Diabaikan', c.diabaikan || 0);
+  $('lp-filters').querySelectorAll('[data-lp-filter]').forEach((b) => b.addEventListener('click', () => {
+    laporanStatus = b.dataset.lpFilter;
+    loadLaporan();
+  }));
+  const list = r.body.reports || [];
+  if (!list.length) { $('lp-list').innerHTML = '<p class="muted">Tidak ada laporan.</p>'; return; }
+  let html = '<table><tr><th>Waktu</th><th>Judul / Episode</th><th>Alasan</th><th>Catatan</th><th>Pelapor</th><th>Status</th><th>Aksi</th></tr>';
+  for (const x of list) {
+    html += '<tr><td class="small">' + esc(fmtDate(x.created_at)) + '</td>' +
+      '<td>' + esc(x.title) + (x.episode_no ? '<div class="muted small">Episode ' + x.episode_no + '</div>' : '') + '</td>' +
+      '<td>' + esc(LAPORAN_ALASAN[x.reason] || x.reason) + '</td>' +
+      '<td class="small">' + esc(x.note || '—') + '</td>' +
+      '<td class="small">' + esc(x.reporter) + '</td>' +
+      '<td><span class="badge ' + (x.status === 'baru' ? 'premium' : 'expired') + '">' + esc(LAPORAN_STATUS[x.status] || x.status) + '</span></td>' +
+      '<td>' +
+      (x.episode_id ? '<button class="btn small" data-lp-act="fix" data-lp-id="' + esc(x.id) + '">Perbaiki Link</button> ' : '') +
+      (x.episode_id ? '<button class="btn ghost small" data-lp-act="hideep" data-lp-id="' + esc(x.id) + '">Sembunyikan Episode</button> ' : '') +
+      (x.title_id ? '<button class="btn ghost small" data-lp-act="hidetitle" data-lp-id="' + esc(x.id) + '">Sembunyikan Judul</button> ' : '') +
+      (x.status !== 'selesai' ? '<button class="btn ghost small" data-lp-act="done" data-lp-id="' + esc(x.id) + '">Selesai</button> ' : '') +
+      (x.status !== 'diabaikan' ? '<button class="btn ghost small" data-lp-act="ignore" data-lp-id="' + esc(x.id) + '">Abaikan</button> ' : '') +
+      '<button class="btn ghost small" data-lp-act="del" data-lp-id="' + esc(x.id) + '">Hapus</button>' +
+      '</td></tr>';
+  }
+  $('lp-list').innerHTML = html + '</table>';
+  $('lp-list').querySelectorAll('[data-lp-act]').forEach((b) => b.addEventListener('click', () => laporanAksi(b.dataset.lpAct, b.dataset.lpId)));
+}
+async function laporanAksi(act, id) {
+  const base = '/api/v1/admin/reports/' + encodeURIComponent(id);
+  let rr = null;
+  if (act === 'fix') {
+    rr = await api(base + '/fix-links', { method: 'POST' });
+    if (rr.status === 200) toast('Sumber lama dibuang; episode sedang di-resolve ulang dari situs sumber.');
+  } else if (act === 'hideep') {
+    if (!confirm('Sembunyikan episode ini dari aplikasi?')) return;
+    rr = await api(base + '/hide-episode', { method: 'POST' });
+    if (rr.status === 200) toast('Episode disembunyikan.');
+  } else if (act === 'hidetitle') {
+    if (!confirm('Sembunyikan SELURUH judul ini dari aplikasi?')) return;
+    rr = await api(base + '/hide-title', { method: 'POST' });
+    if (rr.status === 200) toast('Judul disembunyikan.');
+  } else if (act === 'done') {
+    rr = await api(base, { method: 'PATCH', body: { status: 'selesai' } });
+    if (rr.status === 200) toast('Laporan ditandai selesai.');
+  } else if (act === 'ignore') {
+    rr = await api(base, { method: 'PATCH', body: { status: 'diabaikan' } });
+    if (rr.status === 200) toast('Laporan diabaikan.');
+  } else if (act === 'del') {
+    if (!confirm('Hapus laporan ini permanen?')) return;
+    rr = await api(base, { method: 'DELETE' });
+    if (rr.status === 200) toast('Laporan dihapus.');
+  }
+  if (rr && rr.status !== 200) toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+  loadLaporan();
 }
 
 /* ----- Laporan Crash ----- */

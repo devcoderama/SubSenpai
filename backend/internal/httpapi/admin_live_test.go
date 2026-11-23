@@ -915,6 +915,107 @@ func TestAdminLive(t *testing.T) {
 		t.Fatalf("episode 2 harus tetap terkunci untuk perangkat lain: status=%d", st)
 	}
 
+	// Laporan user: buat (user + tamu) -> dedupe -> admin
+	// menindak (perbaiki link, sembunyikan episode, ubah status,
+	// sembunyikan judul, hapus).
+	_, _ = pool.Exec(ctx, `delete from titles where slug = 'uji-laporan'`)
+	var lapTitleID, lapEp1, lapEp2 string
+	if err := pool.QueryRow(ctx, `
+		insert into titles (slug, type, title, poster_url, synopsis, year, genres, status)
+		values ('uji-laporan', 'anime', 'Uji Laporan', 'https://cdn.invalid/l.jpg',
+		        'Sinopsis laporan.', 2024, '{Action}', 'ongoing') returning id`).Scan(&lapTitleID); err != nil {
+		t.Fatalf("seed judul laporan: %v", err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `delete from titles where id = $1::uuid`, lapTitleID) }()
+	if err := pool.QueryRow(ctx, `
+		insert into episodes (title_id, episode_no, video_url)
+		values ($1::uuid, 1, 'https://cdn.invalid/e1.mp4') returning id`, lapTitleID).Scan(&lapEp1); err != nil {
+		t.Fatalf("seed ep1 laporan: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		insert into episodes (title_id, episode_no, video_url)
+		values ($1::uuid, 2, 'https://cdn.invalid/e2.mp4') returning id`, lapTitleID).Scan(&lapEp2); err != nil {
+		t.Fatalf("seed ep2 laporan: %v", err)
+	}
+	st, rep1 := call("POST", "/api/v1/reports", userJWT, map[string]any{
+		"episode_id": lapEp1, "reason": "semua_server_gagal", "note": "semua server mati"})
+	if st != 201 || rep1["id"] == nil {
+		t.Fatalf("buat laporan user: status=%d body=%v", st, rep1)
+	}
+	rep1ID := rep1["id"].(string)
+	st, repDup := call("POST", "/api/v1/reports", userJWT, map[string]any{
+		"episode_id": lapEp1, "reason": "link_rusak"})
+	if st != 200 || repDup["id"] != rep1ID {
+		t.Fatalf("dedupe laporan: status=%d body=%v", st, repDup)
+	}
+	st, rep2 := callDev("POST", "/api/v1/reports", "dev-laporan-uji", map[string]any{
+		"episode_id": lapEp2, "reason": "link_rusak"})
+	if st != 201 || rep2["id"] == nil {
+		t.Fatalf("buat laporan tamu: status=%d body=%v", st, rep2)
+	}
+	rep2ID := rep2["id"].(string)
+	if st, _ := call("POST", "/api/v1/reports", userJWT, map[string]any{"episode_id": "bukan-uuid"}); st != 404 {
+		t.Fatalf("laporan episode tidak ada harus 404, dapat %d", st)
+	}
+	repAda := func(body map[string]any, id string) bool {
+		for _, it := range body["reports"].([]any) {
+			if it.(map[string]any)["id"] == id {
+				return true
+			}
+		}
+		return false
+	}
+	st, lstRep := call("GET", "/api/v1/admin/reports?status=baru", adminJWT, nil)
+	if st != 200 || !repAda(lstRep, rep1ID) || !repAda(lstRep, rep2ID) {
+		t.Fatalf("daftar laporan admin: status=%d body=%v", st, lstRep)
+	}
+	if st, _ := call("GET", "/api/v1/admin/reports", userJWT, nil); st != 403 {
+		t.Fatalf("daftar laporan oleh user harus 403, dapat %d", st)
+	}
+	// Perbaiki link: video_url lama dibuang, status jadi diproses.
+	if st, _ := call("POST", "/api/v1/admin/reports/"+rep1ID+"/fix-links", adminJWT, nil); st != 200 {
+		t.Fatalf("fix-links: status=%d", st)
+	}
+	var ep1URL string
+	_ = pool.QueryRow(ctx, `select video_url from episodes where id = $1::uuid`, lapEp1).Scan(&ep1URL)
+	if ep1URL != "" {
+		t.Fatalf("fix-links harus membuang video_url lama, masih %q", ep1URL)
+	}
+	st, lstProses := call("GET", "/api/v1/admin/reports?status=diproses", adminJWT, nil)
+	if st != 200 || !repAda(lstProses, rep1ID) {
+		t.Fatalf("laporan harus berstatus diproses: status=%d", st)
+	}
+	// Sembunyikan episode dari laporan tamu: hilang dari detail
+	// dan putar mengembalikan 404.
+	if st, _ := call("POST", "/api/v1/admin/reports/"+rep2ID+"/hide-episode", adminJWT, nil); st != 200 {
+		t.Fatalf("hide-episode: status=%d", st)
+	}
+	st, detLap := call("GET", "/api/v1/titles/"+lapTitleID, userJWT, nil)
+	if st != 200 || strings.Contains(fmt.Sprint(detLap["episodes"]), lapEp2) {
+		t.Fatalf("episode tersembunyi harus hilang dari detail: status=%d", st)
+	}
+	if st, _ := call("GET", "/api/v1/episodes/"+lapEp2+"/playback", userJWT, nil); st != 404 {
+		t.Fatalf("putar episode tersembunyi harus 404, dapat %d", st)
+	}
+	// Ubah status manual + sembunyikan judul + hapus laporan.
+	if st, _ := call("PATCH", "/api/v1/admin/reports/"+rep1ID, adminJWT,
+		map[string]any{"status": "diabaikan"}); st != 200 {
+		t.Fatalf("patch status laporan: status=%d", st)
+	}
+	if st, _ := call("POST", "/api/v1/admin/reports/"+rep1ID+"/hide-title", adminJWT, nil); st != 200 {
+		t.Fatalf("hide-title: status=%d", st)
+	}
+	if st, _ := call("GET", "/api/v1/titles/"+lapTitleID, userJWT, nil); st != 404 {
+		t.Fatalf("detail judul tersembunyi harus 404, dapat %d", st)
+	}
+	if st, _ := call("DELETE", "/api/v1/admin/reports/"+rep2ID, adminJWT, nil); st != 200 {
+		t.Fatalf("hapus laporan: status=%d", st)
+	}
+	st, lstAkhir := call("GET", "/api/v1/admin/reports", adminJWT, nil)
+	if st != 200 || repAda(lstAkhir, rep2ID) {
+		t.Fatalf("laporan terhapus masih tampil: status=%d", st)
+	}
+
 	// CORS: preflight dari origin Netlify dijawab dengan echo origin;
 	// origin asing tidak mendapat izin.
 	for _, tc := range []struct {

@@ -750,6 +750,19 @@ class CatalogRepository(
 
     /** Mulai sesi unlock iklan: server menerbitkan token + lama
      * tonton minimum (detik) yang ditegakkan di sisi server. */
+    /** Kirim laporan masalah putar (link mati, semua server
+     * gagal, dsb.) dari halaman pemutar ke admin. */
+    suspend fun createReport(episodeId: String, reason: String, note: String): Boolean =
+        try {
+            api.post(
+                "/api/v1/reports",
+                JSONObject().put("episode_id", episodeId).put("reason", reason).put("note", note),
+            )
+            true
+        } catch (e: Exception) {
+            false
+        }
+
     suspend fun adUnlockStart(episodeId: String): Pair<String, Int> {
         val o = api.post("/api/v1/episodes/$episodeId/ad-unlock/start")
         return o.getString("token") to o.optInt("wait_seconds", 15)

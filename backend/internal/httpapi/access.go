@@ -78,7 +78,7 @@ func (a *API) episodeAccessInfo(ctx context.Context, titleID string, episodeNo i
 	err := a.pool.QueryRow(ctx, `
 		select t.type,
 		       not exists(select 1 from episodes e
-		                  where e.title_id = t.id and e.episode_no < $2)
+		                  where e.title_id = t.id and e.episode_no < $2 and not e.is_hidden)
 		from titles t where t.id = $1::uuid and not t.is_hidden`, titleID, episodeNo).Scan(&titleType, &isFirst)
 	return titleType, isFirst, err
 }
