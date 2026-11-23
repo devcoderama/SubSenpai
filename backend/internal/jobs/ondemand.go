@@ -306,6 +306,31 @@ func storeSearchHit(ctx context.Context, pool *pgxpool.Pool, contentType string,
 	return true
 }
 
+// StoreBrowseHits menyimpan daftar judul hasil jelajah live
+// (beranda / genre situs sumber) ke katalog — permintaan Rams
+// 2026-11-23 malam: judul poster yang tampil saat pengguna
+// menggulir dan belum ada di database otomatis tersimpan, lalu
+// antrean penyelesaian worker (EnrichTitles, SyncSources,
+// RepairCatalog) melengkapi metadata + episodenya satu per satu
+// sehingga respons aplikasi makin cepat. Hanya item berposter
+// yang disimpan (yang tanpa poster memang dibuang
+// PurgePosterless). Mengembalikan jumlah yang tersimpan.
+func StoreBrowseHits(ctx context.Context, pool *pgxpool.Pool, contentType string, src sources.Source, items []sources.DiscoveredTitle) int {
+	n := 0
+	for _, d := range items {
+		if d.Poster == "" || d.Slug == "" {
+			continue
+		}
+		if storeSearchHit(ctx, pool, contentType, src, searchHit{
+			slug: d.Slug, title: d.Title, poster: d.Poster,
+			year: d.Year, genres: d.Genres, url: d.URL,
+		}) {
+			n++
+		}
+	}
+	return n
+}
+
 // LiveSearchStore menjalankan pencarian live ke semua sumber server
 // aktif untuk satu jenis konten dan menyimpan kandidat yang belum
 // ada ke katalog. Resolver yang mampu TitleSearcher dicari lewat

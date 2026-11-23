@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"subsenpai/backend/internal/jobs"
 	"subsenpai/backend/internal/sources"
 )
 
@@ -125,6 +126,13 @@ func (a *API) handleLiveBrowse(w http.ResponseWriter, r *http.Request) {
 	}
 	items := []liveItem{}
 	if srcUse != nil {
+		// Simpan otomatis ke katalog (permintaan Rams 2026-11-23
+		// malam): judul yang tampil dari jelajah live langsung
+		// tersimpan agar worker bisa melengkapi metadata +
+		// episodenya; penandaan catalog_id di bawah lalu menemui
+		// mereka juga, jadi ketukan pertama membuka detail tanpa
+		// impor. Kegagalan simpan tidak menggagalkan respons.
+		jobs.StoreBrowseHits(r.Context(), a.pool, typ, *srcUse, found)
 		slugs := make([]string, 0, len(found))
 		for _, d := range found {
 			slugs = append(slugs, d.Slug)
