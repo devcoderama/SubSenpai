@@ -94,6 +94,11 @@ func (a *API) Router() http.Handler {
 		})
 		r.Get("/api/v1/home", a.handleHome)
 		r.Get("/api/v1/titles", a.handleTitles)
+		// Telusur genre langsung dari situs sumber + impor judul
+		// hasil telusur ke katalog (impor memakai auth opsional,
+		// sama seperti detail judul).
+		r.Get("/api/v1/live-browse", a.handleLiveBrowse)
+		r.With(a.authn.Optional).Post("/api/v1/titles/import", a.handleTitleImport)
 		// Detail memakai auth OPSIONAL: tanpa ini FromContext selalu
 		// nil → semua penonton dianggap tamu → episode pengguna
 		// premium ikut terkunci (bug dilaporkan Rams 2026-11-23).

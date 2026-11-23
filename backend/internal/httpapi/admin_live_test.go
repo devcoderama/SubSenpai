@@ -565,6 +565,51 @@ func TestAdminLive(t *testing.T) {
 		t.Fatalf("read kind=release tidak menandai: %v", after)
 	}
 
+	// Telusur langsung + impor judul: impor dari URL sumber aktif
+	// membuat judul + pemetaan (idempoten), URL asing ditolak,
+	// live-browse memvalidasi type dan melayani tanpa genre.
+	defer pool.Exec(ctx, `delete from titles where slug in ('judul-impor-uji', 'film-impor-uji-999001')`)
+	st, imp := call("POST", "/api/v1/titles/import", userJWT, map[string]any{
+		"type": "anime", "url": "https://kuronime.sbs/anime/judul-impor-uji/",
+		"title": "Judul Impor Uji", "poster_url": "https://img.example/p.jpg",
+		"genre": "Action",
+	})
+	if st != 200 || imp["created"] != true || imp["id"] == nil || imp["id"] == "" {
+		t.Fatalf("impor anime: status=%d body=%v", st, imp)
+	}
+	impID := imp["id"].(string)
+	st, imp2 := call("POST", "/api/v1/titles/import", userJWT, map[string]any{
+		"type": "anime", "url": "https://kuronime.sbs/anime/judul-impor-uji/",
+		"title": "Judul Impor Uji",
+	})
+	if st != 200 || imp2["created"] != false || imp2["id"] != impID {
+		t.Fatalf("impor ulang harus idempoten: status=%d body=%v", st, imp2)
+	}
+	var mapCount int
+	if err := pool.QueryRow(ctx, `
+		select count(*) from title_sources where title_id = $1::uuid`, impID).Scan(&mapCount); err != nil || mapCount != 1 {
+		t.Fatalf("pemetaan impor: count=%d err=%v", mapCount, err)
+	}
+	if st, _ := call("POST", "/api/v1/titles/import", userJWT, map[string]any{
+		"type": "anime", "url": "https://evil.example.com/anime/x/", "title": "X",
+	}); st != 400 {
+		t.Fatalf("impor URL asing: status=%d, want 400", st)
+	}
+	st, impF := call("POST", "/api/v1/titles/import", userJWT, map[string]any{
+		"type": "film", "url": "https://hashflix.top/movie/999001", "title": "Film Impor Uji",
+		"genres": []string{"Action"},
+	})
+	if st != 200 || impF["slug"] != "film-impor-uji-999001" || impF["created"] != true {
+		t.Fatalf("impor film: status=%d body=%v", st, impF)
+	}
+	if st, _ := call("GET", "/api/v1/live-browse?type=manga&genre=Action", userJWT, nil); st != 400 {
+		t.Fatalf("live-browse type liar: status=%d, want 400", st)
+	}
+	st, lb := call("GET", "/api/v1/live-browse?type=anime", userJWT, nil)
+	if st != 200 || len(lb["items"].([]any)) != 0 {
+		t.Fatalf("live-browse tanpa genre: status=%d body=%v", st, lb)
+	}
+
 	// CORS: preflight dari origin Netlify dijawab dengan echo origin;
 	// origin asing tidak mendapat izin.
 	for _, tc := range []struct {

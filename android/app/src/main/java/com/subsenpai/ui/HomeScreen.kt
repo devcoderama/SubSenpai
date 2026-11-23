@@ -24,6 +24,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -113,6 +115,60 @@ fun HomeScreen(
     var searchOpen by remember { mutableStateOf(false) }
     val browsing = type != null || query.isNotBlank()
     val scope = rememberCoroutineScope()
+
+    // Telusur langsung dari situs sumber saat genre dipilih:
+    // pilihan mengikuti halaman genre web sumbernya, bukan hanya
+    // katalog lokal. Judul yang belum ada di katalog diimpor saat
+    // diketuk.
+    var liveItems by remember { mutableStateOf<List<CatalogRepository.LiveBrowseItem>>(emptyList()) }
+    var liveSource by remember { mutableStateOf("") }
+    var liveLoading by remember { mutableStateOf(false) }
+    var liveHasMore by remember { mutableStateOf(false) }
+    var livePage by remember { mutableStateOf(1) }
+    var importingSlug by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(type, genre) {
+        liveItems = emptyList()
+        liveSource = ""
+        liveHasMore = false
+        livePage = 1
+        val t = type
+        val g = genre
+        if (t != null && g != null) {
+            liveLoading = true
+            try {
+                val (src, more, items) = repo.liveBrowse(t, g, 1)
+                liveSource = src
+                liveHasMore = more
+                liveItems = items
+            } catch (e: Exception) {
+                // Sumber tak terjangkau: bagian katalog tetap tampil.
+            } finally {
+                liveLoading = false
+            }
+        }
+    }
+    val onLiveTap: (CatalogRepository.LiveBrowseItem) -> Unit = { item ->
+        val cid = item.catalogId
+        if (cid != null) {
+            onOpenTitle(cid)
+        } else if (importingSlug == null) {
+            importingSlug = item.slug
+            scope.launch {
+                try {
+                    val id = repo.importTitle(type ?: "", item, genre)
+                    onOpenTitle(id)
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(
+                        homeContext,
+                        "Gagal menambahkan judul: ${e.message}",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                } finally {
+                    importingSlug = null
+                }
+            }
+        }
+    }
 
     // Lencana lonceng di header: jumlah SEMUA notifikasi yang belum
     // dibaca (admin + postingan + episode baru favorit), diperiksa
@@ -269,6 +325,80 @@ fun HomeScreen(
                             Box(Modifier.weight(1f)) { PosterCard(t, onOpenTitle, Modifier.fillMaxWidth()) }
                         }
                         repeat(3 - rowTitles.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+                // Bagian langsung dari situs sumber (genre terpilih):
+                // judul di luar katalog lokal, diketuk = diimpor.
+                val hasilIds = hasil.map { it.id }.toSet()
+                val liveShown = liveItems.filter { it.catalogId == null || it.catalogId !in hasilIds }
+                if (liveLoading && liveItems.isEmpty()) {
+                    item {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(color = NetflixRed, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text("Mencari langsung di sumber…", color = Color(0xFFB3B3B3))
+                        }
+                    }
+                }
+                if (liveShown.isNotEmpty()) {
+                    item { SectionTitle("Langsung dari $liveSource") }
+                    item {
+                        Text(
+                            "Belum di katalog — ketuk judulnya untuk menambahkan & membuka.",
+                            color = Color(0xFFB3B3B3),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
+                    items(liveShown.chunked(3)) { rowItems ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            for (li in rowItems) {
+                                Box(Modifier.weight(1f)) {
+                                    LivePosterCard(li, importingSlug == li.slug) { onLiveTap(li) }
+                                }
+                            }
+                            repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                    if (liveHasMore) {
+                        item {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (liveLoading) {
+                                    CircularProgressIndicator(color = NetflixRed, modifier = Modifier.size(22.dp))
+                                } else {
+                                    TextButton(onClick = {
+                                        val t = type ?: return@TextButton
+                                        val g = genre ?: return@TextButton
+                                        val next = livePage + 1
+                                        liveLoading = true
+                                        scope.launch {
+                                            try {
+                                                val (_, more, moreItems) = repo.liveBrowse(t, g, next)
+                                                livePage = next
+                                                liveHasMore = more
+                                                liveItems = liveItems + moreItems
+                                            } catch (e: Exception) {
+                                                // Halaman berikutnya gagal: berhenti di sini.
+                                                liveHasMore = false
+                                            } finally {
+                                                liveLoading = false
+                                            }
+                                        }
+                                    }) {
+                                        Text("Muat lebih banyak dari $liveSource", color = Color.White)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             } else {
@@ -820,6 +950,40 @@ private fun PosterCard(t: TitleCard, onOpen: (String) -> Unit, modifier: Modifie
         )
         Text(
             t.title,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
+/** Kartu poster hasil telusur langsung: sama seperti PosterCard,
+ *  dengan penanda putar saat judul sedang diimpor ke katalog. */
+@Composable
+private fun LivePosterCard(
+    item: CatalogRepository.LiveBrowseItem,
+    importing: Boolean,
+    onTap: () -> Unit,
+) {
+    Column(modifier = Modifier.clickable(enabled = !importing) { onTap() }) {
+        Box {
+            PosterImage(
+                url = item.posterUrl,
+                title = item.title,
+                modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)),
+            )
+            if (importing) {
+                Box(
+                    modifier = Modifier.matchParentSize().background(Color(0x99000000)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(26.dp))
+                }
+            }
+        }
+        Text(
+            item.title,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodySmall,

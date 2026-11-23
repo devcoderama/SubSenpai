@@ -98,6 +98,15 @@ type Discoverer interface {
 	Discover(ctx context.Context, src Source, limit int) ([]DiscoveredTitle, error)
 }
 
+// GenreBrowser adalah kemampuan opsional resolver: membaca daftar
+// judul satu genre LANGSUNG dari halaman genre situs sumber
+// (per halaman), untuk fitur telusur langsung di aplikasi —
+// pilihan filter mengikuti pilihan di situs sumbernya, bukan
+// hanya isi katalog lokal.
+type GenreBrowser interface {
+	BrowseGenre(ctx context.Context, src Source, genre string, page int) ([]DiscoveredTitle, error)
+}
+
 // SeriesMeta adalah metadata kaya dari halaman seri sumber untuk
 // memperkaya halaman detail (sinopsis, genre, studio, dsb.).
 type SeriesMeta struct {

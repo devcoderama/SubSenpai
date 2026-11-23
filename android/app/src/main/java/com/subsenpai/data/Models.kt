@@ -1,5 +1,6 @@
 package com.subsenpai.data
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 data class TitleCard(
@@ -581,6 +582,63 @@ class CatalogRepository(
             val arr = o.optJSONArray("items")
             if (arr != null) for (i in 0 until arr.length()) add(TitleCard.fromJson(arr.getJSONObject(i)))
         }
+    }
+
+    /** Satu judul hasil telusur langsung dari situs sumber. */
+    data class LiveBrowseItem(
+        val title: String,
+        val slug: String,
+        val posterUrl: String?,
+        val year: Int?,
+        val genres: List<String>,
+        val url: String,
+        val catalogId: String?,
+    )
+
+    /**
+     * Telusur genre LANGSUNG dari situs sumber (pilihan filter
+     * sebanyak di web sumbernya). Mengembalikan (nama sumber,
+     * masih ada halaman berikutnya, daftar judul).
+     */
+    suspend fun liveBrowse(type: String, genre: String?, page: Int): Triple<String, Boolean, List<LiveBrowseItem>> {
+        val path = StringBuilder("/api/v1/live-browse?type=").append(type).append("&page=").append(page)
+        if (!genre.isNullOrBlank()) path.append("&genre=").append(java.net.URLEncoder.encode(genre, "UTF-8"))
+        val o = api.get(path.toString())
+        val items = buildList {
+            val arr = o.optJSONArray("items")
+            if (arr != null) for (i in 0 until arr.length()) {
+                val it = arr.getJSONObject(i)
+                val gs = buildList {
+                    val ga = it.optJSONArray("genres")
+                    if (ga != null) for (j in 0 until ga.length()) add(ga.getString(j))
+                }
+                add(
+                    LiveBrowseItem(
+                        title = it.optString("title"),
+                        slug = it.optString("slug"),
+                        posterUrl = it.optString("poster_url").ifBlank { null },
+                        year = if (it.has("year")) it.optInt("year") else null,
+                        genres = gs,
+                        url = it.optString("url"),
+                        catalogId = it.optString("catalog_id").ifBlank { null },
+                    ),
+                )
+            }
+        }
+        return Triple(o.optString("source"), o.optBoolean("has_more"), items)
+    }
+
+    /** Impor satu judul hasil telusur ke katalog; mengembalikan id judul. */
+    suspend fun importTitle(type: String, item: LiveBrowseItem, genre: String?): String {
+        val body = JSONObject()
+            .put("type", type)
+            .put("url", item.url)
+            .put("title", item.title)
+            .put("poster_url", item.posterUrl ?: "")
+            .put("year", item.year ?: 0)
+            .put("genres", JSONArray(item.genres))
+        if (!genre.isNullOrBlank()) body.put("genre", genre)
+        return api.post("/api/v1/titles/import", body).getString("id")
     }
 
     /** Daftar genre yang ada di katalog untuk satu tipe (chip filter). */
