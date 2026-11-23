@@ -29,6 +29,12 @@ func CORS(webOrigins string, next http.Handler) http.Handler {
 		if strings.HasPrefix(origin, "https://") && strings.HasSuffix(origin, ".netlify.app") {
 			return true
 		}
+		// Domain resmi (halaman download & bagikan, dibeli Rams
+		// 2026-11-23): tanpa ini katalog di subsenpai.web.id kosong
+		// karena peramban memblokir panggilan API (CORS).
+		if origin == "https://subsenpai.web.id" || origin == "https://www.subsenpai.web.id" {
+			return true
+		}
 		return strings.HasPrefix(origin, "http://localhost") ||
 			strings.HasPrefix(origin, "http://127.0.0.1")
 	}
