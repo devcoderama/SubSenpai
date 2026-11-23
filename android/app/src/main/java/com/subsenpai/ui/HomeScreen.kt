@@ -85,6 +85,7 @@ fun HomeScreen(
     onOpenEpisode: (String) -> Unit,
     onLogin: () -> Unit,
     onOpenMore: () -> Unit,
+    onFatalChange: (Boolean) -> Unit = {},
 ) {
     val homeContext = LocalContext.current
     val settings = remember { SettingsStore(homeContext) }
@@ -96,7 +97,6 @@ fun HomeScreen(
     var lanjut by remember { mutableStateOf<List<com.subsenpai.data.WatchHistoryItem>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var fatalKind by remember { mutableStateOf<AppErrorKind?>(null) }
-    var fatalTech by remember { mutableStateOf<String?>(null) }
     var reloadKey by remember { mutableStateOf(0) }
     var type by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
@@ -117,12 +117,10 @@ fun HomeScreen(
             trending = tr
             terbaru = te
             fatalKind = null
-            fatalTech = null
         } catch (e: Exception) {
             // Kegagalan muat utama TIDAK ditampilkan mentah di Beranda:
             // pengguna diarahkan ke halaman peringatan khusus.
             fatalKind = classifyError(e)
-            fatalTech = e.message
         }
         homeLoaded = true
         val loaded = mutableMapOf<String, List<TitleCard>>()
@@ -176,10 +174,10 @@ fun HomeScreen(
         }
     }
 
+    LaunchedEffect(fatalKind) { onFatalChange(fatalKind != null) }
     if (fatalKind != null) {
         ErrorPage(
             kind = fatalKind!!,
-            technical = fatalTech,
             onRetry = {
                 fatalKind = null
                 homeLoaded = false

@@ -1,7 +1,6 @@
 package com.subsenpai.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,16 +15,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -44,8 +38,9 @@ import javax.net.ssl.SSLException
  * (permintaan Rams 2026-11-23): pesan teknis mentah TIDAK boleh
  * tampil di halaman utama — pengguna mendapat halaman peringatan
  * yang rapi ala peringatan keamanan browser, dengan penjelasan
- * bahasa awam, saran tindakan, tombol Coba Lagi, dan detail teknis
- * yang tersembunyi di balik pengalih.
+ * bahasa awam, saran tindakan, dan tombol Coba Lagi. Tanpa detail
+ * teknis sama sekali dan tanpa bilah navigasi bawah (diputuskan
+ * Rams 2026-11-23 setelah melihat v0.20.0).
  */
 enum class AppErrorKind { SECURITY, NETWORK, SERVER, UNKNOWN }
 
@@ -148,9 +143,8 @@ private fun errorCopy(kind: AppErrorKind): ErrorCopy = when (kind) {
 
 /** Halaman peringatan layar penuh dengan tombol coba lagi. */
 @Composable
-fun ErrorPage(kind: AppErrorKind, technical: String?, onRetry: () -> Unit) {
+fun ErrorPage(kind: AppErrorKind, onRetry: () -> Unit) {
     val copy = errorCopy(kind)
-    var showTech by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
         verticalArrangement = Arrangement.Center,
@@ -204,23 +198,6 @@ fun ErrorPage(kind: AppErrorKind, technical: String?, onRetry: () -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(top = 28.dp),
         ) {
             Text("Coba Lagi")
-        }
-        if (!technical.isNullOrBlank()) {
-            Text(
-                if (showTech) "Sembunyikan detail teknis" else "Detail teknis",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.clickable { showTech = !showTech }.padding(top = 16.dp),
-            )
-            if (showTech) {
-                Text(
-                    technical,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
         }
     }
 }

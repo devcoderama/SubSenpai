@@ -85,6 +85,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 var authVersion by remember { mutableStateOf(0) }
+                var homeFatal by remember { mutableStateOf(false) }
                 val backEntry by nav.currentBackStackEntryAsState()
                 val route = backEntry?.destination?.route
                 // Bilah bawah ala Netflix: hanya di layar-layar utama.
@@ -99,7 +100,9 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
                     bottomBar = {
-                        if (route in mainRoutes) {
+                        // Halaman peringatan fatal di Beranda tampil
+                        // tanpa bilah navigasi (permintaan Rams).
+                        if (route in mainRoutes && !(route == "home" && homeFatal)) {
                             NavigationBar(containerColor = Color(0xFF0B0B0B)) {
                                 bottomItems.forEach { (dest, label, icon) ->
                                     NavigationBarItem(
@@ -143,6 +146,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenEpisode = { nav.navigate("player/$it") },
                                 onLogin = { nav.navigate("login") },
                                 onOpenMore = { nav.navigate("more") },
+                                onFatalChange = { homeFatal = it },
                             )
                         }
                         composable("more") {
