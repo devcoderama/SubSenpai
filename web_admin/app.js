@@ -183,11 +183,19 @@ function toast(msg) {
 }
 
 /* ================= Login ================= */
+/* Tampil/sembunyi dua tampilan utama memakai style.display eksplisit
+ * — JANGAN atribut hidden: CSS .layout/.login-wrap sama-sama
+ * display:flex dan di sebagian peramban mengalahkan [hidden],
+ * membuat perpindahan tampilan tidak terjadi walau JS sudah jalan. */
+function showView(which) {
+  $('loginView').style.display = which === 'login' ? 'flex' : 'none';
+  $('appView').style.display = which === 'app' ? 'flex' : 'none';
+}
+
 function showLogin(msg) {
   jwt = null; me = null; stepFn = null;
   storeDel(JWT_KEY);
-  $('appView').hidden = true;
-  $('loginView').hidden = false;
+  showView('login');
   $('loginHint').textContent = 'Gunakan akun Google admin kamu.';
   const err = $('loginError');
   if (msg) { err.textContent = msg; err.hidden = false; } else { err.hidden = true; }
@@ -255,9 +263,8 @@ function initGoogleButton() {
 
 /* ================= Aplikasi ================= */
 function enterApp() {
+  showView('app');
   stepFn = null;
-  $('loginView').hidden = true;
-  $('appView').hidden = false;
   $('meName').textContent = (me && (me.display_name || me.email)) || 'Admin';
   $('meEmail').textContent = (me && me.email) || '';
   if (me && me.avatar_url) $('meAvatar').src = me.avatar_url;
