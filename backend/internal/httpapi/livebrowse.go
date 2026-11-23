@@ -78,12 +78,11 @@ func (a *API) handleLiveBrowse(w http.ResponseWriter, r *http.Request) {
 	if page < 1 {
 		page = 1
 	}
-	if genre == "" && typ != "film" {
-		// Tanpa genre, katalog lokal sudah melayani (worker terus
-		// menemukan judul arsip di latar belakang).
-		writeJSON(w, http.StatusOK, map[string]any{"source": "", "page": page, "has_more": false, "items": []liveItem{}})
-		return
-	}
+	// Genre kosong kini berarti "beranda situs sumber" (terbaru /
+	// populer versi situsnya) untuk semua type — dipakai halaman
+	// web resmi; resolver yang tak mendukungnya mengembalikan
+	// kosong. (Dulu anime/donghua tanpa genre dilayani katalog
+	// lokal dan endpoint ini mengembalikan kosong.)
 	key := typ + "|" + strings.ToLower(genre) + "|" + strconv.Itoa(page)
 	liveCache.Lock()
 	ent, hit := liveCache.m[key]

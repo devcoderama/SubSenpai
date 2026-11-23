@@ -96,3 +96,53 @@ func TestBrowseGenreHashflix(t *testing.T) {
 		t.Fatalf("science fiction query=%q", gotQuery)
 	}
 }
+
+func TestBrowseGenreBerandaKuronime(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`<article class="bs"><div class="bsx">
+			<a href="https://kuronime.sbs/anime/judul-beranda/" title="Judul Beranda">
+			<div class="limit"><img src="https://i1.wp.com/kuronime.sbs/wp-content/uploads/jb.webp"></div>
+			<div class="tt"><h2>Judul Beranda</h2></div></a></div></article>`))
+	}))
+	defer srv.Close()
+	src := Source{BaseURL: srv.URL}
+	out, err := NewKuronime().(GenreBrowser).BrowseGenre(context.Background(), src, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/" {
+		t.Fatalf("path=%q, want /", gotPath)
+	}
+	if len(out) != 1 || out[0].Slug != "judul-beranda" || out[0].Poster == "" {
+		t.Fatalf("hasil=%+v", out)
+	}
+	// Halaman > 1 pada mode beranda: kosong.
+	out2, _ := NewKuronime().(GenreBrowser).BrowseGenre(context.Background(), src, "", 2)
+	if len(out2) != 0 {
+		t.Fatalf("page2=%+v", out2)
+	}
+}
+
+func TestBrowseGenreBerandaAnichin(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`<article class="bs"><div class="bsx"><a href="/donghua-beranda/" title="Donghua Beranda">
+			<div class="limit"><img src="/wp-content/uploads/db.webp" class="ts-post-image"/></div>
+			<div class="tt">Donghua Beranda<h2>Donghua Beranda</h2></div></a></div></article>`))
+	}))
+	defer srv.Close()
+	src := Source{BaseURL: srv.URL}
+	out, err := NewAnichin().(GenreBrowser).BrowseGenre(context.Background(), src, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/" {
+		t.Fatalf("path=%q, want /", gotPath)
+	}
+	if len(out) != 1 || out[0].Slug != "donghua-beranda" {
+		t.Fatalf("hasil=%+v", out)
+	}
+}

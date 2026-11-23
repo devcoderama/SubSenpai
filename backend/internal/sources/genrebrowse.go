@@ -15,8 +15,38 @@ import (
 // BrowseGenre Kuronime & Anichin: halaman genre tema yang sama
 // dengan arsipnya, jadi pengurai kartunya dipakai ulang persis.
 func (a *animestreamResolver) BrowseGenre(ctx context.Context, src Source, genre string, page int) ([]DiscoveredTitle, error) {
+	if page < 1 {
+		return nil, nil
+	}
+	// Genre kosong = BERANDA situs sumber (permintaan Rams
+	// 2026-11-23 untuk halaman web resmi: tampilkan yang terbaru /
+	// populer persis seperti yang disajikan situs resminya). Hanya
+	// halaman pertama, dan kegagalan ambil = kosong — BUKAN error —
+	// agar halaman publik tidak ikut tumbang saat sumber bermasalah.
+	if strings.TrimSpace(genre) == "" {
+		if page > 1 {
+			return nil, nil
+		}
+		switch a.key {
+		case "kuronime":
+			base := strings.TrimRight(src.BaseURL, "/")
+			pageHTML, err := Fetch(ctx, base+"/")
+			if err != nil {
+				return nil, nil
+			}
+			return parseKuroArchivePage(pageHTML, base), nil
+		case "anichin":
+			base := moeBase(src.BaseURL)
+			pageHTML, err := Fetch(ctx, base+"/")
+			if err != nil {
+				return nil, nil
+			}
+			return parseArchivePage(pageHTML, base), nil
+		}
+		return nil, nil
+	}
 	gs := slugify(genre)
-	if gs == "" || page < 1 {
+	if gs == "" {
 		return nil, nil
 	}
 	switch a.key {
