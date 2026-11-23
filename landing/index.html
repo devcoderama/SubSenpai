@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Download SubSenpai — Nonton Anime, Donghua & Film Subtitle Indonesia</title>
+<meta name="description" content="Download aplikasi SubSenpai versi terbaru untuk Android. Nonton anime, donghua, dan film dengan subtitle Indonesia — gratis, dengan jadwal rilis, notifikasi episode baru, dan komunitas.">
+<link rel="canonical" href="https://app-subsenpai.netlify.app/">
+<meta property="og:title" content="Download SubSenpai">
+<meta property="og:description" content="Nonton anime, donghua & film subtitle Indonesia. Download APK versi terbaru langsung di sini.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://celebrated-semolina-d9f3c5.netlify.app/og-image.jpg">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' fill='%23E50914' font-weight='900'>S</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<style>
+  :root{
+    --bg:#0B0F1A; --panel:#0e1424; --panel2:#131b30; --line:#26314d;
+    --text:#e8ecf6; --muted:#9aa7c7; --purple:#a78bfa; --pink:#ff6b9d;
+    --red:#E50914; --green:#46d369;
+    --grad:linear-gradient(92deg,#ff6b9d,#a78bfa 55%,#67e8f9);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--text);font-family:'Zen Kaku Gothic New',system-ui,sans-serif;line-height:1.65;overflow-x:hidden}
+  body::before{content:"";position:fixed;inset:0;z-index:-1;background:
+    radial-gradient(720px 420px at 12% -6%,rgba(167,139,250,.20),transparent 62%),
+    radial-gradient(820px 520px at 96% 4%,rgba(255,107,157,.13),transparent 60%),
+    radial-gradient(900px 700px at 50% 115%,rgba(103,232,249,.08),transparent 60%),var(--bg)}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 20px}
+  header{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);background:rgba(11,15,26,.78);border-bottom:1px solid var(--line)}
+  .bar{display:flex;align-items:center;gap:14px;padding:13px 0}
+  .logo{font-family:'Shippori Mincho B1',serif;font-weight:800;font-size:1.45rem;letter-spacing:.02em}
+  .logo b{color:var(--red);font-weight:900}
+  .logo small{display:block;font-family:'Zen Kaku Gothic New',sans-serif;font-size:.62rem;color:var(--muted);letter-spacing:.42em;font-weight:500}
+  .bar nav{margin-left:auto;display:flex;gap:22px;align-items:center}
+  .bar nav a{color:var(--muted);text-decoration:none;font-weight:500;font-size:.95rem;transition:color .25s}
+  .bar nav a:hover{color:#fff}
+  .btn{display:inline-flex;align-items:center;gap:10px;background:var(--red);color:#fff;font-weight:700;
+    padding:13px 28px;border-radius:999px;text-decoration:none;font-size:1.02rem;border:0;cursor:pointer;
+    box-shadow:0 10px 34px rgba(229,9,20,.38);transition:transform .2s,box-shadow .2s}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 16px 40px rgba(229,9,20,.48)}
+  .btn.small{padding:9px 20px;font-size:.92rem}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text);box-shadow:none}
+  .btn.ghost:hover{border-color:var(--purple)}
+  .hero{text-align:center;padding:84px 0 58px}
+  .badge{display:inline-block;padding:6px 16px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:.85rem;background:rgba(255,255,255,.03)}
+  .badge i{color:var(--green);margin-right:7px}
+  h1{font-family:'Shippori Mincho B1',serif;font-size:clamp(2.4rem,6.4vw,4.1rem);line-height:1.14;font-weight:800;margin:22px 0 6px}
+  h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .jp{color:var(--muted);letter-spacing:.55em;font-size:.8rem;margin-bottom:14px}
+  .hero p.lead{color:var(--muted);font-size:clamp(1rem,2.4vw,1.18rem);max-width:640px;margin:0 auto 30px}
+  .dl{margin:8px 0 12px}
+  .verinfo{color:var(--muted);font-size:.92rem;min-height:1.5em}
+  .verinfo b{color:var(--text)}
+  .altlink{margin-top:10px;font-size:.9rem}
+  .altlink a{color:var(--purple);text-decoration:none}
+  .altlink a:hover{text-decoration:underline}
+  section{padding:52px 0}
+  h2{font-family:'Shippori Mincho B1',serif;font-size:clamp(1.6rem,4vw,2.2rem);text-align:center;margin-bottom:8px}
+  .sub{text-align:center;color:var(--muted);max-width:620px;margin:0 auto 34px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+  .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:18px;padding:24px;transition:transform .25s,border-color .25s}
+  .card:hover{transform:translateY(-4px);border-color:rgba(167,139,250,.55)}
+  .card .ic{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;font-size:1.25rem;color:#fff;
+    background:linear-gradient(135deg,rgba(255,107,157,.28),rgba(167,139,250,.28));border:1px solid var(--line);margin-bottom:14px}
+  .card h3{font-size:1.08rem;margin-bottom:6px}
+  .card p{color:var(--muted);font-size:.94rem}
+  .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;counter-reset:step}
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px}
+  .step .n{width:38px;height:38px;border-radius:50%;background:var(--grad);color:#0B0F1A;font-weight:900;display:grid;place-items:center;margin-bottom:12px}
+  .step h3{font-size:1rem;margin-bottom:5px}
+  .step p{color:var(--muted);font-size:.92rem}
+  .premium{background:linear-gradient(120deg,#241a3f,#3B2A5D 55%,#572b63);border:1px solid rgba(167,139,250,.4);border-radius:24px;padding:38px 30px;text-align:center}
+  .premium h2{margin-bottom:10px}
+  .premium p{color:#d9d2f5;max-width:600px;margin:0 auto 8px}
+  .premium .price{font-size:1.7rem;font-weight:900;margin:12px 0 4px}
+  .premium .price span{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .faq{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+  details{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px}
+  summary{cursor:pointer;font-weight:700;list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary i{color:var(--purple);margin-right:9px}
+  details p{color:var(--muted);margin-top:8px;font-size:.95rem}
+  footer{border-top:1px solid var(--line);padding:30px 0 42px;text-align:center;color:var(--muted);font-size:.9rem}
+  footer a{color:var(--purple);text-decoration:none}
+  @media (max-width:640px){ .bar nav a:not(.btn){display:none} .hero{padding:58px 0 40px} }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="logo"><b>S</b>ubSenpai<small>サブセンパイ</small></div>
+    <nav>
+      <a href="#fitur">Fitur</a>
+      <a href="#install">Cara Install</a>
+      <a href="#faq">FAQ</a>
+      <a class="btn small" href="#download"><i class="fa-solid fa-download"></i>Download</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero" id="download">
+    <span class="badge"><i class="fa-solid fa-circle-check"></i>Versi terbaru selalu tersedia di halaman ini</span>
+    <h1>Nonton Anime, Donghua &amp; Film<br><span class="grad">Subtitle Indonesia</span></h1>
+    <div class="jp">アニメ ・ ドンファ ・ 映画</div>
+    <p class="lead">SubSenpai adalah aplikasi streaming untuk Android: katalog anime, donghua, dan film yang terus bertambah, jadwal rilis harian, notifikasi episode baru, dan komunitas — semua dalam satu aplikasi ringan.</p>
+    <div class="dl">
+      <a class="btn" id="dlBtn" href="https://github.com/devcoderama/SubSenpai/releases" rel="noopener">
+        <i class="fa-brands fa-android"></i><span id="dlLabel">Download APK Terbaru</span>
+      </a>
+    </div>
+    <div class="verinfo" id="verInfo">Mengambil info versi terbaru…</div>
+    <div class="altlink"><a href="https://github.com/devcoderama/SubSenpai/releases" rel="noopener">Lihat semua versi &amp; catatan rilis di GitHub</a></div>
+  </div>
+
+  <section id="fitur">
+    <h2>Fitur SubSenpai</h2>
+    <p class="sub">Semua yang kamu butuhkan untuk maraton tontonanmu — tanpa ribet.</p>
+    <div class="grid">
+      <div class="card"><div class="ic"><i class="fa-solid fa-clapperboard"></i></div>
+        <h3>Katalog Anime, Donghua &amp; Film</h3>
+        <p>Ribuan judul dari berbagai sumber dengan poster, sinopsis, genre, dan daftar episode yang rapi — dan terus bertambah setiap hari.</p></div>
+      <div class="card"><div class="ic"><i class="fa-solid fa-closed-captioning"></i></div>
+        <h3>Subtitle Siap Pakai</h3>
+        <p>Subtitle Indonesia dan multi-bahasa diambil siap pakai dari sumbernya, tinggal pilih dan tonton — tanpa perlu mengunduh file terpisah.</p></div>
+      <div class="card"><div class="ic"><i class="fa-solid fa-calendar-days"></i></div>
+        <h3>Jadwal Rilis Harian</h3>
+        <p>Jadwal tayang anime dan donghua per hari dalam seminggu, plus film-film rilis terbaru — jangan sampai ketinggalan episode favoritmu.</p></div>
+      <div class="card"><div class="ic"><i class="fa-solid fa-bell"></i></div>
+        <h3>Notifikasi Episode Baru</h3>
+        <p>Favoritkan judul ke Daftar Saya dan dapatkan pemberitahuan begitu episode barunya rilis, lengkap dengan pengumuman resmi dari admin.</p></div>
+      <div class="card"><div class="ic"><i class="fa-solid fa-magnifying-glass"></i></div>
+        <h3>Pencarian Live ke Sumber</h3>
+        <p>Judul yang belum ada di katalog? Pencarian langsung menelusuri situs sumbernya dan menyimpannya ke katalog — pencarian berikutnya langsung ketemu.</p></div>
+      <div class="card"><div class="ic"><i class="fa-solid fa-filter"></i></div>
+        <h3>Filter Lengkap</h3>
+        <p>Saring berdasarkan genre, tahun, negara, dan jaringan/studio, atau jelajahi genre langsung dari situs sumber dengan pilihan judul yang jauh lebih banyak.</p></div>
+      <div class="card"><div class="ic"><i class="fa-solid fa-users"></i></div>
+        <h3>Post &amp; Komunitas</h3>
+        <p>Bagikan postingan dan momen favoritmu, beri komentar, tambahkan teman dengan kode teman, dan ngobrol bareng sesama penggemar.</p></div>
+      <div class="card"><div class="ic"><i class="fa-solid fa-clock-rotate-left"></i></div>
+        <h3>Lanjutkan Menonton</h3>
+        <p>Riwayat tontonan tersimpan otomatis — lanjutkan tepat dari posisi terakhir, di judul apa pun yang pernah kamu buka.</p></div>
+      <div class="card"><div class="ic"><i class="fa-solid fa-rectangle-ad"></i></div>
+        <h3>Buka Episode dengan Iklan</h3>
+        <p>Episode terkunci bisa dibuka gratis hanya dengan menonton iklan singkat — tanpa harus berlangganan.</p></div>
+      <div class="card"><div class="ic"><i class="fa-solid fa-crown"></i></div>
+        <h3>Premium Terjangkau</h3>
+        <p>Buka semua episode tanpa batas mulai Rp8.000/bulan. Bayar mudah via QRIS dan banyak metode lain, atau tukar kode voucher.</p></div>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Cara Install</h2>
+    <p class="sub">SubSenpai belum tersedia di Play Store — install langsung dari file APK resmi di halaman ini, hanya butuh semenit.</p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><h3>Download APK</h3><p>Ketuk tombol Download di atas. File akan terunduh langsung dari rilis resmi SubSenpai.</p></div>
+      <div class="step"><div class="n">2</div><h3>Izinkan Install</h3><p>Saat diminta, izinkan pemasangan dari sumber tidak dikenal untuk browser/file manager yang kamu pakai.</p></div>
+      <div class="step"><div class="n">3</div><h3>Install &amp; Buka</h3><p>Pasang APK-nya, lalu buka SubSenpai dari layar utama HP kamu.</p></div>
+      <div class="step"><div class="n">4</div><h3>Masuk dengan Google</h3><p>Login sekali dengan akun Google — katalog, favorit, dan riwayatmu langsung tersimpan.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="premium">
+      <h2>👑 SubSenpai Premium</h2>
+      <p>Semua episode anime, donghua, dan film terbuka tanpa kunci — tanpa perlu menonton iklan unlock satu per satu.</p>
+      <div class="price">Mulai <span>Rp8.000</span>/bulan</div>
+      <p>Tersedia juga paket 3 bulan sampai 3 tahun yang lebih hemat, dan voucher yang bisa dibagikan ke teman. Pembayaran via QRIS, virtual account, e-wallet, retail, dan pulsa.</p>
+    </div>
+  </section>
+
+  <section id="faq">
+    <h2>Pertanyaan Umum</h2>
+    <p class="sub">Hal-hal yang paling sering ditanyakan.</p>
+    <div class="faq">
+      <details><summary><i class="fa-solid fa-circle-question"></i>Kenapa SubSenpai tidak ada di Play Store?</summary>
+        <p>Aplikasinya masih tahap awal. Untuk saat ini distribusi resmi hanya lewat halaman ini dan GitHub Releases — pastikan kamu hanya mengunduh dari dua tempat itu.</p></details>
+      <details><summary><i class="fa-solid fa-circle-question"></i>Apakah APK-nya aman?</summary>
+        <p>Setiap versi ditandatangani dengan kunci rilis resmi yang sama, dan tombol download di halaman ini selalu mengambil file dari rilis terbaru di GitHub resmi SubSenpai — bukan dari pihak ketiga.</p></details>
+      <details><summary><i class="fa-solid fa-circle-question"></i>Apakah SubSenpai gratis?</summary>
+        <p>Gratis. Episode pertama anime dan donghua bisa ditonton tanpa berlangganan, episode lain bisa dibuka satu per satu dengan menonton iklan singkat, dan Premium membuka semuanya sekaligus.</p></details>
+      <details><summary><i class="fa-solid fa-circle-question"></i>HP saya bisa pakai?</summary>
+        <p>Bisa, selama Android 7.0 (Nougat) atau lebih baru. Ukuran aplikasinya hanya sekitar 14 MB.</p></details>
+      <details><summary><i class="fa-solid fa-circle-question"></i>Bagaimana cara update ke versi terbaru?</summary>
+        <p>Cukup download APK terbaru dari halaman ini dan install menimpa versi lama — data dan login kamu tidak akan hilang. Aplikasi juga akan memberi tahu bila ada versi minimum baru yang wajib dipakai.</p></details>
+    </div>
+  </section>
+
+  <div class="hero" style="padding-top:10px">
+    <h2 style="margin-bottom:16px">Siap mulai menonton?</h2>
+    <a class="btn" id="dlBtn2" href="https://github.com/devcoderama/SubSenpai/releases" rel="noopener">
+      <i class="fa-brands fa-android"></i><span>Download SubSenpai Sekarang</span>
+    </a>
+    <div class="verinfo" id="verInfo2" style="margin-top:12px"></div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    © 2026 SubSenpai · Halaman unduhan resmi ·
+    <a href="https://github.com/devcoderama/SubSenpai" rel="noopener">GitHub</a> ·
+    <a href="https://celebrated-semolina-d9f3c5.netlify.app/">Dokumentasi</a> ·
+    <a href="https://celebrated-semolina-d9f3c5.netlify.app/privacy.html">Privasi</a> ·
+    <a href="https://celebrated-semolina-d9f3c5.netlify.app/terms.html">Ketentuan</a>
+  </div>
+</footer>
+
+<script>
+// Tombol download selalu menunjuk APK rilis TERBARU: daftar rilis
+// diambil dari API GitHub (rilis SubSenpai berstatus pre-release,
+// jadi endpoint /releases/latest tidak bisa dipakai — ambil rilis
+// pertama yang punya aset .apk). Bila API gagal, tombol jatuh ke
+// halaman rilis GitHub.
+(function () {
+  var FALLBACK = "https://github.com/devcoderama/SubSenpai/releases";
+  function fmtSize(b) { return (b / 1048576).toFixed(1).replace(".", ",") + " MB"; }
+  function fmtDate(s) {
+    try {
+      return new Date(s).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+    } catch (e) { return ""; }
+  }
+  function apply(url, html) {
+    ["dlBtn", "dlBtn2"].forEach(function (id) {
+      var a = document.getElementById(id);
+      if (a) a.href = url;
+    });
+    ["verInfo", "verInfo2"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    });
+    var label = document.getElementById("dlLabel");
+    if (label && url !== FALLBACK) label.textContent = "Download APK Terbaru";
+  }
+  fetch("https://api.github.com/repos/devcoderama/SubSenpai/releases?per_page=10", {
+    headers: { "Accept": "application/vnd.github+json" }
+  })
+    .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+    .then(function (rels) {
+      for (var i = 0; i < rels.length; i++) {
+        var assets = rels[i].assets || [];
+        for (var j = 0; j < assets.length; j++) {
+          if (/\.apk$/i.test(assets[j].name)) {
+            apply(
+              assets[j].browser_download_url,
+              "Versi <b>" + rels[i].tag_name + "</b> · " + fmtSize(assets[j].size) +
+              " · Rilis " + fmtDate(rels[i].published_at) + " · Android 7.0+"
+            );
+            return;
+          }
+        }
+      }
+      throw new Error("tidak ada aset apk");
+    })
+    .catch(function () {
+      apply(FALLBACK, "Versi terbaru tersedia di halaman rilis GitHub · Android 7.0+");
+    });
+})();
+</script>
+</body>
+</html>
