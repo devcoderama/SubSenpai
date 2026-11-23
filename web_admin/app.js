@@ -279,6 +279,10 @@ function route() {
   const page = TITLES[name] ? name : 'ringkasan';
   document.querySelectorAll('#mainNav a').forEach((a) =>
     a.classList.toggle('active', a.dataset.route === page));
+  // Submenu yang memuat halaman aktif selalu terbuka.
+  document.querySelectorAll('#mainNav .nav-group').forEach((g) => {
+    if (g.querySelector('a.active')) g.classList.add('open');
+  });
   $('pageTitle').textContent = TITLES[page];
   ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, pengumuman: pagePengumuman, notifikasi: pageNotifikasi, log: pageLog, sistem: pageSistem })[page]();
 }
@@ -873,6 +877,9 @@ function wireDrawer() {
   $('sideBackdrop').addEventListener('click', closeSidebar);
   document.querySelectorAll('#mainNav a').forEach((a) =>
     a.addEventListener('click', closeSidebar));
+  // Kepala submenu: klik melipat/membuka grupnya.
+  document.querySelectorAll('#mainNav .nav-group-head').forEach((h) =>
+    h.addEventListener('click', () => h.parentElement.classList.toggle('open')));
 }
 
 /* ================= Boot ================= */
