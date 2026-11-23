@@ -1,5 +1,6 @@
 package com.subsenpai.ui
 
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -31,6 +32,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.subsenpai.data.CatalogRepository
@@ -63,6 +65,13 @@ fun AdUnlockScreen(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableStateOf(0) }
+    // Ketahanan iklan (laporan Rams 2026-11-23 malam: iklan kadang
+    // tidak muncul): status gagal muat halaman iklan + jumlah
+    // percobaan muat ulang + pegangan WebView untuk muat ulang
+    // manual dari pemberitahuan.
+    var adFailed by remember { mutableStateOf(false) }
+    var adRetries by remember { mutableStateOf(0) }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(episodeId, attempt) {
@@ -99,6 +108,7 @@ fun AdUnlockScreen(
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        webViewRef = this
                         setBackgroundColor(0xFF0D0D0F.toInt())
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
@@ -113,12 +123,65 @@ fun AdUnlockScreen(
                                 // tel:) jangan melempar user keluar app.
                                 return !(u.startsWith("http://") || u.startsWith("https://"))
                             }
+
+                            override fun onReceivedError(
+                                view: WebView?,
+                                request: WebResourceRequest?,
+                                error: WebResourceError?,
+                            ) {
+                                // Rantai alihan Direct Link kadang
+                                // mendarat di domain pengiklan yang
+                                // menolak koneksi (ERR_CONNECTION_
+                                // REFUSED) — muat ulang tautan aslinya
+                                // sampai 3x supaya dapat alihan yang
+                                // sehat; sesudah itu tampilkan
+                                // pemberitahuan ramah (hitung mundur
+                                // tetap berjalan).
+                                if (request?.isForMainFrame == true) {
+                                    if (adRetries < 3) {
+                                        adRetries++
+                                        view?.postDelayed(
+                                            { view.loadUrl(AD_UNLOCK_URL) },
+                                            1200,
+                                        )
+                                    } else {
+                                        adFailed = true
+                                    }
+                                }
+                            }
                         }
                         loadUrl(AD_UNLOCK_URL)
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
             )
+            if (adFailed) {
+                Column(
+                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        "Iklan lagi tidak tersedia dari penyedianya 🙏",
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Hitung mundur tetap berjalan — episode bisa dibuka begitu hitung mundur selesai.",
+                        color = Color.White.copy(alpha = 0.85f),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    OutlinedButton(onClick = {
+                        adRetries = 0
+                        adFailed = false
+                        webViewRef?.loadUrl(AD_UNLOCK_URL)
+                    }) { Text("Muat Ulang Iklan", color = Color.White) }
+                }
+            }
             Column(
                 modifier = Modifier.align(Alignment.BottomCenter)
                     .fillMaxWidth().padding(16.dp),
