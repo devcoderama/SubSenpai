@@ -668,6 +668,136 @@ func TestAdminLive(t *testing.T) {
 			st, hitsBefore, cariHits, cari2)
 	}
 
+	// --- Unlock episode lewat iklan (Monetag) ---
+	// Judul anime uji dengan 2 episode: episode 2 terkunci untuk
+	// user gratis; alur start -> complete (token HMAC + waktu tonton
+	// minimum yang ditegakkan server) membukanya, untuk user login
+	// maupun tamu per perangkat (X-Device-Id). User uji utama sudah
+	// premium di titik ini (seksi transaksi), jadi dipakai user
+	// gratis khusus.
+	var freeID string
+	if err := pool.QueryRow(ctx, `
+		insert into profiles (email, google_sub, display_name, role)
+		values ('free-iklan@local', 'free-iklan-sub', 'Free Iklan', 'user')
+		returning id`).Scan(&freeID); err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Exec(ctx, `delete from profiles where id = $1::uuid`, freeID)
+	freeJWT, err := auth.IssueJWT(cfg.JWTSecret, freeID, "user", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool.Exec(ctx, `delete from titles where slug = 'judul-iklan-uji'`)
+	var iklanTitleID, iklanEp2 string
+	if err := pool.QueryRow(ctx, `
+		insert into titles (slug, type, title) values ('judul-iklan-uji', 'anime', 'Anime Iklan Uji')
+		returning id`).Scan(&iklanTitleID); err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Exec(ctx, `delete from titles where id = $1`, iklanTitleID)
+	pool.Exec(ctx, `insert into episodes (title_id, episode_no, video_url) values ($1, 1, 'https://v.example/1.mp4')`, iklanTitleID)
+	if err := pool.QueryRow(ctx, `
+		insert into episodes (title_id, episode_no, video_url) values ($1, 2, 'https://v.example/2.mp4')
+		returning id`, iklanTitleID).Scan(&iklanEp2); err != nil {
+		t.Fatal(err)
+	}
+	epLocked := func(detail map[string]any) bool {
+		for _, e := range detail["episodes"].([]any) {
+			em := e.(map[string]any)
+			if em["id"] == iklanEp2 {
+				return em["locked"].(bool)
+			}
+		}
+		t.Fatalf("episode 2 tidak ada di detail: %v", detail)
+		return true
+	}
+	st, det := call("GET", "/api/v1/titles/"+iklanTitleID, freeJWT, nil)
+	if st != 200 || !epLocked(det) {
+		t.Fatalf("episode 2 harus terkunci untuk user gratis: status=%d", st)
+	}
+	oldWait := adUnlockWait
+	defer func() { adUnlockWait = oldWait }()
+	adUnlockWait = time.Hour
+	st, start := call("POST", "/api/v1/episodes/"+iklanEp2+"/ad-unlock/start", freeJWT, nil)
+	token, _ := start["token"].(string)
+	if st != 200 || token == "" {
+		t.Fatalf("ad-unlock start: status=%d body=%v", st, start)
+	}
+	if st, _ := call("POST", "/api/v1/episodes/"+iklanEp2+"/ad-unlock/complete", freeJWT,
+		map[string]any{"token": token}); st != 400 {
+		t.Fatalf("complete sebelum waktunya harus 400, dapat %d", st)
+	}
+	adUnlockWait = 0
+	if st, done := call("POST", "/api/v1/episodes/"+iklanEp2+"/ad-unlock/complete", freeJWT,
+		map[string]any{"token": token}); st != 200 || done["unlocked"] != true {
+		t.Fatalf("ad-unlock complete: status=%d body=%v", st, done)
+	}
+	st, det = call("GET", "/api/v1/titles/"+iklanTitleID, freeJWT, nil)
+	if st != 200 || epLocked(det) {
+		t.Fatalf("episode 2 harus terbuka setelah unlock iklan: status=%d", st)
+	}
+	if st, _ := call("POST", "/api/v1/episodes/"+iklanEp2+"/ad-unlock/complete", freeJWT,
+		map[string]any{"token": "token-ngawur"}); st != 400 {
+		t.Fatalf("token ngawur harus 400, dapat %d", st)
+	}
+	if st, _ := call("POST", "/api/v1/episodes/00000000-0000-0000-0000-000000000000/ad-unlock/start",
+		freeJWT, nil); st != 404 {
+		t.Fatalf("start episode tak dikenal harus 404, dapat %d", st)
+	}
+	// Tamu: unlock terikat perangkat (X-Device-Id).
+	callDev := func(method, path, device string, body any) (int, map[string]any) {
+		var rd io.Reader
+		if body != nil {
+			b, _ := json.Marshal(body)
+			rd = bytes.NewReader(b)
+		}
+		req, err := http.NewRequest(method, srv.URL+path, rd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("X-Session-Id", hs.SessionID)
+		req.Header.Set("X-Device-Id", device)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		raw, _ := io.ReadAll(res.Body)
+		var env struct {
+			XData string `json:"xdata"`
+			XTime int64  `json:"xtime"`
+		}
+		if err := json.Unmarshal(raw, &env); err != nil || env.XData == "" {
+			t.Fatalf("%s %s: respons bukan envelope: %s", method, path, raw)
+		}
+		plain, err := middleware.Open(key, env.XData, env.XTime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out map[string]any
+		if err := json.Unmarshal(plain, &out); err != nil {
+			t.Fatal(err)
+		}
+		return res.StatusCode, out
+	}
+	st, gstart := callDev("POST", "/api/v1/episodes/"+iklanEp2+"/ad-unlock/start", "dev-iklan-uji-1", nil)
+	gtoken, _ := gstart["token"].(string)
+	if st != 200 || gtoken == "" {
+		t.Fatalf("ad-unlock start tamu: status=%d body=%v", st, gstart)
+	}
+	if st, _ := callDev("POST", "/api/v1/episodes/"+iklanEp2+"/ad-unlock/complete", "dev-iklan-uji-1",
+		map[string]any{"token": gtoken}); st != 200 {
+		t.Fatalf("ad-unlock complete tamu: status=%d", st)
+	}
+	st, gdet := callDev("GET", "/api/v1/titles/"+iklanTitleID, "dev-iklan-uji-1", nil)
+	if st != 200 || epLocked(gdet) {
+		t.Fatalf("episode 2 harus terbuka untuk perangkat tamu yang unlock: status=%d", st)
+	}
+	st, gdet2 := callDev("GET", "/api/v1/titles/"+iklanTitleID, "dev-iklan-lain", nil)
+	if st != 200 || !epLocked(gdet2) {
+		t.Fatalf("episode 2 harus tetap terkunci untuk perangkat lain: status=%d", st)
+	}
+
 	// CORS: preflight dari origin Netlify dijawab dengan echo origin;
 	// origin asing tidak mendapat izin.
 	for _, tc := range []struct {

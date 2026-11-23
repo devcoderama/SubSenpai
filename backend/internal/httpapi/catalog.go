@@ -532,6 +532,16 @@ func (a *API) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
 		for i := range episodes {
 			episodes[i].Locked = !watchAllowed(aksesTier, detail.Type, episodes[i].EpisodeNo == minNo)
 		}
+		// Episode yang sudah dibuka lewat iklan tidak tampil terkunci.
+		if aksesTier != tierPremium {
+			if unlocked := a.adUnlockedEpisodes(r, id); len(unlocked) > 0 {
+				for i := range episodes {
+					if unlocked[episodes[i].ID] {
+						episodes[i].Locked = false
+					}
+				}
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"title": detail, "episodes": episodes, "chapters": chapters,

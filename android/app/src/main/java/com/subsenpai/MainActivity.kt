@@ -45,6 +45,7 @@ import androidx.navigation.navArgument
 import com.subsenpai.data.AuthStore
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.player.PlayerScreen
+import com.subsenpai.ui.AdUnlockScreen
 import com.subsenpai.ui.ChatRoomScreen
 import com.subsenpai.ui.CommentsScreen
 import com.subsenpai.ui.FeedNotificationsScreen
@@ -455,6 +456,23 @@ class MainActivity : ComponentActivity() {
                                         restoreState = true
                                     }
                                 },
+                                onOpenAdUnlock = { nav.navigate("adunlock/$it") },
+                            )
+                        }
+                        composable(
+                            "adunlock/{episodeId}",
+                            arguments = listOf(navArgument("episodeId") { type = NavType.StringType }),
+                        ) { entry ->
+                            val epId = entry.arguments!!.getString("episodeId")!!
+                            AdUnlockScreen(
+                                repo,
+                                epId,
+                                onUnlocked = {
+                                    nav.navigate("player/$it") {
+                                        popUpTo("adunlock/{episodeId}") { inclusive = true }
+                                    }
+                                },
+                                onBack = { nav.popBackStack() },
                             )
                         }
                         composable(
@@ -475,6 +493,7 @@ class MainActivity : ComponentActivity() {
                                         restoreState = true
                                     }
                                 },
+                                onOpenAdUnlock = { nav.navigate("adunlock/$it") },
                             )
                         }
                     }

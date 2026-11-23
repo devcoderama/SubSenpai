@@ -106,6 +106,8 @@ func (a *API) Router() http.Handler {
 		// Playback & chapter melewati gerbang freemium (Fase 4): JWT
 		// opsional membedakan tamu / user gratis / premium.
 		r.With(a.authn.Optional).Get("/api/v1/episodes/{id}/playback", a.handlePlayback)
+		r.With(a.authn.Optional).Post("/api/v1/episodes/{id}/ad-unlock/start", a.handleAdUnlockStart)
+		r.With(a.authn.Optional).Post("/api/v1/episodes/{id}/ad-unlock/complete", a.handleAdUnlockComplete)
 		r.With(a.authn.Optional).Get("/api/v1/chapters/{id}", a.handleChapter)
 		r.With(middleware.RateLimit(30)).Post("/api/v1/auth/google", a.handleGoogleLogin)
 		r.Get("/api/v1/schedule", a.handleSchedule)

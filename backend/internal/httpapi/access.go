@@ -100,6 +100,11 @@ func (a *API) gateEpisode(w http.ResponseWriter, r *http.Request, episodeID, tit
 	if t == tierPremium {
 		return true
 	}
+	// Episode yang sudah dibuka lewat iklan (Monetag) lolos untuk
+	// pemilik unlock-nya — melewati aturan premium maupun batas tamu.
+	if a.hasAdUnlock(r, episodeID) {
+		return true
+	}
 	if !watchAllowed(t, titleType, isFirst) {
 		writeErr(w, http.StatusForbidden, "premium_required: konten ini khusus Premium — akun gratis hanya bisa menonton episode pertama anime & donghua")
 		return false

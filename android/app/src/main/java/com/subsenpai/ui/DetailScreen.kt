@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -68,6 +69,7 @@ fun DetailScreen(
     onOpenTitle: (String) -> Unit,
     onShareToPost: (TitleDetail) -> Unit,
     onOpenPremium: () -> Unit = {},
+    onOpenAdUnlock: (String) -> Unit = {},
 ) {
     var detail by remember { mutableStateOf<TitleDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -78,6 +80,9 @@ fun DetailScreen(
     // setelah ±30 detik dan halaman mandek selamanya).
     var epFailed by remember { mutableStateOf(false) }
     var epRetry by remember { mutableStateOf(0) }
+    // Episode terkunci yang diketuk: tampilkan pilihan Premium atau
+    // buka lewat iklan (Monetag).
+    var lockedEp by remember { mutableStateOf<com.subsenpai.data.EpisodeItem?>(null) }
     var inWatchlist by remember { mutableStateOf(false) }
     var wlBusy by remember { mutableStateOf(false) }
     var serupa by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
@@ -87,6 +92,41 @@ fun DetailScreen(
     // Kartu yang diketuk di Beranda/daftar: kepalanya digambar
     // SEKETIKA dari cache selagi detail penuh masih dimuat.
     val cachedCard = remember(titleId) { repo.cachedCard(titleId) }
+
+    // Pilihan membuka episode terkunci: Premium atau iklan (Monetag).
+    lockedEp?.let { ep ->
+        AlertDialog(
+            onDismissRequest = { lockedEp = null },
+            title = { Text("Episode ${ep.episodeNo} Terkunci") },
+            text = {
+                Text(
+                    "Episode ini khusus Premium. Kamu juga bisa membukanya " +
+                        "GRATIS dengan menonton iklan singkat — sekali dibuka, " +
+                        "episode ini terbuka permanen untukmu.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        lockedEp = null
+                        onOpenAdUnlock(ep.id)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
+                ) { Text("Tonton Iklan", color = Color.White) }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            lockedEp = null
+                            onOpenPremium()
+                        },
+                    ) { Text("Premium") }
+                    TextButton(onClick = { lockedEp = null }) { Text("Nanti Saja") }
+                }
+            },
+        )
+    }
 
     // "Judul Serupa" ala Netflix: judul lain berjenis sama. Sengaja
     // ditunda sampai episode selesai dimuat (bukan prioritas) dan
@@ -227,7 +267,7 @@ fun DetailScreen(
                         val firstLocked = d.episodes.first().locked
                         Button(
                             onClick = {
-                                if (firstLocked) onOpenPremium() else onPlay(d.episodes.first().id)
+                                if (firstLocked) lockedEp = d.episodes.first() else onPlay(d.episodes.first().id)
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.White,
@@ -405,7 +445,7 @@ fun DetailScreen(
                 items(d.episodes) { ep ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                            .clickable { if (ep.locked) onOpenPremium() else onPlay(ep.id) },
+                            .clickable { if (ep.locked) lockedEp = ep else onPlay(ep.id) },
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1F1F1F)),
                         shape = RoundedCornerShape(8.dp),
                     ) {

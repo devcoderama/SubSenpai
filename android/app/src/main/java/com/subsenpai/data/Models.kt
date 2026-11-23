@@ -188,6 +188,7 @@ class CatalogRepository(
     init {
         if (auth != null) {
             api.tokenProvider = { auth.token }
+            api.deviceIdProvider = { auth.deviceId }
         }
     }
 
@@ -744,6 +745,22 @@ class CatalogRepository(
     }
 
     suspend fun playback(episodeId: String): Playback = Playback.fromJson(api.get("/api/v1/episodes/$episodeId/playback"))
+
+    /** Mulai sesi unlock iklan: server menerbitkan token + lama
+     * tonton minimum (detik) yang ditegakkan di sisi server. */
+    suspend fun adUnlockStart(episodeId: String): Pair<String, Int> {
+        val o = api.post("/api/v1/episodes/$episodeId/ad-unlock/start")
+        return o.getString("token") to o.optInt("wait_seconds", 15)
+    }
+
+    /** Selesaikan sesi unlock iklan: episode terbuka permanen untuk
+     * user/perangkat ini bila token sudah cukup umur di server. */
+    suspend fun adUnlockComplete(episodeId: String, token: String) {
+        api.post(
+            "/api/v1/episodes/$episodeId/ad-unlock/complete",
+            JSONObject().put("token", token),
+        )
+    }
 
     // ---------- Feed komunitas (redesain Chat 2026-11-22) ----------
 

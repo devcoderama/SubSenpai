@@ -32,6 +32,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -133,6 +134,7 @@ fun PlayerScreen(
     onOpenTitle: (String) -> Unit = {},
     onShareToPost: (TitleDetail) -> Unit = {},
     onOpenPremium: () -> Unit = {},
+    onOpenAdUnlock: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -419,6 +421,7 @@ fun PlayerScreen(
             onToggleFullscreen = { fullscreen = !fullscreen },
             onNeedLogin = onNeedLogin,
             onOpenPremium = onOpenPremium,
+            onAdUnlock = { onOpenAdUnlock(epId) },
             modifier = if (fullscreen) {
                 Modifier.fillMaxSize()
             } else {
@@ -631,6 +634,7 @@ private fun VideoPlayerContainer(
     onToggleFullscreen: () -> Unit,
     onNeedLogin: () -> Unit,
     onOpenPremium: () -> Unit = {},
+    onAdUnlock: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Halaman embed yang sedang dimuat WebView: selama ini wadah
@@ -689,6 +693,13 @@ private fun VideoPlayerContainer(
                         colors = ButtonDefaults.buttonColors(containerColor = WatchAccent),
                     ) { Text("Masuk") }
                 }
+                // Alternatif gratis: buka episode ini dengan menonton
+                // iklan (Monetag) — juga untuk tamu tanpa login.
+                OutlinedButton(
+                    onClick = onAdUnlock,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) { Text("Tonton Iklan untuk Membuka") }
             }
         } else if (curSrc != null && isEmbedUrl(curSrc.url)) {
             key(curSrc.url, fullscreen) {

@@ -6,10 +6,24 @@ import android.content.Context
  * Penyimpanan sesi login di perangkat: JWT backend + ringkasan profil.
  * JWT adalah kredensial sesi — disimpan di preferensi privat aplikasi.
  */
-class AuthStore(context: Context) {
+class AuthStore(private val context: Context) {
     private val prefs = context.getSharedPreferences("subsenpai-auth", Context.MODE_PRIVATE)
 
     val token: String? get() = prefs.getString("token", null)
+
+    /**
+     * ID perangkat persisten untuk fitur tamu (gerbang 1 episode &
+     * unlock episode lewat iklan per perangkat). Disimpan di berkas
+     * terpisah agar tidak ikut terhapus saat keluar akun, dan dikirim
+     * sebagai header X-Device-Id pada setiap panggilan API.
+     */
+    val deviceId: String
+        get() {
+            val p = context.getSharedPreferences("subsenpai-device", Context.MODE_PRIVATE)
+            return p.getString("device_id", null)
+                ?: java.util.UUID.randomUUID().toString()
+                    .also { p.edit().putString("device_id", it).apply() }
+        }
     val viewingProfileId: String? get() = prefs.getString("vp_id", null)
     val email: String? get() = prefs.getString("email", null)
     val displayName: String? get() = prefs.getString("display_name", null)

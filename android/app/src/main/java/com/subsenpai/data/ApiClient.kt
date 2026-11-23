@@ -41,6 +41,9 @@ class ApiClient(
     /** Penyedia JWT backend; diisi CatalogRepository dari AuthStore. */
     var tokenProvider: (() -> String?)? = null
 
+    /** Penyedia ID perangkat untuk fitur tamu; diisi dari AuthStore. */
+    var deviceIdProvider: (() -> String?)? = null
+
     /** Mengunci handshake agar hanya satu yang berjalan pada satu waktu. */
     private val sessionMutex = Mutex()
 
@@ -85,6 +88,7 @@ class ApiClient(
             .url("$baseUrl$path")
             .header("X-Session-Id", snap.id)
         tokenProvider?.invoke()?.let { builder.header("Authorization", "Bearer $it") }
+        deviceIdProvider?.invoke()?.let { builder.header("X-Device-Id", it) }
         when (method) {
             "POST" -> builder.post((body ?: JSONObject()).toString().toRequestBody("application/json".toMediaType()))
             "DELETE" -> builder.delete()
