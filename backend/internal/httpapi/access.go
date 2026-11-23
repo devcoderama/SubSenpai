@@ -79,7 +79,7 @@ func (a *API) episodeAccessInfo(ctx context.Context, titleID string, episodeNo i
 		select t.type,
 		       not exists(select 1 from episodes e
 		                  where e.title_id = t.id and e.episode_no < $2)
-		from titles t where t.id = $1::uuid`, titleID, episodeNo).Scan(&titleType, &isFirst)
+		from titles t where t.id = $1::uuid and not t.is_hidden`, titleID, episodeNo).Scan(&titleType, &isFirst)
 	return titleType, isFirst, err
 }
 
@@ -89,14 +89,16 @@ func (a *API) episodeAccessInfo(ctx context.Context, titleID string, episodeNo i
 // dengan awalan "premium_required:"); tamu ditambah batas SATU
 // episode per perangkat (tercatat di guest_access).
 func (a *API) gateEpisode(w http.ResponseWriter, r *http.Request, episodeID, titleID string, episodeNo int) bool {
+	// Info akses dibaca lebih dulu: judul yang disembunyikan admin
+	// (atau tidak ada) tidak bisa diputar siapa pun, termasuk premium.
+	titleType, isFirst, err := a.episodeAccessInfo(r.Context(), titleID, episodeNo)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "judul tidak ditemukan")
+		return false
+	}
 	t, _ := a.viewerTier(r)
 	if t == tierPremium {
 		return true
-	}
-	titleType, isFirst, err := a.episodeAccessInfo(r.Context(), titleID, episodeNo)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "kesalahan server")
-		return false
 	}
 	if !watchAllowed(t, titleType, isFirst) {
 		writeErr(w, http.StatusForbidden, "premium_required: konten ini khusus Premium — akun gratis hanya bisa menonton episode pertama anime & donghua")

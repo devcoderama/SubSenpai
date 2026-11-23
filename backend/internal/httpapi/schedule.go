@@ -79,7 +79,7 @@ func (a *API) matchTitleIDs(r *http.Request, typ string, groups []sources.Schedu
 	ids := map[string]string{}
 	if len(slugs) > 0 {
 		rows, err := a.pool.Query(r.Context(), `
-			select slug, id from titles where type = $1 and slug = any($2::text[])`, typ, slugs)
+			select slug, id from titles where type = $1 and slug = any($2::text[]) and not is_hidden`, typ, slugs)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -130,7 +130,7 @@ func (a *API) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	case "film":
 		rows, err := a.pool.Query(r.Context(), `
 			select id, slug, title, poster_url, year from titles
-			where type = 'film' order by updated_at desc limit 40`)
+			where type = 'film' and not is_hidden order by updated_at desc limit 40`)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, "kesalahan server")
 			return

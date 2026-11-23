@@ -9,10 +9,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -289,6 +291,100 @@ func TestAdminLive(t *testing.T) {
 		map[string]any{"duration_days": 7, "assigned_email": "user-test@local"})
 	if st != 200 || vc2["vouchers"].([]any)[0].(map[string]any)["assigned_to_email"] != "user-test@local" {
 		t.Fatalf("buat voucher assigned: status=%d body=%v", st, vc2)
+	}
+
+	// Kelola judul: seed satu judul -> tampil di katalog -> admin
+	// menyembunyikan -> hilang dari katalog & detail 404 -> tampilkan
+	// lagi -> kembali.
+	_, _ = pool.Exec(ctx, `delete from titles where slug = 'judul-uji-admin'`)
+	var titleID string
+	if err := pool.QueryRow(ctx, `
+		insert into titles (slug, type, title, poster_url, year)
+		values ('judul-uji-admin', 'anime', 'Judul Uji Admin', 'https://img/poster.jpg', 2025)
+		returning id`).Scan(&titleID); err != nil {
+		t.Fatal(err)
+	}
+	if st, lst := call("GET", "/api/v1/titles?type=anime", userJWT, nil); st != 200 ||
+		!strings.Contains(fmt.Sprint(lst), "Judul Uji Admin") {
+		t.Fatalf("judul harus tampil di katalog: status=%d", st)
+	}
+	st, admTitles := call("GET", "/api/v1/admin/titles?q=Uji", adminJWT, nil)
+	if st != 200 || len(admTitles["titles"].([]any)) != 1 {
+		t.Fatalf("admin titles: status=%d body=%v", st, admTitles)
+	}
+	if st, _ := call("PATCH", "/api/v1/admin/titles/"+titleID, adminJWT,
+		map[string]any{"is_hidden": true}); st != 200 {
+		t.Fatalf("sembunyikan judul: status=%d", st)
+	}
+	if st, lst := call("GET", "/api/v1/titles?type=anime", userJWT, nil); st != 200 ||
+		strings.Contains(fmt.Sprint(lst), "Judul Uji Admin") {
+		t.Fatalf("judul tersembunyi harus hilang dari katalog: status=%d", st)
+	}
+	if st, _ := call("GET", "/api/v1/titles/"+titleID, userJWT, nil); st != 404 {
+		t.Fatalf("detail judul tersembunyi harus 404, dapat %d", st)
+	}
+	if st, _ := call("PATCH", "/api/v1/admin/titles/"+titleID, adminJWT,
+		map[string]any{"is_hidden": false}); st != 200 {
+		t.Fatalf("tampilkan judul: status=%d", st)
+	}
+	if st, _ := call("GET", "/api/v1/titles/"+titleID, userJWT, nil); st != 200 {
+		t.Fatalf("detail judul tampil harus 200, dapat %d", st)
+	}
+	if st, _ := call("PATCH", "/api/v1/admin/titles/"+titleID, userJWT,
+		map[string]any{"is_hidden": true}); st != 403 {
+		t.Fatalf("sembunyikan judul oleh user harus 403, dapat %d", st)
+	}
+
+	// Crash: user mengunggah laporan -> admin melihat -> menghapus.
+	st, _ = call("POST", "/api/v1/crashes", userJWT, map[string]any{
+		"app_version": "0.22.0", "version_code": 49,
+		"android_version": "Android 14 (SDK 34)", "device": "POCO X6",
+		"message": "java.lang.IllegalStateException: uji",
+		"stack_trace": "java.lang.IllegalStateException: uji\n\tat com.subsenpai.MainActivity.onCreate",
+	})
+	if st != 200 {
+		t.Fatalf("unggah crash: status=%d", st)
+	}
+	st, crashes := call("GET", "/api/v1/admin/crashes", adminJWT, nil)
+	if st != 200 || len(crashes["crashes"].([]any)) != 1 {
+		t.Fatalf("daftar crash admin: status=%d body=%v", st, crashes)
+	}
+	crashID := crashes["crashes"].([]any)[0].(map[string]any)["id"].(string)
+	if st, _ := call("DELETE", "/api/v1/admin/crashes/"+crashID, adminJWT, nil); st != 200 {
+		t.Fatalf("hapus crash: status=%d", st)
+	}
+
+	// Pengaturan: admin menyalakan mode perawatan -> app-config
+	// publik mencerminkannya -> matikan lagi.
+	st, _ = call("PATCH", "/api/v1/admin/settings", adminJWT,
+		map[string]any{"maintenance_mode": true, "announcement": "Halo uji"})
+	if st != 200 {
+		t.Fatalf("ubah settings: status=%d", st)
+	}
+	st, appCfg := call("GET", "/api/v1/app-config", "", nil)
+	if st != 200 || appCfg["maintenance_mode"] != true || appCfg["announcement"] != "Halo uji" {
+		t.Fatalf("app-config: status=%d body=%v", st, appCfg)
+	}
+	if st, _ := call("PATCH", "/api/v1/admin/settings", adminJWT,
+		map[string]any{"maintenance_mode": false, "announcement": ""}); st != 200 {
+		t.Fatalf("kembalikan settings: status=%d", st)
+	}
+
+	// Log admin & info sistem bisa dibaca admin. (Tabel
+	// schema_migrations dirawat migrator Go di produksi; di uji
+	// lokal migrasi diterapkan via psql, jadi buat + isi di sini.)
+	_, _ = pool.Exec(ctx, `create table if not exists schema_migrations (version text primary key)`)
+	_, _ = pool.Exec(ctx, `insert into schema_migrations (version) values ('0017_admin_tools.sql') on conflict do nothing`)
+	st, logs := call("GET", "/api/v1/admin/logs", adminJWT, nil)
+	if st != 200 || len(logs["logs"].([]any)) == 0 {
+		t.Fatalf("log admin: status=%d", st)
+	}
+	st, sys := call("GET", "/api/v1/admin/system", adminJWT, nil)
+	if st != 200 || sys["latest_migration"] == "" || sys["counts"] == nil {
+		t.Fatalf("info sistem: status=%d body=%v", st, sys)
+	}
+	if st, _ := call("GET", "/api/v1/admin/system", userJWT, nil); st != 403 {
+		t.Fatalf("info sistem oleh user harus 403, dapat %d", st)
 	}
 
 	// CORS: preflight dari origin Netlify dijawab dengan echo origin;

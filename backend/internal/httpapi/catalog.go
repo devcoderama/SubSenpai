@@ -68,7 +68,7 @@ func (a *API) handleHome(w http.ResponseWriter, r *http.Request) {
 		trending, err := a.queryCards(ctx, `
 			select `+titleCardCols+` from titles t
 			join trending_cache tc on tc.title_id = t.id
-			where tc."window" = 'day' and not t.is_adult
+			where tc."window" = 'day' and not t.is_adult and not t.is_hidden
 			and t.type not in ('manga', 'manhua', 'manhwa')
 			order by tc.score desc limit 10`)
 		if err != nil {
@@ -78,7 +78,7 @@ func (a *API) handleHome(w http.ResponseWriter, r *http.Request) {
 			// Cache tren belum terisi worker — cadangan: rating tertinggi.
 			trending, err = a.queryCards(ctx, `
 				select `+titleCardCols+` from titles
-				where not is_adult
+				where not is_adult and not is_hidden
 				and type not in ('manga', 'manhua', 'manhwa')
 				order by rating desc nulls last, created_at desc limit 10`)
 			if err != nil {
@@ -87,7 +87,7 @@ func (a *API) handleHome(w http.ResponseWriter, r *http.Request) {
 		}
 		terbaru, err := a.queryCards(ctx, `
 			select `+titleCardCols+` from titles
-			where not is_adult
+			where not is_adult and not is_hidden
 			and type not in ('manga', 'manhua', 'manhwa')
 			order by created_at desc, id desc limit 10`)
 		if err != nil {
@@ -141,7 +141,7 @@ func (a *API) titlesPage(ctx context.Context, typ string, flt titleFilter, searc
 	// Komik dicabut dari katalog (keputusan 2026-11-22): jenis
 	// manga/manhua/manhwa tidak pernah ditampilkan, apa pun
 	// parameter jenis yang diminta klien.
-	where := "where not t.is_adult and t.type not in ('manga', 'manhua', 'manhwa')"
+	where := "where not t.is_adult and not t.is_hidden and t.type not in ('manga', 'manhua', 'manhwa')"
 	if typ != "" {
 		args = append(args, typ)
 		where += " and t.type = $" + strconv.Itoa(len(args))
@@ -293,7 +293,7 @@ func (a *API) handleGenres(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.serveCached(w, "genres?"+r.URL.RawQuery, func() (any, error) {
-		where := "where not t.is_adult and t.type not in ('manga', 'manhua', 'manhwa')"
+		where := "where not t.is_adult and not t.is_hidden and t.type not in ('manga', 'manhua', 'manhwa')"
 		args := []any{}
 		if typ != "" {
 			args = append(args, typ)
@@ -363,7 +363,7 @@ func (a *API) handleFilters(w http.ResponseWriter, r *http.Request) {
 	}
 	a.serveCached(w, "filters?"+r.URL.RawQuery, func() (any, error) {
 		ctx := r.Context()
-		base := "from titles t where not t.is_adult and t.type = $1"
+		base := "from titles t where not t.is_adult and not t.is_hidden and t.type = $1"
 		facet := func(query string, display func(string) string) ([]facetOut, error) {
 			rows, err := a.pool.Query(ctx, query, typ)
 			if err != nil {
@@ -428,6 +428,7 @@ type titleDetail struct {
 	FetchMode        string  `json:"fetch_mode"`
 	SourceDomain     *string `json:"source_domain,omitempty"`
 	SourceURLPattern *string `json:"source_url_template,omitempty"`
+	IsHidden         bool    `json:"-"`
 }
 
 type episodeItem struct {
@@ -453,12 +454,12 @@ func (a *API) loadTitleDetail(ctx context.Context, id string) (titleDetail, []ep
 	err := a.pool.QueryRow(ctx, `
 		select `+titleCardCols+`, synopsis, season, network, studio,
 		       duration_min, country, fetch_mode, source_domain,
-		       source_url_template from titles where id = $1::uuid`, id,
+		       source_url_template, is_hidden from titles where id = $1::uuid`, id,
 	).Scan(&detail.ID, &detail.Slug, &detail.Type, &detail.Title, &detail.TitleAlt,
 		&detail.Poster, &detail.Year, &detail.Status, &detail.Genres, &detail.Rating,
 		&detail.IsAdult, &detail.Synopsis, &detail.Season, &detail.Network,
 		&detail.Studio, &detail.DurationMin, &detail.Country, &detail.FetchMode,
-		&detail.SourceDomain, &detail.SourceURLPattern)
+		&detail.SourceDomain, &detail.SourceURLPattern, &detail.IsHidden)
 	if err != nil {
 		return detail, nil, nil, err
 	}
@@ -503,7 +504,8 @@ func (a *API) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	ctx := r.Context()
 	detail, episodes, chapters, err := a.loadTitleDetail(ctx, id)
-	if err != nil {
+	if err != nil || detail.IsHidden {
+		// Judul yang disembunyikan admin tidak ada bagi aplikasi.
 		writeErr(w, http.StatusNotFound, "judul tidak ditemukan")
 		return
 	}
