@@ -33,7 +33,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.material3.Text
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -312,9 +317,10 @@ fun HomeScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(modifier = Modifier.fillMaxSize(), state = listState) {
             if (browsing) {
-                // Ruang untuk header melayang (lebih tinggi saat kolom
-                // cari terbuka).
-                item { Spacer(Modifier.height(if (searchOpen) 208.dp else 140.dp)) }
+                // Ruang untuk header melayang (tingginya kini tetap —
+                // bilah cari menggantikan baris ikon, bukan menambah
+                // baris baru).
+                item { Spacer(Modifier.height(140.dp)) }
             }
             if (!homeLoaded && error == null) {
                 // Umpan beranda belum tiba: animasi merek, bukan halaman kosong.
@@ -590,6 +596,64 @@ fun HomeScreen(
                 }
             ),
         ) {
+            if (searchOpen) {
+                // Bilah cari ala Google (permintaan Rams 2026-11-23):
+                // pil melengkung penuh di posisi PALING ATAS menggantikan
+                // baris ikon — kolom cari lama di bawah tab dihapus.
+                val searchFocus = remember { FocusRequester() }
+                LaunchedEffect(Unit) { searchFocus.requestFocus() }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f).height(46.dp)
+                            .background(Color(0xFF2B2B2B), RoundedCornerShape(50))
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_search),
+                            contentDescription = null,
+                            tint = Color(0xFFB3B3B3),
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        BasicTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            singleLine = true,
+                            textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
+                            cursorBrush = SolidColor(Color.White),
+                            modifier = Modifier.weight(1f).focusRequester(searchFocus),
+                            decorationBox = { inner ->
+                                if (query.isEmpty()) {
+                                    Text(
+                                        "Cari judul, genre…",
+                                        color = Color(0xFF9E9E9E),
+                                        fontSize = 16.sp,
+                                    )
+                                }
+                                inner()
+                            },
+                        )
+                        if (query.isNotEmpty()) {
+                            IconButton(
+                                onClick = { query = "" },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Text("✕", color = Color(0xFFB3B3B3), fontSize = 15.sp)
+                            }
+                        }
+                    }
+                    TextButton(onClick = {
+                        searchOpen = false
+                        query = ""
+                    }) {
+                        Text("Batal", color = Color.White)
+                    }
+                }
+            } else {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -643,6 +707,7 @@ fun HomeScreen(
                     )
                 }
             }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
@@ -662,15 +727,6 @@ fun HomeScreen(
                         }.padding(bottom = 10.dp),
                     )
                 }
-            }
-            if (searchOpen) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text("Cari judul, genre…") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                )
             }
         }
         if (filterOpen && facets != null) {
