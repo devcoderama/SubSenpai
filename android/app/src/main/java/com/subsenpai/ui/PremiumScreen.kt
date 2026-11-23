@@ -1,7 +1,12 @@
 package com.subsenpai.ui
 
+import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -39,20 +45,80 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.PaymentMethodItem
 import com.subsenpai.data.PlanItem
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.NumberFormat
 import java.util.Locale
 
 private fun rp(n: Int): String =
     "Rp" + NumberFormat.getNumberInstance(Locale("id", "ID")).format(n)
+
+/**
+ * Ubah panduan pembayaran HTML dari Tokopay (tag <p> dsb.) menjadi
+ * daftar langkah teks bersih — nomor bawaan dibuang, penomoran
+ * dirender ulang oleh UI agar rapi.
+ */
+private fun htmlSteps(html: String): List<String> {
+    if (html.isBlank()) return emptyList()
+    val text = html
+        .replace(Regex("(?i)</p>\\s*<p>"), "\n")
+        .replace(Regex("(?i)<br\\s*/?>"), "\n")
+        .replace(Regex("<[^>]+>"), "")
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+    return text.lines()
+        .map { it.trim().replace(Regex("^\\d+\\s*[.)]\\s*"), "") }
+        .filter { it.isNotBlank() }
+}
+
+/** Unduh gambar (mis. QRIS) lalu simpan ke galeri Pictures/SubSenpai. */
+private fun downloadAndSaveImage(ctx: Context, url: String, fileName: String): Boolean {
+    return try {
+        val bytes = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 15_000
+        }.inputStream.use { it.readBytes() }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/SubSenpai")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+            val uri = ctx.contentResolver.insert(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values,
+            ) ?: return false
+            ctx.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: return false
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            ctx.contentResolver.update(uri, values, null, null)
+            true
+        } else {
+            val dir = ctx.getExternalFilesDir(Environment.DIRECTORY_PICTURES) ?: return false
+            File(dir, fileName).writeBytes(bytes)
+            true
+        }
+    } catch (e: Exception) {
+        false
+    }
+}
 
 private val methodGroups = listOf(
     "va" to "Virtual Account",
@@ -97,6 +163,7 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -
     var payResult by remember { mutableStateOf<PayResult?>(null) }
     var payPaid by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
+    var downloadingQr by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -411,30 +478,145 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -
                 if (pr == null) {
                     Text("Belum ada pembayaran yang dibuat.", color = Color(0xFFB3B3B3))
                 } else {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text("Selesaikan pembayaran", style = MaterialTheme.typography.titleMedium)
-                            Text("Total bayar: ${rp(pr.totalBayar)}")
-                            if (pr.nomorVa.isNotBlank()) {
+                    // Kartu pembayaran ala Netflix (permintaan Rams
+                    // 2026-11-23): total besar, QR tampil langsung di
+                    // kotak putih agar bisa dipindai, ada tombol unduh
+                    // QRIS, panduan bersih tanpa tag HTML.
+                    val clipboard = LocalClipboardManager.current
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                "Selesaikan Pembayaran",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                            )
+                            selectedMethod?.let {
                                 Text(
-                                    "Nomor VA / kode bayar: ${pr.nomorVa}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
+                                    "via ${it.name}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFB3B3B3),
                                 )
                             }
-                            if (pr.panduan.isNotBlank()) {
-                                Text(pr.panduan, style = MaterialTheme.typography.bodySmall)
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (pr.payUrl.isNotBlank()) {
-                                    Button(onClick = {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pr.payUrl)))
-                                    }) { Text("Buka halaman bayar") }
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "Total bayar",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFB3B3B3),
+                            )
+                            Text(
+                                rp(pr.totalBayar),
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                            )
+                            if (pr.qrLink.isNotBlank()) {
+                                Spacer(Modifier.height(16.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .background(Color.White, RoundedCornerShape(12.dp))
+                                        .padding(14.dp),
+                                ) {
+                                    AsyncImage(
+                                        model = pr.qrLink,
+                                        contentDescription = "Kode QRIS",
+                                        modifier = Modifier.size(220.dp),
+                                    )
                                 }
-                                if (pr.qrLink.isNotBlank()) {
-                                    OutlinedButton(onClick = {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pr.qrLink)))
-                                    }) { Text("Lihat QR") }
+                                Spacer(Modifier.height(14.dp))
+                                OutlinedButton(
+                                    enabled = !downloadingQr,
+                                    onClick = {
+                                        downloadingQr = true
+                                        scope.launch {
+                                            val ok = withContext(Dispatchers.IO) {
+                                                downloadAndSaveImage(
+                                                    context, pr.qrLink,
+                                                    "QRIS-SubSenpai-${pr.sessionId.take(8)}.png",
+                                                )
+                                            }
+                                            downloadingQr = false
+                                            info = if (ok) {
+                                                "QRIS tersimpan — lihat di galeri (album SubSenpai)."
+                                            } else {
+                                                "Gagal mengunduh QRIS. Coba lagi."
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text(if (downloadingQr) "Mengunduh…" else "Unduh QRIS") }
+                            }
+                            if (pr.nomorVa.isNotBlank()) {
+                                Spacer(Modifier.height(16.dp))
+                                Text(
+                                    "Nomor VA / Kode Bayar",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFB3B3B3),
+                                )
+                                Text(
+                                    pr.nomorVa,
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        clipboard.setText(AnnotatedString(pr.nomorVa))
+                                        info = "Nomor VA disalin."
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text("Salin Nomor") }
+                            }
+                            if (pr.payUrl.isNotBlank()) {
+                                Spacer(Modifier.height(12.dp))
+                                Button(
+                                    onClick = {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pr.payUrl)))
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text("Buka Halaman Pembayaran") }
+                            }
+                        }
+                    }
+                    val steps = remember(pr.panduan) { htmlSteps(pr.panduan) }
+                    if (steps.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    "Cara Membayar",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                steps.forEachIndexed { i, s ->
+                                    Row(modifier = Modifier.padding(vertical = 3.dp)) {
+                                        Text(
+                                            "${i + 1}.",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = FeedPurple,
+                                            modifier = Modifier.width(28.dp),
+                                        )
+                                        Text(
+                                            s,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color(0xFFE5E5E5),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -460,9 +642,10 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -
                             }
                         }
                     } else {
-                        OutlinedButton(
+                        Button(
                             enabled = !checking,
                             onClick = { checkPayment() },
+                            colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text(if (checking) "Mengecek…" else "Sudah bayar? Cek Pembayaran") }
                         Text(
