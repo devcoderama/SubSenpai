@@ -79,10 +79,11 @@ tr:last-child td { border-bottom: none; }
 .btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
 .btn.small { padding: 5px 12px; font-size: 0.82rem; }
 .btn.purple { background: #6d28d9; }
-input[type="text"], input[type="number"], input[type="search"] {
+input[type="text"], input[type="number"], input[type="search"], select {
   background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
   border-radius: 9px; padding: 9px 12px; font-family: inherit; font-size: 0.92rem;
 }
+.row-actions { display: flex; gap: 6px; }
 .toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .toolbar input { flex: 1; min-width: 200px; }
 .group-title { margin: 22px 0 10px; font-size: 1.05rem; }

@@ -114,6 +114,8 @@ func (a *API) Router() http.Handler {
 			r.Get("/api/v1/admin/users", a.handleAdminUsers)
 			r.Patch("/api/v1/admin/users/{id}", a.handleAdminUserUpdate)
 			r.Get("/api/v1/admin/transactions", a.handleAdminTransactions)
+			r.Patch("/api/v1/admin/transactions/{id}", a.handleAdminTransactionUpdate)
+			r.Delete("/api/v1/admin/transactions/{id}", a.handleAdminTransactionDelete)
 			r.Get("/api/v1/admin/plans", a.handleAdminPlans)
 			r.Patch("/api/v1/admin/plans/{id}", a.handleAdminPlanUpdate)
 			r.Get("/api/v1/me", a.handleMe)

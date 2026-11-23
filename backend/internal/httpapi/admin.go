@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"subsenpai/backend/internal/auth"
+	"subsenpai/backend/internal/billing"
 )
 
 // Endpoint admin untuk dashboard web (web_admin/) — semua di balik
@@ -170,6 +171,138 @@ type adminTransaction struct {
 	Amount    int       `json:"amount"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// adminTransactionByID membaca ulang satu transaksi (dengan pemiliknya).
+func (a *API) adminTransactionByID(w http.ResponseWriter, r *http.Request, id string) (adminTransaction, bool) {
+	var t adminTransaction
+	err := a.pool.QueryRow(r.Context(), `
+		select s.id, coalesce(p.email, ''), coalesce(p.display_name, ''),
+		       s.purpose, coalesce(s.plan, ''), s.provider, s.amount,
+		       s.status, s.created_at
+		from payment_sessions s
+		join profiles p on p.id = s.user_id
+		where s.id = $1::uuid`, id,
+	).Scan(&t.ID, &t.Email, &t.Name, &t.Purpose, &t.Plan,
+		&t.Provider, &t.Amount, &t.Status, &t.CreatedAt)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "transaksi tidak ditemukan")
+		return t, false
+	}
+	return t, true
+}
+
+// handleAdminTransactionUpdate: edit status/jumlah/paket transaksi.
+// Mengubah status menjadi 'paid' dari status lain menjalankan jalur
+// aktivasi resmi (billing.ActivateSession — premium diperpanjang /
+// voucher bisa ditukar), sama seperti callback gateway. Mengubah
+// status KELUAR dari 'paid' tidak mencabut premium yang sudah aktif.
+func (a *API) handleAdminTransactionUpdate(w http.ResponseWriter, r *http.Request) {
+	p, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Status *string `json:"status"`
+		Amount *int    `json:"amount"`
+		Plan   *string `json:"plan"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "format permintaan tidak valid")
+		return
+	}
+	if req.Status != nil && *req.Status != "pending" && *req.Status != "paid" && *req.Status != "expired" {
+		writeErr(w, http.StatusBadRequest, "status harus pending, paid, atau expired")
+		return
+	}
+	if req.Amount != nil && *req.Amount <= 0 {
+		writeErr(w, http.StatusBadRequest, "jumlah harus lebih dari 0")
+		return
+	}
+	ctx := r.Context()
+	if req.Plan != nil && *req.Plan != "" {
+		if _, ok := billing.PlanByIDCtx(ctx, a.pool, *req.Plan); !ok {
+			writeErr(w, http.StatusBadRequest, "paket tidak dikenal: "+*req.Plan)
+			return
+		}
+	}
+	cur, ok := a.adminTransactionByID(w, r, id)
+	if !ok {
+		return
+	}
+	// Koreksi jumlah/paket diterapkan lebih dulu agar aktivasi
+	// memakai paket yang benar.
+	if req.Amount != nil || req.Plan != nil {
+		if _, err := a.pool.Exec(ctx, `
+			update payment_sessions
+			set amount = coalesce($2, amount), plan = coalesce($3, plan)
+			where id = $1::uuid`, id, req.Amount, req.Plan); err != nil {
+			writeErr(w, http.StatusInternalServerError, "gagal mengubah transaksi")
+			return
+		}
+	}
+	note := ""
+	if req.Status != nil && *req.Status != cur.Status {
+		if *req.Status == "paid" {
+			// Jalur resmi: menandai lunas + mengaktifkan haknya.
+			if err := billing.ActivateSession(ctx, a.pool, id, "admin-manual"); err != nil {
+				writeErr(w, http.StatusInternalServerError, "gagal mengaktifkan transaksi: "+err.Error())
+				return
+			}
+			note = "Status diubah menjadi paid dan hak pengguna diaktifkan."
+		} else {
+			if _, err := a.pool.Exec(ctx, `
+				update payment_sessions set status = $2 where id = $1::uuid`,
+				id, *req.Status); err != nil {
+				writeErr(w, http.StatusInternalServerError, "gagal mengubah status")
+				return
+			}
+			if cur.Status == "paid" {
+				note = "Status diubah, tetapi premium/voucher yang sudah terlanjur aktif TIDAK dicabut."
+			}
+		}
+	}
+	_, _ = a.pool.Exec(ctx, `
+		insert into admin_logs (admin_id, action, target, detail)
+		values ($1::uuid, 'transaction_update', $2, $3)`,
+		p.ID, id, map[string]any{
+			"status": req.Status, "amount": req.Amount, "plan": req.Plan,
+			"status_before": cur.Status,
+		})
+	updated, ok := a.adminTransactionByID(w, r, id)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"transaction": updated, "note": note})
+}
+
+// handleAdminTransactionDelete: hapus permanen satu transaksi.
+// Premium/voucher yang sudah terlanjur aktif dari transaksi ini
+// TIDAK ikut dicabut (riwayat aktivasi berdiri sendiri).
+func (a *API) handleAdminTransactionDelete(w http.ResponseWriter, r *http.Request) {
+	p, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	cur, ok := a.adminTransactionByID(w, r, id)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	if _, err := a.pool.Exec(ctx, `delete from payment_sessions where id = $1::uuid`, id); err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal menghapus transaksi")
+		return
+	}
+	_, _ = a.pool.Exec(ctx, `
+		insert into admin_logs (admin_id, action, target, detail)
+		values ($1::uuid, 'transaction_delete', $2, $3)`,
+		p.ID, id, map[string]any{
+			"email": cur.Email, "amount": cur.Amount,
+			"status": cur.Status, "purpose": cur.Purpose, "plan": cur.Plan,
+		})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // handleAdminTransactions: sesi pembayaran terbaru semua pengguna.

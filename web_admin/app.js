@@ -421,11 +421,81 @@ function trxTable(list) {
   }
   return html + '</table>';
 }
+/* ----- Transaksi (dengan edit & hapus) ----- */
+let trxCache = [];
+let planCache = [];
 async function pageTransaksi() {
   $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
-  const r = await api('/api/v1/admin/transactions?limit=100');
+  const [r, rp2] = await Promise.all([
+    api('/api/v1/admin/transactions?limit=100'),
+    api('/api/v1/admin/plans'),
+  ]);
   if (r.status !== 200) return bodyError(r);
-  $('pageBody').innerHTML = trxTable(r.body.transactions || []);
+  trxCache = r.body.transactions || [];
+  planCache = rp2.status === 200 ? (rp2.body.plans || []) : [];
+  renderTrx(null);
+}
+function renderTrx(editId) {
+  if (!trxCache.length) { $('pageBody').innerHTML = '<p class="muted">Belum ada transaksi.</p>'; return; }
+  let html = '<p class="muted">Mengubah status menjadi <b>paid</b> mengaktifkan hak pengguna ' +
+    '(premium diperpanjang / voucher bisa ditukar), sama seperti callback gateway. ' +
+    'Menghapus transaksi tidak mencabut premium yang sudah terlanjur aktif.</p>' +
+    '<table><tr><th>Waktu</th><th>Pengguna</th><th>Keperluan</th><th>Provider</th><th>Jumlah</th><th>Status</th><th>Aksi</th></tr>';
+  for (const t of trxCache) {
+    if (t.id === editId) {
+      const planOpts = [''].concat(planCache.map((p) => p.id)).map((id) =>
+        '<option value="' + esc(id) + '"' + (id === t.plan ? ' selected' : '') + '>' + esc(id || '(tanpa paket)') + '</option>').join('');
+      const statusOpts = ['pending', 'paid', 'expired'].map((s) =>
+        '<option value="' + s + '"' + (s === t.status ? ' selected' : '') + '>' + s + '</option>').join('');
+      html += '<tr><td>' + esc(fmtDate(t.created_at)) + '</td>' +
+        '<td>' + esc(t.display_name || '(tanpa nama)') + '<div class="muted small">' + esc(t.email) + '</div></td>' +
+        '<td><select id="edit-plan">' + planOpts + '</select><div class="muted small">' + esc(t.purpose) + '</div></td>' +
+        '<td>' + esc(t.provider) + '</td>' +
+        '<td><input type="number" id="edit-amount" value="' + t.amount + '" min="1" step="500" style="width:110px"></td>' +
+        '<td><select id="edit-status">' + statusOpts + '</select></td>' +
+        '<td><div class="row-actions"><button class="btn small" data-trx-save="' + esc(t.id) + '">Simpan</button>' +
+        '<button class="btn ghost small" data-trx-cancel="1">Batal</button></div></td></tr>';
+    } else {
+      html += '<tr><td>' + esc(fmtDate(t.created_at)) + '</td>' +
+        '<td>' + esc(t.display_name || '(tanpa nama)') + '<div class="muted small">' + esc(t.email) + '</div></td>' +
+        '<td>' + esc(t.purpose === 'voucher' ? 'Voucher' : 'Langganan') + (t.plan ? '<div class="muted small">' + esc(t.plan) + '</div>' : '') + '</td>' +
+        '<td>' + esc(t.provider) + '</td><td>' + rp(t.amount) + '</td>' +
+        '<td><span class="badge ' + esc(t.status) + '">' + esc(t.status) + '</span></td>' +
+        '<td><div class="row-actions"><button class="btn ghost small" data-trx-edit="' + esc(t.id) + '">Edit</button>' +
+        '<button class="btn small" data-trx-del="' + esc(t.id) + '">Hapus</button></div></td></tr>';
+    }
+  }
+  $('pageBody').innerHTML = html + '</table>';
+  document.querySelectorAll('button[data-trx-edit]').forEach((el) =>
+    el.addEventListener('click', () => renderTrx(el.dataset.trxEdit)));
+  document.querySelectorAll('button[data-trx-cancel]').forEach((el) =>
+    el.addEventListener('click', () => renderTrx(null)));
+  document.querySelectorAll('button[data-trx-save]').forEach((el) =>
+    el.addEventListener('click', async () => {
+      const id = el.dataset.trxSave;
+      const body = {
+        status: $('edit-status').value,
+        amount: parseInt($('edit-amount').value, 10),
+        plan: $('edit-plan').value,
+      };
+      const rr = await api('/api/v1/admin/transactions/' + encodeURIComponent(id), { method: 'PATCH', body });
+      if (rr.status === 200) {
+        toast('Transaksi disimpan.' + (rr.body.note ? ' ' + rr.body.note : ''));
+        pageTransaksi();
+      } else {
+        toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+      }
+    }));
+  document.querySelectorAll('button[data-trx-del]').forEach((el) =>
+    el.addEventListener('click', async () => {
+      const t = trxCache.find((x) => x.id === el.dataset.trxDel);
+      const msg = 'Hapus permanen transaksi ' + (t ? (t.email + ' — ' + rp(t.amount) + ' (' + t.status + ')') : 'ini') +
+        '?\n\nPremium/voucher yang sudah terlanjur aktif dari transaksi ini TIDAK ikut dicabut.';
+      if (!confirm(msg)) return;
+      const rr = await api('/api/v1/admin/transactions/' + encodeURIComponent(el.dataset.trxDel), { method: 'DELETE' });
+      if (rr.status === 200) { toast('Transaksi dihapus.'); pageTransaksi(); }
+      else toast('Gagal menghapus: ' + ((rr.body && rr.body.error) || rr.status));
+    }));
 }
 
 /* ================= Boot ================= */

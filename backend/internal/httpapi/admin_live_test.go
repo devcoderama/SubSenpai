@@ -61,6 +61,13 @@ func TestAdminLive(t *testing.T) {
 		userID); err != nil {
 		t.Fatal(err)
 	}
+	var pendingSessionID string
+	if err := pool.QueryRow(ctx, `
+		insert into payment_sessions (user_id, purpose, provider, amount, unique_code, status, plan, expires_at)
+		values ($1::uuid, 'subscription', 'tokopay', 8000, 30, 'pending', 'premium-30', now() + interval '15 minutes')
+		returning id`, userID).Scan(&pendingSessionID); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := config.Config{JWTSecret: "admin-test-secret", JWTTTLHours: 24, SessionTTLHours: 1}
 	a := New(pool, middleware.NewSessions(time.Hour), cfg)
@@ -189,6 +196,56 @@ func TestAdminLive(t *testing.T) {
 		t.Fatalf("update plan: status=%d body=%v", st, updPlan)
 	}
 	call("PATCH", "/api/v1/admin/plans/"+planID, adminJWT, map[string]any{"price": oldPrice})
+
+	// Admin: edit transaksi pending -> paid harus mengaktifkan
+	// premium pengguna (jalur ActivateSession yang sama dengan
+	// callback gateway).
+	st, updTrx := call("PATCH", "/api/v1/admin/transactions/"+pendingSessionID, adminJWT,
+		map[string]any{"status": "paid"})
+	if st != 200 || updTrx["transaction"].(map[string]any)["status"] != "paid" {
+		t.Fatalf("edit transaksi ke paid: status=%d body=%v", st, updTrx)
+	}
+	var premiumUntil time.Time
+	if err := pool.QueryRow(ctx, `
+		select premium_until from profiles where id = $1::uuid`, userID).Scan(&premiumUntil); err != nil {
+		t.Fatal(err)
+	}
+	if premiumUntil.Before(time.Now().Add(20 * 24 * time.Hour)) {
+		t.Fatalf("premium harus diperpanjang ~30 hari, dapat %v", premiumUntil)
+	}
+	// Admin: koreksi jumlah.
+	st, updTrx = call("PATCH", "/api/v1/admin/transactions/"+pendingSessionID, adminJWT,
+		map[string]any{"amount": 9000})
+	if st != 200 || int(updTrx["transaction"].(map[string]any)["amount"].(float64)) != 9000 {
+		t.Fatalf("edit jumlah transaksi: status=%d body=%v", st, updTrx)
+	}
+	// Turunkan lagi user uji menjadi user biasa (di atas ia sempat
+	// diangkat admin untuk uji promote) — autentikator membaca role
+	// dari database per request.
+	if st, _ := call("PATCH", "/api/v1/admin/users/"+userID, adminJWT,
+		map[string]any{"role": "user"}); st != 200 {
+		t.Fatalf("demote user uji: status=%d", st)
+	}
+	// User biasa tidak boleh edit/hapus transaksi.
+	if st, _ := call("PATCH", "/api/v1/admin/transactions/"+pendingSessionID, userJWT,
+		map[string]any{"status": "expired"}); st != 403 {
+		t.Fatalf("edit transaksi oleh user harus 403, dapat %d", st)
+	}
+	if st, _ := call("DELETE", "/api/v1/admin/transactions/"+pendingSessionID, userJWT, nil); st != 403 {
+		t.Fatalf("hapus transaksi oleh user harus 403, dapat %d", st)
+	}
+	// Admin: hapus transaksi -> hilang dari daftar & database.
+	if st, _ := call("DELETE", "/api/v1/admin/transactions/"+pendingSessionID, adminJWT, nil); st != 200 {
+		t.Fatalf("hapus transaksi: status=%d", st)
+	}
+	var sisa int
+	if err := pool.QueryRow(ctx, `
+		select count(*) from payment_sessions where id = $1::uuid`, pendingSessionID).Scan(&sisa); err != nil {
+		t.Fatal(err)
+	}
+	if sisa != 0 {
+		t.Fatalf("transaksi harus terhapus dari database, sisa=%d", sisa)
+	}
 
 	// CORS: preflight dari origin Netlify dijawab dengan echo origin;
 	// origin asing tidak mendapat izin.
