@@ -15,6 +15,8 @@ const kuroSchedFixture = `
 <div class="listupd">
 <article class="bs"><div class="bsx"><a href="/anime/title-a" title="Title A"><div class="limit"><img src="data:image/svg+xml,%3Csvg%3E" data-lazy-src="https://i2.wp.com/kuronime.sbs/wp-content/uploads/a.jpg"></div><div class="tt">Jam 16:26 17 Title A</div></a></div></article>
 <article class="bs"><div class="bsx"><a href="/anime/title-b" title="Title B"><div class="limit"><img src="https://i2.wp.com/kuronime.sbs/wp-content/uploads/b.jpg"></div><div class="tt">Sudah Rilis 8 Title B</div></a></div></article>
+<article class="bs"><div class="bsx"><a href="/anime/title-e" title="Title E"><div class="limit"><img src="https://kuronime.sbs/wp-content/themes/animenonton/assets/images/controls-play.svg"><img width="225" height="321" src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20225%20321'%3E%3C/svg%3E" data-lazy-src="https://i0.wp.com/kuronime.sbs/wp-content/uploads/2026/10/e.jpg" class="attachment-post-thumbnail wp-post-image"></div><div class="tt">Jam 13:44 8 Title E</div></a></div></article>
+<article class="bs"><div class="bsx"><a href="/anime/title-f" title="Title F"><div class="limit"><img src="https://kuronime.sbs/wp-content/themes/animenonton/assets/images/controls-play.svg"></div><div class="tt">Jam 22:28 8 Title F</div></a></div></article>
 </div>
 <h3>Jum'at</h3>
 <div class="listupd">
@@ -37,8 +39,19 @@ func TestParseKuronimeSchedule(t *testing.T) {
 		t.Fatalf("urutan hari salah: %s, %s, %s", groups[0].Day, groups[1].Day, groups[2].Day)
 	}
 	minggu := groups[1]
-	if len(minggu.Items) != 2 {
-		t.Fatalf("item Minggu = %d, mau 2", len(minggu.Items))
+	if len(minggu.Items) != 4 {
+		t.Fatalf("item Minggu = %d, mau 4", len(minggu.Items))
+	}
+	// Kartu E (markup asli halaman 2026-11-23): gambar overlay tema
+	// controls-play.svg mendahului poster; poster harus diambil
+	// dari data-lazy-src, bukan dari gambar pertama.
+	e := minggu.Items[2]
+	if e.Slug != "title-e" || e.Poster != "https://i0.wp.com/kuronime.sbs/wp-content/uploads/2026/10/e.jpg" {
+		t.Fatalf("poster E harus dari data-lazy-src poster kedua: %+v", e)
+	}
+	// Kartu F hanya punya ikon tema: poster harus kosong, bukan .svg.
+	if f := minggu.Items[3]; f.Slug != "title-f" || f.Poster != "" {
+		t.Fatalf("poster F harus kosong: %+v", f)
 	}
 	a := minggu.Items[0]
 	if a.Slug != "title-a" || a.Title != "Title A" || a.Time != "16:26" || a.Episode != 17 {

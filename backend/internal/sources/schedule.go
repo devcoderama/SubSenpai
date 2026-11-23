@@ -99,16 +99,42 @@ func schedAttr(tag, name string) string {
 	return ""
 }
 
-// schedPoster mengambil URL poster dari blok kartu: utamakan
-// data-lazy-src (src sering masih placeholder SVG data:), lalu
-// data-src, lalu src yang bukan data:.
-func schedPoster(block string) string {
-	img := schedImgRe.FindString(block)
-	if img == "" {
-		return ""
+// schedPosterURL menilai satu nilai atribut kandidat: tampak
+// seperti foto poster sungguhan bila berupa URL http(s)/relatif
+// dan BUKAN placeholder (data:), ikon SVG tema, atau gambar
+// tombol play tema (controls-play.svg).
+func schedPosterURL(v string) bool {
+	if v == "" || strings.HasPrefix(v, "data:") {
+		return false
 	}
-	for _, name := range []string{"data-lazy-src", "data-src", "src"} {
-		if v := schedAttr(img, name); v != "" && !strings.HasPrefix(v, "data:") {
+	lv := strings.ToLower(v)
+	if strings.HasSuffix(lv, ".svg") || strings.Contains(lv, "controls-play") {
+		return false
+	}
+	return strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "https://") || strings.HasPrefix(v, "/")
+}
+
+// schedPoster mengambil URL poster dari blok kartu: memeriksa
+// SEMUA <img> di blok (kartu Kuronime kadang memuat gambar
+// overlay tema/play lebih dulu) dan untuk tiap gambar mencoba
+// data-lazy-src, data-src, srcset (URL pertama), lalu src —
+// menerima hanya URL yang tampak seperti foto poster. Alasan:
+// 2026-11-23 produksi mengembalikan controls-play.svg (ikon
+// tombol play tema animenonton) sebagai poster jadwal anime,
+// padahal data-lazy-src kartu memuat poster .jpg yang benar.
+func schedPoster(block string) string {
+	for _, img := range schedImgRe.FindAllString(block, -1) {
+		for _, name := range []string{"data-lazy-src", "data-src"} {
+			if v := schedAttr(img, name); schedPosterURL(v) {
+				return v
+			}
+		}
+		if ss := schedAttr(img, "srcset"); ss != "" {
+			if v := strings.Fields(ss)[0]; schedPosterURL(v) {
+				return v
+			}
+		}
+		if v := schedAttr(img, "src"); schedPosterURL(v) {
 			return v
 		}
 	}
