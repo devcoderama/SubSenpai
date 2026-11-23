@@ -17,12 +17,36 @@ import java.io.StringWriter
  */
 object CrashReporter {
     private const val FILE_NAME = "pending_crash.json"
+    private const val PREFS = "subsenpai-crash"
+    private const val KEY_STREAK = "streak"
+
+    /** Jumlah crash beruntun tanpa sesi sehat di antaranya. */
+    fun crashStreak(context: Context): Int =
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_STREAK, 0)
+
+    fun resetStreak(context: Context) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_STREAK, 0).apply()
+    }
+
+    /** Dipanggil setelah aplikasi terbukti berjalan sehat. */
+    fun markHealthy(context: Context) = resetStreak(context)
+
+    private fun bumpStreak(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        // commit() sinkron: proses akan mati sesudah handler ini.
+        prefs.edit().putInt(KEY_STREAK, prefs.getInt(KEY_STREAK, 0) + 1).commit()
+    }
 
     fun install(context: Context) {
         val appContext = context.applicationContext
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             try {
+                bumpStreak(appContext)
                 val sw = StringWriter()
                 error.printStackTrace(PrintWriter(sw))
                 val body = JSONObject()

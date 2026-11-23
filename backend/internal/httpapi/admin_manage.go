@@ -424,10 +424,14 @@ func (a *API) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 	var migration string
 	_ = a.pool.QueryRow(ctx, `
 		select version from schema_migrations order by version desc limit 1`).Scan(&migration)
+	var dbSize int64
+	_ = a.pool.QueryRow(ctx, `select pg_database_size(current_database())`).Scan(&dbSize)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"go_version":       runtime.Version(),
 		"server_time":      time.Now(),
 		"latest_migration": migration,
+		"server":           collectServerMetrics(),
+		"db_size_bytes":    dbSize,
 		"counts": map[string]any{
 			"users":         count(`select count(*) from profiles`),
 			"admins":        count(`select count(*) from profiles where role = 'admin'`),

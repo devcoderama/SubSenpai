@@ -993,6 +993,7 @@ private fun HeroSection(
             url = if (hiRes) hiResPosterUrl(hero.posterUrl) else hero.posterUrl,
             title = hero.title,
             modifier = Modifier.fillMaxSize(),
+            wide = true,
         )
         Box(
             modifier = Modifier.fillMaxSize().background(
@@ -1133,7 +1134,7 @@ private fun PosterRow(list: List<TitleCard>, onOpen: (String) -> Unit) {
  * bergaya Netflix agar kisi tetap terlihat utuh.
  */
 @Composable
-fun PosterImage(url: String?, title: String, modifier: Modifier = Modifier) {
+fun PosterImage(url: String?, title: String, modifier: Modifier = Modifier, wide: Boolean = false) {
     var gagal by remember(url) { mutableStateOf(false) }
     if (url.isNullOrBlank() || gagal) {
         Box(
@@ -1170,6 +1171,13 @@ fun PosterImage(url: String?, title: String, modifier: Modifier = Modifier) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(url)
+                // Batasi ukuran dekode (v0.24.12): poster sumber
+                // bisa 2000px+ — mendekode ukuran penuh untuk sel
+                // grid kecil memboroskan RAM puluhan kali lipat
+                // dan membuat gulir tersendat sampai aplikasi
+                // tidak merespons. Kartu cukup 540px; hero dan
+                // latar detail (wide) 1080px.
+                .size(if (wide) 1080 else 540, if (wide) 1620 else 810)
                 .addHeader(
                     "User-Agent",
                     "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",

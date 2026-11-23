@@ -612,6 +612,7 @@ private fun DetailBackdrop(url: String?, title: String, onBack: () -> Unit, hiRe
             url = url,
             title = title,
             modifier = Modifier.fillMaxSize().blur(30.dp),
+            wide = true,
         )
         Box(
             modifier = Modifier.fillMaxSize()
@@ -622,6 +623,7 @@ private fun DetailBackdrop(url: String?, title: String, onBack: () -> Unit, hiRe
             title = title,
             modifier = Modifier.fillMaxHeight().aspectRatio(2f / 3f)
                 .align(Alignment.Center),
+            wide = true,
         )
         Box(
             modifier = Modifier.fillMaxSize().background(

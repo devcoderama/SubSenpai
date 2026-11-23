@@ -173,6 +173,29 @@ const rp = (n) => 'Rp' + Number(n || 0).toLocaleString('id-ID');
 const fmtDate = (iso) => iso
   ? new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   : '—';
+const fmtBytes = (n) => {
+  n = Number(n || 0);
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i === 0 ? String(n) : n.toFixed(1)) + ' ' + u[i];
+};
+const fmtUptime = (s) => {
+  s = Number(s || 0);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return (d > 0 ? d + ' hari ' : '') + h + ' jam ' + m + ' mnt';
+};
+function resBar(pct) {
+  const p = Math.max(0, Math.min(100, pct || 0));
+  const cls = p >= 90 ? 'crit' : (p >= 70 ? 'warn' : '');
+  return '<div class="bar ' + cls + '"><div style="width:' + p.toFixed(0) + '%"></div></div>';
+}
+function resCard(lbl, valText, pct, sub) {
+  return '<div class="card"><div class="lbl">' + esc(lbl) + '</div>' +
+    '<div class="num" style="font-size:1.35rem">' + esc(valText) + '</div>' +
+    resBar(pct) +
+    (sub ? '<div class="lbl" style="margin-top:6px">' + sub + '</div>' : '') + '</div>';
+}
 let toastTimer = null;
 function toast(msg) {
   const t = $('toast');
@@ -275,6 +298,7 @@ const GROUP_LABELS = { va: 'Virtual Account', ewallet: 'E-Wallet', qris: 'QRIS',
 const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', pengumuman: 'Pengumuman Banner', notifikasi: 'Notifikasi', log: 'Log Admin', sistem: 'Info Sistem' };
 
 function route() {
+  if (window.__pageTimer) { clearInterval(window.__pageTimer); window.__pageTimer = null; }
   const name = (location.hash.replace('#/', '') || 'ringkasan').split('?')[0];
   const page = TITLES[name] ? name : 'ringkasan';
   document.querySelectorAll('#mainNav a').forEach((a) =>
@@ -839,17 +863,34 @@ async function pageLog() {
 }
 
 /* ----- Info Sistem ----- */
-async function pageSistem() {
-  $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
+async function pageSistem(keep) {
+  if (!keep) $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
   const r = await api('/api/v1/admin/system');
   if (r.status !== 200) return bodyError(r);
-  const b = r.body, c = b.counts || {}, cfg = b.config || {};
+  const b = r.body, c = b.counts || {}, cfg = b.config || {}, sv = b.server || {};
   const flag = (v) => v ? '<span class="badge premium">terhubung</span>' : '<span class="badge expired">belum diatur</span>';
-  let html = '<div class="cards">' +
-    statCard('Pengguna', c.users) + statCard('Admin', c.admins) + statCard('Premium aktif', c.premium_users) +
-    statCard('Judul', c.titles) + statCard('Judul tersembunyi', c.titles_hidden) + statCard('Episode', c.episodes) +
-    statCard('Transaksi', c.transactions) + statCard('Voucher aktif', c.vouchers_active) +
-    statCard('Laporan crash', c.crash_reports) + statCard('Postingan feed', c.feed_posts) + '</div>';
+  const loadTxt = (sv.load || []).map((x) => Number(x).toFixed(2)).join(' · ');
+  let html = '<h2 style="margin-top:4px">Sumber Daya Server</h2><div class="cards">' +
+    resCard('CPU', (Number(sv.cpu_percent || 0)).toFixed(1) + '%', sv.cpu_percent,
+      'Load ' + esc(loadTxt || '—') + ' · ' + esc(sv.num_cpu || 0) + ' core') +
+    resCard('RAM terpakai', fmtBytes(sv.mem_used_bytes), sv.mem_percent,
+      'dari ' + fmtBytes(sv.mem_total_bytes) + ' · sisa ' + fmtBytes((sv.mem_total_bytes || 0) - (sv.mem_used_bytes || 0))) +
+    resCard('Disk terpakai', fmtBytes(sv.disk_used_bytes), sv.disk_percent,
+      'dari ' + fmtBytes(sv.disk_total_bytes) + ' · sisa ' + fmtBytes((sv.disk_total_bytes || 0) - (sv.disk_used_bytes || 0))) +
+    resCard('Bandwidth (sejak server nyala)', '↓ ' + fmtBytes(sv.net_rx_bytes) + ' · ↑ ' + fmtBytes(sv.net_tx_bytes), 0,
+      'Laju sekarang: ↓ ' + fmtBytes(sv.net_rx_rate) + '/dtk · ↑ ' + fmtBytes(sv.net_tx_rate) + '/dtk') +
+    '</div>';
+  html += '<div class="card" style="margin-bottom:18px"><table>' +
+    '<tr><th>Hostname</th><td>' + esc(sv.hostname || '—') + ' (' + esc(sv.os || '—') + ')</td></tr>' +
+    '<tr><th>Uptime server</th><td>' + esc(fmtUptime(sv.uptime_seconds)) + '</td></tr>' +
+    '<tr><th>Memori proses API</th><td>' + fmtBytes(sv.process_mem_bytes) + ' · ' + esc(sv.goroutines || 0) + ' goroutine</td></tr>' +
+    '<tr><th>Ukuran database</th><td>' + fmtBytes(b.db_size_bytes) + '</td></tr></table>' +
+    '<p class="muted" style="margin-bottom:0">Halaman ini menyegarkan otomatis tiap 10 detik. Total bandwidth dihitung OS sejak server menyala; kuota bulanan hanya terlihat di panel penyedia VPS.</p></div>';
+  html += '<div class="cards">' +
+    card('Pengguna', c.users) + card('Admin', c.admins) + card('Premium aktif', c.premium_users) +
+    card('Judul', c.titles) + card('Judul tersembunyi', c.titles_hidden) + card('Episode', c.episodes) +
+    card('Transaksi', c.transactions) + card('Voucher aktif', c.vouchers_active) +
+    card('Laporan crash', c.crash_reports) + card('Postingan feed', c.feed_posts) + '</div>';
   html += '<div class="card"><h2 style="margin-top:0">Server</h2><table>' +
     '<tr><th>Go</th><td>' + esc(b.go_version) + '</td></tr>' +
     '<tr><th>Migrasi terakhir</th><td>' + esc(b.latest_migration || '—') + '</td></tr>' +
@@ -857,9 +898,14 @@ async function pageSistem() {
   html += '<div class="card" style="margin-top:18px"><h2 style="margin-top:0">Konfigurasi</h2><table>' +
     '<tr><th>Login Google</th><td>' + flag(cfg.google_login) + '</td></tr>' +
     '<tr><th>Tokopay</th><td>' + flag(cfg.tokopay) + '</td></tr>' +
+    '<tr><th>Discord (bot komunitas)</th><td>' + flag(cfg.discord) + '</td></tr>' +
     '<tr><th>ImgBB (gambar feed)</th><td>' + flag(cfg.imgbb) + '</td></tr></table>' +
     '<p class="muted">Konfigurasi diatur lewat berkas env di VPS (<code>/etc/subsenpai/backend.env</code>), bukan dari halaman ini.</p></div>';
   $('pageBody').innerHTML = html;
+  if (window.__pageTimer) clearInterval(window.__pageTimer);
+  window.__pageTimer = setInterval(() => {
+    if ((location.hash || '').indexOf('sistem') >= 0) pageSistem(true);
+  }, 10000);
 }
 
 /* ----- Sidebar geser (drawer) ----- */

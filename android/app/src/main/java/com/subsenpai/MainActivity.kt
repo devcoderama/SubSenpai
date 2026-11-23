@@ -93,6 +93,31 @@ class MainActivity : ComponentActivity() {
         captureDeepLink(intent)
         // Simpan laporan bila aplikasi crash; diunggah saat start.
         com.subsenpai.data.CrashReporter.install(this)
+        // Sembuh sendiri dari lingkaran crash (v0.24.12): bila
+        // aplikasi crash 2x beruntun tanpa sempat sehat — pola
+        // "tidak bisa dibuka sampai hapus cache" yang dilaporkan
+        // Rams — bersihkan cache gambar SEBELUM UI tampil, lalu
+        // mulai dari nol. Penghitung direset begitu aplikasi
+        // terbukti hidup 8 detik.
+        if (com.subsenpai.data.CrashReporter.crashStreak(this) >= 2) {
+            val clearer = Thread {
+                try {
+                    val loader = coil.Coil.imageLoader(this)
+                    loader.memoryCache?.clear()
+                    loader.diskCache?.clear()
+                } catch (_: Exception) {
+                }
+            }
+            clearer.start()
+            try {
+                clearer.join(900)
+            } catch (_: Exception) {
+            }
+            com.subsenpai.data.CrashReporter.resetStreak(this)
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            com.subsenpai.data.CrashReporter.markHealthy(this)
+        }, 8000)
         setContent {
             com.subsenpai.ui.SubSenpaiTheme {
                 val context = LocalContext.current
