@@ -24,7 +24,7 @@ mkdir -p "$DIR"
 STAMP=$(date +%Y%m%d-%H%M%S)
 OUT="$DIR/subsenpai-$STAMP.sql.gz"
 
-su postgres -c "pg_dump subsenpai" | gzip -9 > "$OUT"
+(cd /tmp && su postgres -c "pg_dump subsenpai") | gzip -9 > "$OUT"
 echo "backup selesai: $OUT ($(du -h "$OUT" | cut -f1))"
 
 # Rotasi: berkas ke-15 dan seterusnya (yang tertua) dihapus.
