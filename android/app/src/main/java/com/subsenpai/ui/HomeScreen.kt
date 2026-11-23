@@ -108,6 +108,11 @@ fun HomeScreen(
     var homeLoaded by remember { mutableStateOf(false) }
     var terbaru by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var perType by remember { mutableStateOf<Map<String, List<TitleCard>>>(emptyMap()) }
+    // Baris Beranda dari BERANDA situs sumber (terbaru/populer versi
+    // situs resminya — sama seperti halaman download; permintaan
+    // Rams 2026-11-23). Bila sumber kosong/gagal, baris katalog
+    // (perType) yang tampil seperti sebelumnya.
+    var homeLive by remember { mutableStateOf<Map<String, List<CatalogRepository.LiveBrowseItem>>>(emptyMap()) }
     var hasil by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var lanjut by remember { mutableStateOf<List<com.subsenpai.data.WatchHistoryItem>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -180,6 +185,32 @@ fun HomeScreen(
         }
     }
 
+    // Ketukan pada baris Beranda dari situs sumber: judul yang sudah
+    // ada di katalog langsung dibuka; yang belum, diimpor dulu
+    // (sama seperti telusur genre langsung & halaman download).
+    val onHomeLiveTap: (String, CatalogRepository.LiveBrowseItem) -> Unit = { t, item ->
+        val cid = item.catalogId
+        if (cid != null) {
+            onOpenTitle(cid)
+        } else if (importingSlug == null) {
+            importingSlug = item.slug
+            scope.launch {
+                try {
+                    val id = repo.importTitle(t, item, null)
+                    onOpenTitle(id)
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(
+                        homeContext,
+                        "Gagal menambahkan judul: ${e.message}",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                } finally {
+                    importingSlug = null
+                }
+            }
+        }
+    }
+
     // Lencana lonceng di header: jumlah SEMUA notifikasi yang belum
     // dibaca (admin + postingan + episode baru favorit), diperiksa
     // berkala selama Beranda tampil (permintaan Rams: lonceng di
@@ -217,6 +248,16 @@ fun HomeScreen(
             }
         }
         perType = loaded
+        val liveLoaded = mutableMapOf<String, List<CatalogRepository.LiveBrowseItem>>()
+        for ((t, _) in rowTypes) {
+            try {
+                val (_, _, items) = repo.liveBrowse(t, null, 1)
+                if (items.isNotEmpty()) liveLoaded[t] = items
+            } catch (e: Exception) {
+                // Sumber tak terjangkau: baris katalog tetap tampil.
+            }
+        }
+        homeLive = liveLoaded
     }
     LaunchedEffect(authVersion) {
         lanjut = if (repo.isLoggedIn) {
@@ -570,8 +611,23 @@ fun HomeScreen(
                     item { PosterRow(trending, onOpenTitle) }
                 }
                 for ((t, label) in rowTypes) {
+                    val liveRows = homeLive[t].orEmpty()
                     val rows = perType[t].orEmpty()
-                    if (rows.isNotEmpty()) {
+                    if (liveRows.isNotEmpty()) {
+                        item { SectionTitle(label) }
+                        item {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            ) {
+                                items(liveRows) { li ->
+                                    Box(Modifier.width(112.dp)) {
+                                        LivePosterCard(li, importingSlug == li.slug) { onHomeLiveTap(t, li) }
+                                    }
+                                }
+                            }
+                        }
+                    } else if (rows.isNotEmpty()) {
                         item { SectionTitle(label) }
                         item { PosterRow(rows, onOpenTitle) }
                     }
