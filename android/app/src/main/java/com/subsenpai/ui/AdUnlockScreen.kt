@@ -27,7 +27,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -84,105 +86,117 @@ fun AdUnlockScreen(
         }
     }
 
-    Column(
+    // Tata letak (permintaan Rams 2026-11-23): TANPA teks kepala di
+    // atas — iklan memenuhi layar; teks hitung mundur + tombol di
+    // bawah MELAYANG dengan latar TRANSPARAN di atas iklannya
+    // (bayangan teks menjaga keterbacaan). Keluar lewat tombol
+    // Kembali sistem.
+    Box(
         modifier = Modifier.fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        TextButton(onClick = onBack) { Text("← Kembali") }
-        Text(
-            "Buka dengan Iklan",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-        Text(
-            "Tonton iklan di bawah sampai selesai — episode ini akan " +
-                "terbuka permanen untukmu, tanpa Premium.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFFB3B3B3),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-        )
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            if (error == null) {
-                AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            setBackgroundColor(0xFF0D0D0F.toInt())
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.mediaPlaybackRequiresUserGesture = false
-                            webViewClient = object : WebViewClient() {
-                                override fun shouldOverrideUrlLoading(
-                                    view: WebView?,
-                                    request: WebResourceRequest?,
-                                ): Boolean {
-                                    val u = request?.url?.toString().orEmpty()
-                                    // Skema non-http (intent://, market://,
-                                    // tel:) jangan melempar user keluar app.
-                                    return !(u.startsWith("http://") || u.startsWith("https://"))
-                                }
+        if (error == null) {
+            AndroidView(
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        setBackgroundColor(0xFF0D0D0F.toInt())
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.mediaPlaybackRequiresUserGesture = false
+                        webViewClient = object : WebViewClient() {
+                            override fun shouldOverrideUrlLoading(
+                                view: WebView?,
+                                request: WebResourceRequest?,
+                            ): Boolean {
+                                val u = request?.url?.toString().orEmpty()
+                                // Skema non-http (intent://, market://,
+                                // tel:) jangan melempar user keluar app.
+                                return !(u.startsWith("http://") || u.startsWith("https://"))
                             }
-                            loadUrl(AD_UNLOCK_URL)
                         }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            when {
-                error != null -> {
-                    Text(error!!, color = NetflixRed)
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedButton(onClick = { attempt++ }) { Text("Coba Lagi") }
-                }
-                left == null -> {
-                    CircularProgressIndicator(color = NetflixRed)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Menyiapkan iklan…", color = Color(0xFFB3B3B3))
-                }
-                left!! > 0 -> {
-                    Text(
-                        "Episode terbuka dalam ${left} detik…",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Button(
-                        onClick = {},
-                        enabled = false,
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                    ) { Text("Buka Episode") }
-                }
-                else -> {
-                    Button(
-                        onClick = {
-                            val t = token ?: return@Button
-                            busy = true
-                            scope.launch {
-                                try {
-                                    repo.adUnlockComplete(episodeId, t)
-                                    onUnlocked(episodeId)
-                                } catch (e: Exception) {
-                                    busy = false
-                                    error = "Gagal membuka episode. Periksa koneksimu lalu coba lagi."
-                                }
-                            }
-                        },
-                        enabled = !busy,
-                        colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                    ) {
+                        loadUrl(AD_UNLOCK_URL)
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+            Column(
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .fillMaxWidth().padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                when {
+                    left == null -> {
+                        CircularProgressIndicator(color = NetflixRed)
+                        Spacer(Modifier.height(8.dp))
                         Text(
-                            if (busy) "Membuka…" else "Buka Episode",
+                            "Menyiapkan iklan…",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                shadow = Shadow(
+                                    color = Color.Black,
+                                    offset = Offset(0f, 2f),
+                                    blurRadius = 8f,
+                                ),
+                            ),
+                        )
+                    }
+                    left!! > 0 -> {
+                        Text(
+                            "Episode terbuka dalam ${left} detik…",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                shadow = Shadow(
+                                    color = Color.Black,
+                                    offset = Offset(0f, 2f),
+                                    blurRadius = 8f,
+                                ),
+                            ),
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
                         )
+                        Spacer(Modifier.height(10.dp))
+                        Button(
+                            onClick = {},
+                            enabled = false,
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                        ) { Text("Buka Episode") }
+                    }
+                    else -> {
+                        Button(
+                            onClick = {
+                                val t = token ?: return@Button
+                                busy = true
+                                scope.launch {
+                                    try {
+                                        repo.adUnlockComplete(episodeId, t)
+                                        onUnlocked(episodeId)
+                                    } catch (e: Exception) {
+                                        busy = false
+                                        error = "Gagal membuka episode. Periksa koneksimu lalu coba lagi."
+                                    }
+                                }
+                            },
+                            enabled = !busy,
+                            colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                        ) {
+                            Text(
+                                if (busy) "Membuka…" else "Buka Episode",
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                            )
+                        }
                     }
                 }
+            }
+        } else {
+            Column(
+                modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(error!!, color = NetflixRed)
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = { attempt++ }) { Text("Coba Lagi") }
+                TextButton(onClick = onBack) { Text("← Kembali") }
             }
         }
     }
