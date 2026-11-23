@@ -59,14 +59,41 @@ import com.subsenpai.ui.PremiumScreen
 import com.subsenpai.ui.WatchlistScreen
 
 class MainActivity : ComponentActivity() {
+    // Deep link subsenpai://title/{id} dari halaman web resmi:
+    // id judul yang menunggu dibuka (dikonsumsi komposisi di bawah).
+    private val deepLinkTitle = mutableStateOf<String?>(null)
+
+    private fun captureDeepLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "subsenpai" && data.host == "title") {
+            val id = data.pathSegments.firstOrNull().orEmpty()
+            if (id.matches(Regex("[A-Za-z0-9-]{8,}"))) deepLinkTitle.value = id
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        captureDeepLink(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        captureDeepLink(intent)
         // Simpan laporan bila aplikasi crash; diunggah saat start.
         com.subsenpai.data.CrashReporter.install(this)
         setContent {
             com.subsenpai.ui.SubSenpaiTheme {
                 val context = LocalContext.current
                 val nav = rememberNavController()
+                // Buka detail judul dari deep link web (bila ada).
+                val pendingTitle = deepLinkTitle.value
+                LaunchedEffect(pendingTitle) {
+                    if (pendingTitle != null) {
+                        nav.navigate("detail/$pendingTitle")
+                        deepLinkTitle.value = null
+                    }
+                }
                 val repo = remember { CatalogRepository(auth = AuthStore(context)) }
                 // Bagikan judul ke tab Post: isi prefill composer lalu
                 // pindah ke tab Post (FeedScreen menerapkannya).
