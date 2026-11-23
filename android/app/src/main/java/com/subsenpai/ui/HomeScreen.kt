@@ -35,6 +35,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
@@ -457,15 +459,15 @@ fun HomeScreen(
                     }
                 }
             } else {
-                val hero = trending.firstOrNull() ?: terbaru.firstOrNull()
-                if (hero != null) {
+                val heroList = (trending.ifEmpty { terbaru }).take(5)
+                if (heroList.isNotEmpty()) {
                     item {
-                        HeroSection(
-                            hero = hero,
+                        RotatingHeroSection(
+                            heroes = heroList,
                             repo = repo,
                             authVersion = authVersion,
                             hiRes = settings.posterHiRes,
-                            onPlay = {
+                            onPlay = { hero ->
                                 scope.launch {
                                     try {
                                         val d = repo.titleDetail(hero.id)
@@ -480,7 +482,7 @@ fun HomeScreen(
                                     }
                                 }
                             },
-                            onInfo = { onOpenTitle(hero.id) },
+                            onInfo = { onOpenTitle(it) },
                             onNeedLogin = onLogin,
                         )
                     }
@@ -815,6 +817,42 @@ fun hiResPosterUrl(url: String?): String? =
     url?.replace("image.tmdb.org/t/p/w500", "image.tmdb.org/t/p/w780")
 
 /** Hero layar penuh ala Netflix dengan aksi Daftar Saya/Putar/Info. */
+// RotatingHeroSection: poster utama Beranda BERGANTI tiap 8 detik
+// (permintaan Rams 2026-11-23 — biar tidak membosankan), berputar
+// di antara 5 judul tren teratas dengan pudar silang; tombol Putar,
+// Info, dan Daftar Saya selalu mengikuti judul yang sedang tampil.
+@Composable
+private fun RotatingHeroSection(
+    heroes: List<TitleCard>,
+    repo: CatalogRepository,
+    authVersion: Int,
+    hiRes: Boolean,
+    onPlay: (TitleCard) -> Unit,
+    onInfo: (String) -> Unit,
+    onNeedLogin: () -> Unit,
+) {
+    var idx by remember { mutableStateOf(0) }
+    LaunchedEffect(heroes.map { it.id }) {
+        idx = 0
+        while (heroes.size > 1) {
+            delay(8000)
+            idx = (idx + 1) % heroes.size
+        }
+    }
+    val hero = heroes.getOrNull(idx) ?: heroes.firstOrNull() ?: return
+    Crossfade(targetState = hero, animationSpec = tween(700), label = "hero-rotate") { h ->
+        HeroSection(
+            hero = h,
+            repo = repo,
+            authVersion = authVersion,
+            hiRes = hiRes,
+            onPlay = { onPlay(h) },
+            onInfo = { onInfo(h.id) },
+            onNeedLogin = onNeedLogin,
+        )
+    }
+}
+
 @Composable
 private fun HeroSection(
     hero: TitleCard,
