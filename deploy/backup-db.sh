@@ -66,5 +66,20 @@ if [ -n "$REMOTE" ]; then
         fi
       done
     fi
+    # Berkas lokal dihapus HANYA bila salinan jauh terverifikasi
+    # ada dengan ukuran byte yang sama persis (permintaan Rams
+    # 2026-11-24: sesudah terunggah, hapus dari VPS — Drive-lah
+    # gudangnya). Bila tidak cocok, berkas lokal DIPERTAHANKAN.
+    NAMA=$(basename "$OUT")
+    UKURAN_LOKAL=$(stat -c %s "$OUT")
+    UKURAN_REMOTE=$(rclone ls "$REMOTE" 2>/dev/null | awk -v f="$NAMA" '$2 == f {print $1}')
+    if [ "$UKURAN_REMOTE" = "$UKURAN_LOKAL" ]; then
+      rm -f "$OUT"
+      echo "berkas lokal dihapus — salinan terverifikasi di $REMOTE"
+    else
+      echo "PERINGATAN: ukuran salinan jauh tidak cocok (lokal $UKURAN_LOKAL, jauh ${UKURAN_REMOTE:-tidak ditemukan}) — berkas lokal DIPERTAHANKAN"
+    fi
+  else
+    echo "unggahan gagal — berkas lokal dipertahankan di $OUT"
   fi
 fi
