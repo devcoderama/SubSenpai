@@ -30,6 +30,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="subsenpai" android:host="title" />
+                <data android:scheme="subsenpai" android:host="episode" />
             </intent-filter>
             <!-- App Links: tautan bagikan https://www.subsenpai.web.id/judul/{id}
                  membuka detail judul langsung di aplikasi (terverifikasi
@@ -40,6 +41,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="www.subsenpai.web.id" android:pathPrefix="/judul/" />
                 <data android:scheme="https" android:host="subsenpai.web.id" android:pathPrefix="/judul/" />
+                <data android:scheme="https" android:host="www.subsenpai.web.id" android:pathPrefix="/nonton/" />
+                <data android:scheme="https" android:host="subsenpai.web.id" android:pathPrefix="/nonton/" />
             </intent-filter>
         </activity>
     </application>

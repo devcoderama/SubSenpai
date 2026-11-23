@@ -1,1 +1,2 @@
 /judul/*  https://api.subsenpai.web.id/share/:splat  200
+/nonton/*  https://api.subsenpai.web.id/share-episode/:splat  200

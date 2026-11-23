@@ -92,6 +92,7 @@ func (a *API) Router() http.Handler {
 	// /judul/{id} yang di-proxy Netlify ke sini: dirender server
 	// agar pratinjau WhatsApp/medsos berisi poster judul.
 	r.With(middleware.RateLimit(120)).Get("/share/{id}", a.handleSharePage)
+	r.With(middleware.RateLimit(120)).Get("/share-episode/{id}", a.handleShareEpisodePage)
 	r.Group(func(r chi.Router) {
 		r.Use(func(next http.Handler) http.Handler {
 			return middleware.Envelope(a.sessions, next)

@@ -63,6 +63,10 @@ class MainActivity : ComponentActivity() {
     // id judul yang menunggu dibuka (dikonsumsi komposisi di bawah).
     private val deepLinkTitle = mutableStateOf<String?>(null)
 
+    // Deep link subsenpai://episode/{id} (tautan /nonton/ dari
+    // notifikasi jadwal rilis): id episode yang menunggu diputar.
+    private val deepLinkEpisode = mutableStateOf<String?>(null)
+
     private fun captureDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
         // Dua bentuk tautan resmi:
@@ -80,6 +84,20 @@ class MainActivity : ComponentActivity() {
             else -> ""
         }
         if (id.matches(Regex("[A-Za-z0-9-]{8,}"))) deepLinkTitle.value = id
+        // Bentuk tautan nonton episode:
+        // 3) subsenpai://episode/{id} — dari halaman /nonton.
+        // 4) https://www.subsenpai.web.id/nonton/{id} — tautan
+        //    notifikasi jadwal rilis (App Links).
+        val epId = when {
+            data.scheme == "subsenpai" && data.host == "episode" ->
+                data.pathSegments.firstOrNull().orEmpty()
+            data.scheme == "https" &&
+                (data.host == "www.subsenpai.web.id" || data.host == "subsenpai.web.id") &&
+                data.pathSegments.firstOrNull() == "nonton" ->
+                data.pathSegments.getOrNull(1).orEmpty()
+            else -> ""
+        }
+        if (epId.matches(Regex("[A-Za-z0-9-]{8,}"))) deepLinkEpisode.value = epId
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -601,6 +619,16 @@ class MainActivity : ComponentActivity() {
                         if (pendingTitle != null) {
                             nav.navigate("detail/$pendingTitle")
                             deepLinkTitle.value = null
+                        }
+                    }
+                    // Deep link episode: langsung ke pemutar (rute
+                    // player menerima id episode). Posisi sesudah
+                    // NavHost sama seperti deep link judul di atas.
+                    val pendingEpisode = deepLinkEpisode.value
+                    LaunchedEffect(pendingEpisode) {
+                        if (pendingEpisode != null) {
+                            nav.navigate("player/$pendingEpisode")
+                            deepLinkEpisode.value = null
                         }
                     }
                         }

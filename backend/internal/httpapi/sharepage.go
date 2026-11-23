@@ -34,6 +34,7 @@ type sharePageData struct {
 	GenresLine  string
 	Synopsis    string
 	IntentURL   template.URL
+	SchemeURL   template.JS
 	ID          string
 	Found       bool
 }
@@ -103,7 +104,7 @@ var shareTpl = template.Must(template.New("share").Parse(`<!DOCTYPE html>
   // ke sistem. Tombol merah memakai urutan yang sama saat diketuk.
   (function () {
     var intent = "{{.IntentURL}}";
-    var scheme = "subsenpai://title/{{.ID}}";
+    var scheme = {{.SchemeURL}};
     function go(u) { try { location.href = u; } catch (e) {} }
     setTimeout(function () { go(intent); }, 600);
     setTimeout(function () { if (!document.hidden) go(scheme); }, 1700);
@@ -179,6 +180,7 @@ func (a *API) handleSharePage(w http.ResponseWriter, r *http.Request) {
 			data.IntentURL = template.URL("intent://title/" + id +
 				"#Intent;scheme=subsenpai;package=com.subsenpai;S.browser_fallback_url=" +
 				url.QueryEscape("https://www.subsenpai.web.id/#download") + ";end")
+			data.SchemeURL = template.JS(strconv.Quote("subsenpai://title/" + id))
 		} else {
 			status = http.StatusNotFound
 		}

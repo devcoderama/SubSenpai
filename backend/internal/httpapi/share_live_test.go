@@ -77,6 +77,29 @@ func TestSharePageLive(t *testing.T) {
 		}
 	}
 
+	// Halaman bagikan episode: tautan /nonton/{episodeId} dari
+	// notifikasi jadwal harus membuka pemutar episode itu.
+	var epID string
+	if err := pool.QueryRow(ctx, `
+		insert into episodes (title_id, episode_no, video_url)
+		values ($1::uuid, 3, 'https://cdn.example.com/v.mp4') returning id`, id).Scan(&epID); err != nil {
+		t.Fatal(err)
+	}
+	code, body = get("/share-episode/" + epID)
+	if code != 200 {
+		t.Fatalf("share episode: status %d", code)
+	}
+	for _, want := range []string{
+		"Film Bagikan Uji — Episode 3",
+		"https://www.subsenpai.web.id/nonton/" + epID,
+		"intent://episode/" + epID,
+		"subsenpai://episode/" + epID,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("share episode tidak memuat %q", want)
+		}
+	}
+
 	// Judul tersembunyi tidak boleh tampil.
 	if _, err := pool.Exec(ctx, `update titles set is_hidden = true where id = $1::uuid`, id); err != nil {
 		t.Fatal(err)
