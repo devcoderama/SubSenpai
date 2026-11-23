@@ -3,168 +3,160 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Download SubSenpai — Nonton Anime, Donghua & Film Subtitle Indonesia</title>
-<meta name="description" content="Download aplikasi SubSenpai versi terbaru untuk Android. Nonton anime, donghua, dan film dengan subtitle Indonesia — gratis, dengan jadwal rilis, notifikasi episode baru, dan komunitas.">
+<title>SubSenpai — Nonton Anime, Donghua & Film Subtitle Indonesia</title>
+<meta name="description" content="Download aplikasi SubSenpai untuk Android. Jelajahi katalog anime, donghua, dan film subtitle Indonesia — ketuk posternya untuk langsung membuka di aplikasi.">
 <link rel="canonical" href="https://app-subsenpai.netlify.app/">
-<meta property="og:title" content="Download SubSenpai">
-<meta property="og:description" content="Nonton anime, donghua & film subtitle Indonesia. Download APK versi terbaru langsung di sini.">
+<meta property="og:title" content="SubSenpai">
+<meta property="og:description" content="Nonton anime, donghua & film subtitle Indonesia. Download aplikasinya di sini.">
 <meta property="og:type" content="website">
-<meta property="og:image" content="https://celebrated-semolina-d9f3c5.netlify.app/og-image.jpg">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' fill='%23E50914' font-weight='900'>S</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <style>
-  :root{
-    --bg:#0B0F1A; --panel:#0e1424; --panel2:#131b30; --line:#26314d;
-    --text:#e8ecf6; --muted:#9aa7c7; --purple:#a78bfa; --pink:#ff6b9d;
-    --red:#E50914; --green:#46d369;
-    --grad:linear-gradient(92deg,#ff6b9d,#a78bfa 55%,#67e8f9);
-  }
+  :root{ --bg:#141414; --bg2:#0b0b0b; --card:#1f1f1f; --line:#2d2d2d; --text:#fff; --muted:#b3b3b3; --red:#E50914; --purple:#a78bfa; --green:#46d369; }
   *{margin:0;padding:0;box-sizing:border-box}
   html{scroll-behavior:smooth}
-  body{background:var(--bg);color:var(--text);font-family:'Zen Kaku Gothic New',system-ui,sans-serif;line-height:1.65;overflow-x:hidden}
-  body::before{content:"";position:fixed;inset:0;z-index:-1;background:
-    radial-gradient(720px 420px at 12% -6%,rgba(167,139,250,.20),transparent 62%),
-    radial-gradient(820px 520px at 96% 4%,rgba(255,107,157,.13),transparent 60%),
-    radial-gradient(900px 700px at 50% 115%,rgba(103,232,249,.08),transparent 60%),var(--bg)}
-  .wrap{max-width:1060px;margin:0 auto;padding:0 20px}
-  header{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);background:rgba(11,15,26,.78);border-bottom:1px solid var(--line)}
-  .bar{display:flex;align-items:center;gap:14px;padding:13px 0}
-  .logo{font-family:'Shippori Mincho B1',serif;font-weight:800;font-size:1.45rem;letter-spacing:.02em}
-  .logo b{color:var(--red);font-weight:900}
-  .logo small{display:block;font-family:'Zen Kaku Gothic New',sans-serif;font-size:.62rem;color:var(--muted);letter-spacing:.42em;font-weight:500}
-  .bar nav{margin-left:auto;display:flex;gap:22px;align-items:center}
-  .bar nav a{color:var(--muted);text-decoration:none;font-weight:500;font-size:.95rem;transition:color .25s}
-  .bar nav a:hover{color:#fff}
-  .btn{display:inline-flex;align-items:center;gap:10px;background:var(--red);color:#fff;font-weight:700;
-    padding:13px 28px;border-radius:999px;text-decoration:none;font-size:1.02rem;border:0;cursor:pointer;
-    box-shadow:0 10px 34px rgba(229,9,20,.38);transition:transform .2s,box-shadow .2s}
-  .btn:hover{transform:translateY(-2px);box-shadow:0 16px 40px rgba(229,9,20,.48)}
-  .btn.small{padding:9px 20px;font-size:.92rem}
-  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text);box-shadow:none}
-  .btn.ghost:hover{border-color:var(--purple)}
-  .hero{text-align:center;padding:84px 0 58px}
-  .badge{display:inline-block;padding:6px 16px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:.85rem;background:rgba(255,255,255,.03)}
-  .badge i{color:var(--green);margin-right:7px}
-  h1{font-family:'Shippori Mincho B1',serif;font-size:clamp(2.4rem,6.4vw,4.1rem);line-height:1.14;font-weight:800;margin:22px 0 6px}
-  h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-  .jp{color:var(--muted);letter-spacing:.55em;font-size:.8rem;margin-bottom:14px}
-  .hero p.lead{color:var(--muted);font-size:clamp(1rem,2.4vw,1.18rem);max-width:640px;margin:0 auto 30px}
-  .dl{margin:8px 0 12px}
-  .verinfo{color:var(--muted);font-size:.92rem;min-height:1.5em}
-  .verinfo b{color:var(--text)}
-  .altlink{margin-top:10px;font-size:.9rem}
-  .altlink a{color:var(--purple);text-decoration:none}
-  .altlink a:hover{text-decoration:underline}
-  section{padding:52px 0}
-  h2{font-family:'Shippori Mincho B1',serif;font-size:clamp(1.6rem,4vw,2.2rem);text-align:center;margin-bottom:8px}
-  .sub{text-align:center;color:var(--muted);max-width:620px;margin:0 auto 34px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-  .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:18px;padding:24px;transition:transform .25s,border-color .25s}
-  .card:hover{transform:translateY(-4px);border-color:rgba(167,139,250,.55)}
-  .card .ic{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;font-size:1.25rem;color:#fff;
-    background:linear-gradient(135deg,rgba(255,107,157,.28),rgba(167,139,250,.28));border:1px solid var(--line);margin-bottom:14px}
-  .card h3{font-size:1.08rem;margin-bottom:6px}
-  .card p{color:var(--muted);font-size:.94rem}
-  .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;counter-reset:step}
-  .step{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px}
-  .step .n{width:38px;height:38px;border-radius:50%;background:var(--grad);color:#0B0F1A;font-weight:900;display:grid;place-items:center;margin-bottom:12px}
+  body{background:var(--bg);color:var(--text);font-family:'Zen Kaku Gothic New',system-ui,sans-serif;line-height:1.6;overflow-x:hidden}
+  a{color:inherit}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 4%}
+  header{position:fixed;top:0;left:0;right:0;z-index:60;background:linear-gradient(180deg,rgba(0,0,0,.75),transparent);transition:background .3s}
+  header.solid{background:var(--bg2)}
+  .bar{display:flex;align-items:center;gap:16px;padding:14px 0}
+  .wordmark{color:var(--red);font-weight:900;font-size:1.7rem;letter-spacing:.06em;text-transform:uppercase;line-height:1}
+  .bar nav{margin-left:auto;display:flex;gap:20px;align-items:center}
+  .bar nav a{color:#e5e5e5;text-decoration:none;font-size:.93rem}
+  .bar nav a:hover{color:var(--muted)}
+  .btn{display:inline-flex;align-items:center;gap:9px;background:var(--red);color:#fff;font-weight:700;padding:11px 24px;border-radius:6px;text-decoration:none;font-size:.98rem;border:0;cursor:pointer;transition:background .2s,transform .2s}
+  .btn:hover{background:#f6121d;transform:translateY(-1px)}
+  .btn.small{padding:8px 18px;font-size:.9rem}
+  .btn.ghost{background:rgba(255,255,255,.14);backdrop-filter:blur(6px)}
+  .btn.ghost:hover{background:rgba(255,255,255,.24)}
+  .hero{position:relative;padding:158px 0 74px;background:
+    radial-gradient(900px 480px at 85% -10%,rgba(229,9,20,.20),transparent 60%),
+    radial-gradient(700px 500px at 0% 110%,rgba(167,139,250,.12),transparent 60%),var(--bg2)}
+  .hero h1{font-size:clamp(2.1rem,5.6vw,3.6rem);line-height:1.15;font-weight:900;max-width:720px}
+  .hero h1 em{font-style:normal;color:var(--red)}
+  .hero p{color:#e5e5e5;font-size:clamp(1rem,2.2vw,1.15rem);max-width:600px;margin:16px 0 26px}
+  .verinfo{color:var(--muted);font-size:.9rem;margin-top:12px;min-height:1.4em}
+  .verinfo b{color:#fff}
+  .hint{color:var(--muted);font-size:.88rem;margin-top:6px}
+  .hint i{color:var(--green);margin-right:6px}
+  section.rows{padding:8px 0 6px}
+  .rowblock{margin:26px 0}
+  .rowblock h2{font-size:1.25rem;font-weight:700;margin-bottom:10px}
+  .rowblock h2 span{color:var(--muted);font-size:.85rem;font-weight:500;margin-left:8px}
+  .rail{display:flex;gap:10px;overflow-x:auto;padding:6px 2px 14px;scroll-snap-type:x mandatory;scrollbar-width:none}
+  .rail::-webkit-scrollbar{display:none}
+  .pcard{flex:0 0 auto;width:138px;scroll-snap-align:start;text-decoration:none}
+  @media (min-width:760px){ .pcard{width:160px} }
+  .pcard .ph{position:relative;border-radius:6px;overflow:hidden;aspect-ratio:2/3;background:#232323;transition:transform .25s,box-shadow .25s}
+  .pcard img{width:100%;height:100%;object-fit:cover;display:block}
+  .pcard:hover .ph{transform:scale(1.05);box-shadow:0 14px 34px rgba(0,0,0,.6);z-index:2}
+  .pcard .t{font-size:.86rem;font-weight:500;margin-top:7px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35}
+  .pcard .y{color:var(--muted);font-size:.78rem}
+  .skel{flex:0 0 auto;width:138px;aspect-ratio:2/3;border-radius:6px;background:linear-gradient(100deg,#1d1d1d 40%,#2a2a2a 50%,#1d1d1d 60%);background-size:200% 100%;animation:sh 1.3s infinite}
+  @keyframes sh{to{background-position:-200% 0}}
+  section.block{padding:56px 0}
+  h2.big{font-size:clamp(1.5rem,3.6vw,2rem);text-align:center;margin-bottom:8px;font-weight:900}
+  .sub{text-align:center;color:var(--muted);max-width:600px;margin:0 auto 32px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+  .fcard{background:var(--card);border-radius:10px;padding:22px}
+  .fcard i{color:var(--red);font-size:1.35rem;margin-bottom:12px;display:block}
+  .fcard h3{font-size:1.02rem;margin-bottom:5px}
+  .fcard p{color:var(--muted);font-size:.92rem}
+  .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+  .step{background:var(--card);border-radius:10px;padding:22px}
+  .step .n{width:36px;height:36px;border-radius:50%;background:var(--red);font-weight:900;display:grid;place-items:center;margin-bottom:12px}
   .step h3{font-size:1rem;margin-bottom:5px}
   .step p{color:var(--muted);font-size:.92rem}
-  .premium{background:linear-gradient(120deg,#241a3f,#3B2A5D 55%,#572b63);border:1px solid rgba(167,139,250,.4);border-radius:24px;padding:38px 30px;text-align:center}
-  .premium h2{margin-bottom:10px}
-  .premium p{color:#d9d2f5;max-width:600px;margin:0 auto 8px}
-  .premium .price{font-size:1.7rem;font-weight:900;margin:12px 0 4px}
-  .premium .price span{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-  .faq{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
-  details{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px}
+  .premium{background:linear-gradient(120deg,#241a3f,#3B2A5D 55%,#572b63);border-radius:14px;padding:38px 28px;text-align:center}
+  .premium h2{font-size:1.7rem;font-weight:900;margin-bottom:10px}
+  .premium p{color:#ddd6f7;max-width:600px;margin:0 auto 8px}
+  .premium .price{font-size:1.6rem;font-weight:900;margin:12px 0 4px}
+  .premium .price span{color:#ffb3ba}
+  .faq{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+  details{background:var(--card);border-radius:8px;padding:15px 19px}
   summary{cursor:pointer;font-weight:700;list-style:none}
   summary::-webkit-details-marker{display:none}
-  summary i{color:var(--purple);margin-right:9px}
-  details p{color:var(--muted);margin-top:8px;font-size:.95rem}
-  footer{border-top:1px solid var(--line);padding:30px 0 42px;text-align:center;color:var(--muted);font-size:.9rem}
-  footer a{color:var(--purple);text-decoration:none}
-  @media (max-width:640px){ .bar nav a:not(.btn){display:none} .hero{padding:58px 0 40px} }
+  details p{color:var(--muted);margin-top:8px;font-size:.94rem}
+  .cta{text-align:center;padding:20px 0 64px}
+  footer{border-top:1px solid var(--line);padding:28px 0 40px;text-align:center;color:#8c8c8c;font-size:.88rem}
+  footer a{color:#b3b3b3}
+  @media (max-width:640px){ .bar nav a:not(.btn){display:none} .hero{padding:120px 0 52px} }
 </style>
 </head>
 <body>
-<header>
+<header id="hdr">
   <div class="wrap bar">
-    <div class="logo"><b>S</b>ubSenpai<small>サブセンパイ</small></div>
+    <div class="wordmark">SubSenpai</div>
     <nav>
+      <a href="#katalog">Katalog</a>
       <a href="#fitur">Fitur</a>
       <a href="#install">Cara Install</a>
-      <a href="#faq">FAQ</a>
       <a class="btn small" href="#download"><i class="fa-solid fa-download"></i>Download</a>
     </nav>
   </div>
 </header>
 
-<main class="wrap">
-  <div class="hero" id="download">
-    <span class="badge"><i class="fa-solid fa-circle-check"></i>Versi terbaru selalu tersedia di halaman ini</span>
-    <h1>Nonton Anime, Donghua &amp; Film<br><span class="grad">Subtitle Indonesia</span></h1>
-    <div class="jp">アニメ ・ ドンファ ・ 映画</div>
-    <p class="lead">SubSenpai adalah aplikasi streaming untuk Android: katalog anime, donghua, dan film yang terus bertambah, jadwal rilis harian, notifikasi episode baru, dan komunitas — semua dalam satu aplikasi ringan.</p>
-    <div class="dl">
-      <a class="btn" id="dlBtn" href="https://github.com/devcoderama/SubSenpai/releases" rel="noopener">
-        <i class="fa-brands fa-android"></i><span id="dlLabel">Download APK Terbaru</span>
-      </a>
-    </div>
+<div class="hero" id="download">
+  <div class="wrap">
+    <h1>Anime, Donghua &amp; Film Favoritmu, <em>Satu Aplikasi.</em></h1>
+    <p>Nonton dengan subtitle Indonesia, jadwal rilis harian, dan notifikasi episode baru. Jelajahi katalognya di bawah — ketuk poster mana pun untuk langsung membukanya di aplikasi SubSenpai.</p>
+    <a class="btn" id="dlBtn" href="https://github.com/devcoderama/SubSenpai/releases/download/v0.24.5/SubSenpai-v0.24.5.apk">
+      <i class="fa-brands fa-android"></i><span>Download APK Terbaru</span>
+    </a>
+    <a class="btn ghost" href="#katalog" style="margin-left:8px"><i class="fa-solid fa-play"></i>Lihat Katalog</a>
     <div class="verinfo" id="verInfo">Mengambil info versi terbaru…</div>
-    <div class="altlink"><a href="https://github.com/devcoderama/SubSenpai/releases" rel="noopener">Lihat semua versi &amp; catatan rilis di GitHub</a></div>
+    <div class="hint"><i class="fa-solid fa-circle-check"></i>Gratis · Ukuran ringan ±14 MB · Android 7.0 ke atas</div>
   </div>
+</div>
 
-  <section id="fitur">
-    <h2>Fitur SubSenpai</h2>
-    <p class="sub">Semua yang kamu butuhkan untuk maraton tontonanmu — tanpa ribet.</p>
-    <div class="grid">
-      <div class="card"><div class="ic"><i class="fa-solid fa-clapperboard"></i></div>
-        <h3>Katalog Anime, Donghua &amp; Film</h3>
-        <p>Ribuan judul dari berbagai sumber dengan poster, sinopsis, genre, dan daftar episode yang rapi — dan terus bertambah setiap hari.</p></div>
-      <div class="card"><div class="ic"><i class="fa-solid fa-closed-captioning"></i></div>
-        <h3>Subtitle Siap Pakai</h3>
-        <p>Subtitle Indonesia dan multi-bahasa diambil siap pakai dari sumbernya, tinggal pilih dan tonton — tanpa perlu mengunduh file terpisah.</p></div>
-      <div class="card"><div class="ic"><i class="fa-solid fa-calendar-days"></i></div>
-        <h3>Jadwal Rilis Harian</h3>
-        <p>Jadwal tayang anime dan donghua per hari dalam seminggu, plus film-film rilis terbaru — jangan sampai ketinggalan episode favoritmu.</p></div>
-      <div class="card"><div class="ic"><i class="fa-solid fa-bell"></i></div>
-        <h3>Notifikasi Episode Baru</h3>
-        <p>Favoritkan judul ke Daftar Saya dan dapatkan pemberitahuan begitu episode barunya rilis, lengkap dengan pengumuman resmi dari admin.</p></div>
-      <div class="card"><div class="ic"><i class="fa-solid fa-magnifying-glass"></i></div>
-        <h3>Pencarian Live ke Sumber</h3>
-        <p>Judul yang belum ada di katalog? Pencarian langsung menelusuri situs sumbernya dan menyimpannya ke katalog — pencarian berikutnya langsung ketemu.</p></div>
-      <div class="card"><div class="ic"><i class="fa-solid fa-filter"></i></div>
-        <h3>Filter Lengkap</h3>
-        <p>Saring berdasarkan genre, tahun, negara, dan jaringan/studio, atau jelajahi genre langsung dari situs sumber dengan pilihan judul yang jauh lebih banyak.</p></div>
-      <div class="card"><div class="ic"><i class="fa-solid fa-users"></i></div>
-        <h3>Post &amp; Komunitas</h3>
-        <p>Bagikan postingan dan momen favoritmu, beri komentar, tambahkan teman dengan kode teman, dan ngobrol bareng sesama penggemar.</p></div>
-      <div class="card"><div class="ic"><i class="fa-solid fa-clock-rotate-left"></i></div>
-        <h3>Lanjutkan Menonton</h3>
-        <p>Riwayat tontonan tersimpan otomatis — lanjutkan tepat dari posisi terakhir, di judul apa pun yang pernah kamu buka.</p></div>
-      <div class="card"><div class="ic"><i class="fa-solid fa-rectangle-ad"></i></div>
-        <h3>Buka Episode dengan Iklan</h3>
-        <p>Episode terkunci bisa dibuka gratis hanya dengan menonton iklan singkat — tanpa harus berlangganan.</p></div>
-      <div class="card"><div class="ic"><i class="fa-solid fa-crown"></i></div>
-        <h3>Premium Terjangkau</h3>
-        <p>Buka semua episode tanpa batas mulai Rp8.000/bulan. Bayar mudah via QRIS dan banyak metode lain, atau tukar kode voucher.</p></div>
+<main class="wrap">
+  <section class="rows" id="katalog">
+    <div class="rowblock" id="row-anime" hidden>
+      <h2>Anime <span>ketuk poster untuk membuka di aplikasi</span></h2>
+      <div class="rail" data-rail="anime"></div>
+    </div>
+    <div class="rowblock" id="row-donghua" hidden>
+      <h2>Donghua <span>ketuk poster untuk membuka di aplikasi</span></h2>
+      <div class="rail" data-rail="donghua"></div>
+    </div>
+    <div class="rowblock" id="row-film" hidden>
+      <h2>Film <span>ketuk poster untuk membuka di aplikasi</span></h2>
+      <div class="rail" data-rail="film"></div>
+    </div>
+    <div class="rowblock" id="row-skeleton">
+      <h2>Sedang Memuat Katalog…</h2>
+      <div class="rail"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
     </div>
   </section>
 
-  <section id="install">
-    <h2>Cara Install</h2>
-    <p class="sub">SubSenpai belum tersedia di Play Store — install langsung dari file APK resmi di halaman ini, hanya butuh semenit.</p>
+  <section class="block" id="fitur">
+    <h2 class="big">Kenapa SubSenpai?</h2>
+    <p class="sub">Semua yang kamu butuhkan untuk maraton tontonanmu — tanpa ribet.</p>
+    <div class="grid">
+      <div class="fcard"><i class="fa-solid fa-clapperboard"></i><h3>Katalog Lengkap</h3><p>Anime, donghua, dan film dari berbagai sumber dengan poster, sinopsis, genre, dan daftar episode yang rapi — terus bertambah setiap hari.</p></div>
+      <div class="fcard"><i class="fa-solid fa-closed-captioning"></i><h3>Subtitle Siap Pakai</h3><p>Subtitle Indonesia dan multi-bahasa diambil siap pakai dari sumbernya. Tinggal pilih dan tonton.</p></div>
+      <div class="fcard"><i class="fa-solid fa-calendar-days"></i><h3>Jadwal Rilis Harian</h3><p>Jadwal tayang anime dan donghua per hari plus film rilis terbaru — jangan sampai ketinggalan episode favoritmu.</p></div>
+      <div class="fcard"><i class="fa-solid fa-bell"></i><h3>Notifikasi Episode Baru</h3><p>Favoritkan judul ke Daftar Saya dan dapatkan pemberitahuan begitu episode barunya rilis.</p></div>
+      <div class="fcard"><i class="fa-solid fa-users"></i><h3>Post &amp; Komunitas</h3><p>Bagikan postingan dan momen favoritmu, berkomentar, dan ngobrol bareng sesama penggemar.</p></div>
+      <div class="fcard"><i class="fa-solid fa-rectangle-ad"></i><h3>Buka Episode dengan Iklan</h3><p>Episode terkunci bisa dibuka gratis hanya dengan menonton iklan singkat — tanpa harus berlangganan.</p></div>
+    </div>
+  </section>
+
+  <section class="block" id="install">
+    <h2 class="big">Cara Install</h2>
+    <p class="sub">Hanya butuh semenit — langsung dari halaman resmi ini.</p>
     <div class="steps">
-      <div class="step"><div class="n">1</div><h3>Download APK</h3><p>Ketuk tombol Download di atas. File akan terunduh langsung dari rilis resmi SubSenpai.</p></div>
-      <div class="step"><div class="n">2</div><h3>Izinkan Install</h3><p>Saat diminta, izinkan pemasangan dari sumber tidak dikenal untuk browser/file manager yang kamu pakai.</p></div>
+      <div class="step"><div class="n">1</div><h3>Download APK</h3><p>Ketuk tombol Download di atas, file versi terbaru akan terunduh ke HP kamu.</p></div>
+      <div class="step"><div class="n">2</div><h3>Izinkan Install</h3><p>Saat diminta, izinkan pemasangan dari sumber tidak dikenal untuk browser yang kamu pakai.</p></div>
       <div class="step"><div class="n">3</div><h3>Install &amp; Buka</h3><p>Pasang APK-nya, lalu buka SubSenpai dari layar utama HP kamu.</p></div>
       <div class="step"><div class="n">4</div><h3>Masuk dengan Google</h3><p>Login sekali dengan akun Google — katalog, favorit, dan riwayatmu langsung tersimpan.</p></div>
     </div>
   </section>
 
-  <section>
+  <section class="block">
     <div class="premium">
       <h2>👑 SubSenpai Premium</h2>
       <p>Semua episode anime, donghua, dan film terbuka tanpa kunci — tanpa perlu menonton iklan unlock satu per satu.</p>
@@ -173,92 +165,180 @@
     </div>
   </section>
 
-  <section id="faq">
-    <h2>Pertanyaan Umum</h2>
+  <section class="block" id="faq">
+    <h2 class="big">Pertanyaan Umum</h2>
     <p class="sub">Hal-hal yang paling sering ditanyakan.</p>
     <div class="faq">
-      <details><summary><i class="fa-solid fa-circle-question"></i>Kenapa SubSenpai tidak ada di Play Store?</summary>
-        <p>Aplikasinya masih tahap awal. Untuk saat ini distribusi resmi hanya lewat halaman ini dan GitHub Releases — pastikan kamu hanya mengunduh dari dua tempat itu.</p></details>
-      <details><summary><i class="fa-solid fa-circle-question"></i>Apakah APK-nya aman?</summary>
-        <p>Setiap versi ditandatangani dengan kunci rilis resmi yang sama, dan tombol download di halaman ini selalu mengambil file dari rilis terbaru di GitHub resmi SubSenpai — bukan dari pihak ketiga.</p></details>
-      <details><summary><i class="fa-solid fa-circle-question"></i>Apakah SubSenpai gratis?</summary>
+      <details><summary>Apakah SubSenpai gratis?</summary>
         <p>Gratis. Episode pertama anime dan donghua bisa ditonton tanpa berlangganan, episode lain bisa dibuka satu per satu dengan menonton iklan singkat, dan Premium membuka semuanya sekaligus.</p></details>
-      <details><summary><i class="fa-solid fa-circle-question"></i>HP saya bisa pakai?</summary>
+      <details><summary>Apakah aplikasinya aman?</summary>
+        <p>Aman — unduh hanya dari halaman resmi ini. Setiap versi aplikasi ditandatangani dengan kunci rilis resmi yang sama, jadi update selalu bisa dipasang menimpa versi lama tanpa kehilangan data.</p></details>
+      <details><summary>HP saya bisa pakai?</summary>
         <p>Bisa, selama Android 7.0 (Nougat) atau lebih baru. Ukuran aplikasinya hanya sekitar 14 MB.</p></details>
-      <details><summary><i class="fa-solid fa-circle-question"></i>Bagaimana cara update ke versi terbaru?</summary>
-        <p>Cukup download APK terbaru dari halaman ini dan install menimpa versi lama — data dan login kamu tidak akan hilang. Aplikasi juga akan memberi tahu bila ada versi minimum baru yang wajib dipakai.</p></details>
+      <details><summary>Bagaimana cara update ke versi terbaru?</summary>
+        <p>Cukup download APK terbaru dari halaman ini dan install menimpa versi lama — data dan login kamu tidak akan hilang.</p></details>
+      <details><summary>Saya mengklik poster tapi aplikasinya tidak terbuka?</summary>
+        <p>Itu berarti aplikasi SubSenpai belum terpasang (atau masih versi lama). Download dan install dulu dari tombol di atas, lalu ketuk posternya lagi — judulnya akan langsung terbuka di aplikasi.</p></details>
     </div>
   </section>
 
-  <div class="hero" style="padding-top:10px">
-    <h2 style="margin-bottom:16px">Siap mulai menonton?</h2>
-    <a class="btn" id="dlBtn2" href="https://github.com/devcoderama/SubSenpai/releases" rel="noopener">
+  <div class="cta">
+    <a class="btn" id="dlBtn2" href="https://github.com/devcoderama/SubSenpai/releases/download/v0.24.5/SubSenpai-v0.24.5.apk">
       <i class="fa-brands fa-android"></i><span>Download SubSenpai Sekarang</span>
     </a>
-    <div class="verinfo" id="verInfo2" style="margin-top:12px"></div>
+    <div class="verinfo" id="verInfo2"></div>
   </div>
 </main>
 
 <footer>
   <div class="wrap">
-    © 2026 SubSenpai · Halaman unduhan resmi ·
-    <a href="https://github.com/devcoderama/SubSenpai" rel="noopener">GitHub</a> ·
-    <a href="https://celebrated-semolina-d9f3c5.netlify.app/">Dokumentasi</a> ·
-    <a href="https://celebrated-semolina-d9f3c5.netlify.app/privacy.html">Privasi</a> ·
-    <a href="https://celebrated-semolina-d9f3c5.netlify.app/terms.html">Ketentuan</a>
+    © 2026 SubSenpai · Halaman resmi aplikasi SubSenpai ·
+    <a href="privacy.html">Kebijakan Privasi</a> ·
+    <a href="terms.html">Syarat Layanan</a>
   </div>
 </footer>
 
 <script>
-// Tombol download selalu menunjuk APK rilis TERBARU: daftar rilis
-// diambil dari API GitHub (rilis SubSenpai berstatus pre-release,
-// jadi endpoint /releases/latest tidak bisa dipakai — ambil rilis
-// pertama yang punya aset .apk). Bila API gagal, tombol jatuh ke
-// halaman rilis GitHub.
+/* ================= Tombol download: selalu versi terbaru ================= */
 (function () {
-  var FALLBACK = "https://github.com/devcoderama/SubSenpai/releases";
+  var FALLBACK = "https://github.com/devcoderama/SubSenpai/releases/download/v0.24.5/SubSenpai-v0.24.5.apk";
   function fmtSize(b) { return (b / 1048576).toFixed(1).replace(".", ",") + " MB"; }
   function fmtDate(s) {
-    try {
-      return new Date(s).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
-    } catch (e) { return ""; }
+    try { return new Date(s).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }); }
+    catch (e) { return ""; }
   }
   function apply(url, html) {
-    ["dlBtn", "dlBtn2"].forEach(function (id) {
-      var a = document.getElementById(id);
-      if (a) a.href = url;
-    });
-    ["verInfo", "verInfo2"].forEach(function (id) {
-      var el = document.getElementById(id);
-      if (el) el.innerHTML = html;
-    });
-    var label = document.getElementById("dlLabel");
-    if (label && url !== FALLBACK) label.textContent = "Download APK Terbaru";
+    ["dlBtn", "dlBtn2"].forEach(function (id) { var a = document.getElementById(id); if (a) a.href = url; });
+    ["verInfo", "verInfo2"].forEach(function (id) { var el = document.getElementById(id); if (el) el.innerHTML = html; });
   }
-  fetch("https://api.github.com/repos/devcoderama/SubSenpai/releases?per_page=10", {
-    headers: { "Accept": "application/vnd.github+json" }
-  })
+  fetch("https://api.github.com/repos/devcoderama/SubSenpai/releases?per_page=10", { headers: { "Accept": "application/vnd.github+json" } })
     .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
     .then(function (rels) {
       for (var i = 0; i < rels.length; i++) {
         var assets = rels[i].assets || [];
         for (var j = 0; j < assets.length; j++) {
           if (/\.apk$/i.test(assets[j].name)) {
-            apply(
-              assets[j].browser_download_url,
-              "Versi <b>" + rels[i].tag_name + "</b> · " + fmtSize(assets[j].size) +
-              " · Rilis " + fmtDate(rels[i].published_at) + " · Android 7.0+"
-            );
+            apply(assets[j].browser_download_url,
+              "Versi <b>" + rels[i].tag_name + "</b> · " + fmtSize(assets[j].size) + " · Rilis " + fmtDate(rels[i].published_at) + " · Android 7.0+");
             return;
           }
         }
       }
-      throw new Error("tidak ada aset apk");
+      throw new Error("no apk");
     })
-    .catch(function () {
-      apply(FALLBACK, "Versi terbaru tersedia di halaman rilis GitHub · Android 7.0+");
-    });
+    .catch(function () { apply(FALLBACK, "Versi terbaru · Android 7.0+"); });
 })();
+
+/* ================= Katalog langsung dari API SubSenpai =================
+ * Sesi terenkripsi ECDH sama seperti aplikasi & dashboard:
+ * handshake POST /api/v1/session (X25519 + HKDF-SHA256), respons
+ * dibungkus envelope {xdata, xtime} AES-256-GCM. */
+const API_BASE = "https://subsenpai-api.botlynk.id";
+const _P = (1n << 255n) - 19n;
+const _mod = (a) => ((a % _P) + _P) % _P;
+function _leToBigInt(bytes) { let n = 0n; for (let i = bytes.length - 1; i >= 0; i--) n = (n << 8n) | BigInt(bytes[i]); return n; }
+function _bigIntToLe(n, len) { const out = new Uint8Array(len); for (let i = 0; i < len; i++) { out[i] = Number(n & 0xffn); n >>= 8n; } return out; }
+function _modInv(a) { let e = _P - 2n, base = _mod(a), r = 1n; while (e > 0n) { if (e & 1n) r = _mod(r * base); base = _mod(base * base); e >>= 1n; } return r; }
+function x25519(scalarBytes, uBytes) {
+  const k = Uint8Array.from(scalarBytes); k[0] &= 248; k[31] &= 127; k[31] |= 64;
+  const n = _leToBigInt(k);
+  const u = Uint8Array.from(uBytes); u[31] &= 127;
+  const x1 = _mod(_leToBigInt(u));
+  let x2 = 1n, z2 = 0n, x3 = x1, z3 = 1n, swap = 0n;
+  const a24 = 121665n;
+  for (let t = 254; t >= 0; t--) {
+    const kt = (n >> BigInt(t)) & 1n; swap ^= kt;
+    if (swap === 1n) { [x2, x3] = [x3, x2]; [z2, z3] = [z3, z2]; }
+    swap = kt;
+    const A = _mod(x2 + z2), AA = _mod(A * A);
+    const B = _mod(x2 - z2), BB = _mod(B * B);
+    const E = _mod(AA - BB);
+    const C = _mod(x3 + z3), D = _mod(x3 - z3);
+    const DA = _mod(D * A), CB = _mod(C * B);
+    x3 = _mod((DA + CB) * (DA + CB));
+    z3 = _mod(x1 * _mod((DA - CB) * (DA - CB)));
+    x2 = _mod(AA * BB);
+    z2 = _mod(E * _mod(AA + _mod(a24 * E)));
+  }
+  if (swap === 1n) { [x2, x3] = [x3, x2]; [z2, z3] = [z3, z2]; }
+  return _bigIntToLe(_mod(x2 * _modInv(z2)), 32);
+}
+const X25519_BASE = new Uint8Array(32); X25519_BASE[0] = 9;
+function b64urlEncode(bytes) { let s = ""; for (const b of bytes) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+function b64urlDecode(str) {
+  const s = str.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(s + "=".repeat((4 - (s.length % 4)) % 4));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+let sessionId = null, aesKey = null;
+async function handshake() {
+  const priv = crypto.getRandomValues(new Uint8Array(32));
+  const pub = x25519(priv, X25519_BASE);
+  const res = await fetch(API_BASE + "/api/v1/session", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ client_public_key: b64urlEncode(pub) }),
+  });
+  if (!res.ok) throw new Error("handshake " + res.status);
+  const hs = await res.json();
+  const shared = x25519(priv, b64urlDecode(hs.server_public_key));
+  const hkdfKey = await crypto.subtle.importKey("raw", shared, "HKDF", false, ["deriveKey"]);
+  aesKey = await crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: new TextEncoder().encode("subsenpai-xdata-v1") },
+    hkdfKey, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  sessionId = hs.session_id;
+}
+async function apiGet(path) {
+  if (!sessionId) await handshake();
+  const res = await fetch(API_BASE + path, { headers: { "X-Session-Id": sessionId } });
+  const env = await res.json();
+  if (env && env.xdata) {
+    const payload = b64urlDecode(env.xdata);
+    const plain = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: payload.slice(0, 12), additionalData: new TextEncoder().encode(String(env.xtime)) },
+      aesKey, payload.slice(12));
+    return JSON.parse(new TextDecoder().decode(plain));
+  }
+  return env;
+}
+function esc(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function deepLink(id) {
+  return "intent://title/" + id + "#Intent;scheme=subsenpai;package=com.subsenpai;" +
+    "S.browser_fallback_url=" + encodeURIComponent("https://app-subsenpai.netlify.app/#download") + ";end";
+}
+function renderRow(type, items) {
+  const block = document.getElementById("row-" + type);
+  const rail = block.querySelector("[data-rail]");
+  const withPoster = items.filter(function (t) { return t.poster_url; });
+  if (!withPoster.length) return;
+  rail.innerHTML = withPoster.map(function (t) {
+    const img = API_BASE + "/api/v1/img-proxy?u=" + encodeURIComponent(t.poster_url);
+    return '<a class="pcard" href="' + deepLink(t.id) + '">' +
+      '<div class="ph"><img loading="lazy" alt="" src="' + esc(img) + '"></div>' +
+      '<div class="t">' + esc(t.title) + "</div>" +
+      (t.year ? '<div class="y">' + esc(t.year) + "</div>" : "") + "</a>";
+  }).join("");
+  block.hidden = false;
+}
+(async function loadCatalog() {
+  try {
+    const types = ["anime", "donghua", "film"];
+    for (const type of types) {
+      const data = await apiGet("/api/v1/titles?type=" + type + "&limit=14");
+      renderRow(type, (data && data.items) || []);
+    }
+  } catch (e) { /* katalog gagal dimuat: halaman unduhan tetap berfungsi */ }
+  const sk = document.getElementById("row-skeleton");
+  if (sk) sk.remove();
+})();
+
+/* Header menjadi pekat setelah halaman digeser. */
+window.addEventListener("scroll", function () {
+  document.getElementById("hdr").classList.toggle("solid", window.scrollY > 30);
+}, { passive: true });
 </script>
 </body>
 </html>
