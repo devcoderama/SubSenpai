@@ -32,9 +32,11 @@
   .btn.small{padding:8px 18px;font-size:.9rem}
   .btn.ghost{background:rgba(255,255,255,.14);backdrop-filter:blur(6px)}
   .btn.ghost:hover{background:rgba(255,255,255,.24)}
-  .hero{position:relative;padding:158px 0 74px;background:
-    radial-gradient(900px 480px at 85% -10%,rgba(229,9,20,.20),transparent 60%),
-    radial-gradient(700px 500px at 0% 110%,rgba(167,139,250,.12),transparent 60%),var(--bg2)}
+  .hero{position:relative;padding:158px 0 74px;background:var(--bg2);overflow:hidden}
+  .hero::before{content:"";position:absolute;inset:0;background:url("hero-bg.jpg") center/cover no-repeat;transform:scale(1.06)}
+  .hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.58),rgba(0,0,0,.66) 55%,var(--bg) 100%)}
+  .hero .wrap{position:relative;z-index:2}
+  .hero h1,.hero p{text-shadow:0 2px 18px rgba(0,0,0,.65)}
   .hero h1{font-size:clamp(2.1rem,5.6vw,3.6rem);line-height:1.15;font-weight:900;max-width:720px}
   .hero h1 em{font-style:normal;color:var(--red)}
   .hero p{color:#e5e5e5;font-size:clamp(1rem,2.2vw,1.15rem);max-width:600px;margin:16px 0 26px}
