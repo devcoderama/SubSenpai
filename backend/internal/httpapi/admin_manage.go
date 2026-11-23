@@ -271,6 +271,7 @@ func (a *API) handleCrashReport(w http.ResponseWriter, r *http.Request) {
 
 type adminCrash struct {
 	ID             string     `json:"id"`
+	UserName       string     `json:"user_name"`
 	UserEmail      string     `json:"user_email,omitempty"`
 	AppVersion     string     `json:"app_version"`
 	VersionCode    int        `json:"version_code"`
@@ -306,7 +307,7 @@ func (a *API) handleAdminCrashes(w http.ResponseWriter, r *http.Request) {
 		       count(*) filter (where is_fixed)
 		from crash_reports`).Scan(&nTotal, &nBelum, &nSudah)
 	rows, err := a.pool.Query(ctx, `
-		select c.id, coalesce(p.email, ''), c.app_version, c.version_code,
+		select c.id, coalesce(p.display_name, ''), coalesce(p.email, ''), c.app_version, c.version_code,
 		       c.android_version, c.device, c.message, c.stack_trace,
 		       c.is_fixed, c.fixed_at, c.created_at
 		from crash_reports c
@@ -321,7 +322,7 @@ func (a *API) handleAdminCrashes(w http.ResponseWriter, r *http.Request) {
 	out := []adminCrash{}
 	for rows.Next() {
 		var c adminCrash
-		if err := rows.Scan(&c.ID, &c.UserEmail, &c.AppVersion, &c.VersionCode,
+		if err := rows.Scan(&c.ID, &c.UserName, &c.UserEmail, &c.AppVersion, &c.VersionCode,
 			&c.AndroidVersion, &c.Device, &c.Message, &c.StackTrace,
 			&c.IsFixed, &c.FixedAt, &c.CreatedAt); err != nil {
 			writeErr(w, http.StatusInternalServerError, "gagal membaca laporan crash")

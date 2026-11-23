@@ -866,22 +866,41 @@ async function loadCrashes() {
   if (!list.length) { $('cr-list').innerHTML = '<p class="muted">Tidak ada laporan crash pada filter ini.</p>'; return; }
   let html = '';
   for (const c of list) {
-    const firstLine = (c.message || c.stack_trace || '').split('\n')[0];
+    const nama = c.user_name || c.user_email || 'Pengguna anonim';
     html += '<div class="card" style="margin-bottom:12px">' +
-      '<div class="toolbar" style="align-items:flex-start"><div style="flex:1"><b>' + esc(firstLine || '(tanpa pesan)') + '</b> ' +
+      '<div class="toolbar" style="align-items:flex-start"><div style="flex:1"><b>' + esc(nama) + '</b> ' +
       '<span class="badge ' + (c.is_fixed ? 'premium' : 'expired') + '">' + (c.is_fixed ? 'Sudah diperbaiki' : 'Belum diperbaiki') + '</span>' +
-      '<div class="muted small">' + esc(fmtDate(c.created_at)) + ' • v' + esc(c.app_version) + ' (' + c.version_code + ') • ' +
-      esc(c.device) + ' • ' + esc(c.android_version) + (c.user_email ? ' • ' + esc(c.user_email) : '') +
+      '<div class="muted small">' + (c.user_name && c.user_email ? esc(c.user_email) + ' • ' : '') +
+      esc(fmtDate(c.created_at)) + ' • v' + esc(c.app_version) + ' (' + c.version_code + ') • ' +
+      esc(c.device) + ' • ' + esc(c.android_version) +
       (c.is_fixed && c.fixed_at ? ' • ditandai selesai ' + esc(fmtDate(c.fixed_at)) : '') + '</div></div>' +
       '<button class="btn ghost small" data-cr-toggle="' + esc(c.id) + '">Stack trace</button>' +
       '<button class="btn ' + (c.is_fixed ? 'ghost' : '') + ' small" data-cr-fix="' + esc(c.id) + '|' + (c.is_fixed ? '0' : '1') + '">' +
       (c.is_fixed ? 'Tandai Belum' : 'Tandai Sudah Diperbaiki') + '</button>' +
       '<button class="btn small" data-cr-del="' + esc(c.id) + '">Hapus</button></div>' +
-      '<pre id="cr-stack-' + esc(c.id) + '" hidden style="white-space:pre-wrap;word-break:break-word;font-size:0.78rem;max-height:320px;overflow:auto;background:var(--panel-2);padding:12px;border-radius:9px">' + esc(c.stack_trace) + '</pre></div>';
+      '<div id="cr-stackwrap-' + esc(c.id) + '" hidden style="position:relative">' +
+      '<button class="btn ghost small" data-cr-copy="' + esc(c.id) + '" style="position:absolute;top:8px;right:8px;z-index:1">Salin</button>' +
+      '<pre id="cr-stack-' + esc(c.id) + '" style="white-space:pre-wrap;word-break:break-word;font-size:0.78rem;max-height:320px;overflow:auto;background:var(--panel-2);padding:12px;border-radius:9px;margin:0">' + esc(c.stack_trace) + '</pre></div></div>';
   }
   $('cr-list').innerHTML = html;
   document.querySelectorAll('button[data-cr-toggle]').forEach((el) =>
-    el.addEventListener('click', () => { const p = $('cr-stack-' + el.dataset.crToggle); p.hidden = !p.hidden; }));
+    el.addEventListener('click', () => { const p = $('cr-stackwrap-' + el.dataset.crToggle); p.hidden = !p.hidden; }));
+  document.querySelectorAll('button[data-cr-copy]').forEach((el) =>
+    el.addEventListener('click', async () => {
+      const teks = ($('cr-stack-' + el.dataset.crCopy) || {}).textContent || '';
+      try {
+        await navigator.clipboard.writeText(teks);
+        toast('Log error disalin.');
+      } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = teks;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); toast('Log error disalin.'); }
+        catch (e2) { toast('Gagal menyalin otomatis — buka stack trace lalu salin manual.'); }
+        ta.remove();
+      }
+    }));
   document.querySelectorAll('button[data-cr-fix]').forEach((el) =>
     el.addEventListener('click', async () => {
       const [id, to] = el.dataset.crFix.split('|');

@@ -463,7 +463,11 @@ func TestAdminLive(t *testing.T) {
 	if st != 200 || len(crashes["crashes"].([]any)) != 1 {
 		t.Fatalf("daftar crash admin: status=%d body=%v", st, crashes)
 	}
-	crashID := crashes["crashes"].([]any)[0].(map[string]any)["id"].(string)
+	crashItem := crashes["crashes"].([]any)[0].(map[string]any)
+	if _, ok := crashItem["user_name"]; !ok {
+		t.Fatalf("laporan crash harus membawa user_name: %v", crashItem)
+	}
+	crashID := crashItem["id"].(string)
 	// Penanda perbaikan: tandai sudah -> filter sudah memuatnya,
 	// filter belum kosong; user biasa tidak boleh menandai.
 	if st, _ := call("PATCH", "/api/v1/admin/crashes/"+crashID, adminJWT,
