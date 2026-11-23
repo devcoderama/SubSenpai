@@ -415,10 +415,6 @@ func TestAdminLive(t *testing.T) {
 	if st != 200 || appCfg["min_version_name"] != "0.22.2" {
 		t.Fatalf("app-config min_version_name: status=%d body=%v", st, appCfg)
 	}
-	// Kenaikan versi minimum juga terposting ke Discord #update-apk.
-	if !waitDiscord("/channels/222/messages", "v0.22.2") {
-		t.Fatal("pesan Discord update-apk tidak terkirim")
-	}
 	if st, _ := call("PATCH", "/api/v1/admin/settings", adminJWT,
 		map[string]any{"min_version_name": "nol-koma"}); st != 400 {
 		t.Fatalf("min_version_name liar harus 400, dapat %d", st)

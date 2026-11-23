@@ -347,13 +347,6 @@ func (a *API) handleAdminSettingsUpdate(w http.ResponseWriter, r *http.Request) 
 		updates["announcement"] = truncate(*req.Announcement, 500)
 	}
 	ctx := r.Context()
-	// Versi minimum lama dibaca dulu: kenaikannya menandakan rilis
-	// APK baru → diumumkan ke Discord (#update-apk).
-	oldMinVersionName := ""
-	if req.MinVersionName != nil {
-		_ = a.pool.QueryRow(ctx,
-			`select value from app_settings where key = 'min_version_name'`).Scan(&oldMinVersionName)
-	}
 	for k, v := range updates {
 		if _, err := a.pool.Exec(ctx, `
 			insert into app_settings (key, value) values ($1, $2)
@@ -366,11 +359,9 @@ func (a *API) handleAdminSettingsUpdate(w http.ResponseWriter, r *http.Request) 
 	_, _ = a.pool.Exec(ctx, `
 		insert into admin_logs (admin_id, action, target, detail)
 		values ($1::uuid, 'settings_update', '', $2)`, p.ID, updates)
-	if nv, ok := updates["min_version_name"]; ok && nv != "" && nv != oldMinVersionName {
-		// Cermin ke Discord komunitas (#update-apk) — fire-and-forget.
-		a.discordNotify(a.cfg.DiscordChannelUpdateAPK,
-			"🚀 **Update APK SubSenpai v"+nv+"**\n\nVersi terbaru sudah tersedia. Download di https://www.subsenpai.web.id")
-	}
+	// Pengumuman update APK ke Discord kini OTOMATIS dari rilis
+	// GitHub (jobs.PostUpdateToDiscordIfNew di worker) — menaikkan
+	// min_version_name di sini tidak lagi memposting apa pun.
 	writeJSON(w, http.StatusOK, map[string]any{"settings": a.loadSettings(r)})
 }
 

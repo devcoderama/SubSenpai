@@ -75,6 +75,10 @@ func main() {
 		// Jadwal rilis harian ke Discord komunitas (sekali sehari,
 		// penanda tanggal di app_settings; no-op bila token kosong).
 		jobs.PostDailyScheduleToDiscord(ctx, pool, cfg)
+		// Pengumuman update APK otomatis: versi rilis GitHub
+		// terbaru yang belum diumumkan diposting ke #update-apk
+		// (penanda versi di app_settings; no-op bila token kosong).
+		jobs.PostUpdateToDiscordIfNew(ctx, pool, cfg)
 	}
 	runSources()
 	var gopayClient *payments.GoPayClient
