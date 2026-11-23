@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.subsenpai.R
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.ScheduleGroup
+import com.subsenpai.data.ScheduleItem
 import java.util.Calendar
 import kotlinx.coroutines.launch
 
