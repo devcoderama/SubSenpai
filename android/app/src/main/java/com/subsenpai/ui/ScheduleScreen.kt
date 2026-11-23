@@ -45,11 +45,15 @@ import java.util.Calendar
 import kotlinx.coroutines.launch
 
 /**
- * Jadwal Rilis (permintaan Rams 2026-11-23, menu di tab Lainnya):
- * 3 kategori — Anime (jadwal harian Kuronime + Update Acak),
- * Donghua (jadwal Anichin), Film (rilis terbaru katalog). Backend
- * yang mengambil & meng-cache jadwal dari sumber; entri yang ada
- * di katalog bisa diketuk menuju halaman detailnya.
+ * Jadwal Rilis (permintaan Rams 2026-11-23): 3 kategori — Anime
+ * (jadwal harian Kuronime + Update Acak), Donghua (jadwal Anichin),
+ * Film (rilis terbaru katalog). Backend yang mengambil & meng-cache
+ * jadwal dari sumber. SEMUA baris bisa diketuk (perbaikan 2026-11-23
+ * malam: dulu hanya baris yang sudah di katalog — yang berpanah >
+ * — yang bisa diketuk): ketuk membuka PEMUTAR langsung di episode
+ * terbaru judul itu; judul yang belum di katalog diimpor dulu dari
+ * URL sumbernya; bila episodenya belum tersedia, jatuh ke halaman
+ * detail.
  */
 private fun todayLabel(): String = when (Calendar.getInstance().get(Calendar.DAY_OF_WEEK)) {
     Calendar.MONDAY -> "Senin"
@@ -65,6 +69,7 @@ private fun todayLabel(): String = when (Calendar.getInstance().get(Calendar.DAY
 fun ScheduleScreen(
     repo: CatalogRepository,
     onOpenTitle: (String) -> Unit,
+    onPlayEpisode: (String) -> Unit,
 ) {
     val types = listOf("anime" to "Anime", "donghua" to "Donghua", "film" to "Film")
     var selectedType by remember { mutableStateOf("anime") }
@@ -72,7 +77,62 @@ fun ScheduleScreen(
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedDay by remember { mutableStateOf<String?>(null) }
+    var busyKey by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Ketuk baris jadwal: impor dulu bila belum di katalog, lalu
+    // putar episode terbaru langsung di pemutar. Episode pada
+    // jadwal dipilih bila sudah tersedia; kalau belum ada episode
+    // sama sekali, buka halaman detailnya (di sana episode terus
+    // dimuat dari sumber).
+    fun openItem(item: ScheduleItem) {
+        if (busyKey != null) return
+        val key = selectedType + ":" + item.slug + ":" + item.title
+        busyKey = key
+        scope.launch {
+            try {
+                var id = item.titleId
+                if (id == null && !item.url.isNullOrBlank()) {
+                    id = repo.importTitle(
+                        selectedType,
+                        CatalogRepository.LiveBrowseItem(
+                            title = item.title,
+                            slug = item.slug,
+                            posterUrl = item.poster,
+                            year = null,
+                            genres = emptyList(),
+                            url = item.url,
+                            catalogId = null,
+                        ),
+                        null,
+                    )
+                }
+                if (id == null) {
+                    android.widget.Toast.makeText(
+                        context, "Judul ini belum tersedia di katalog", android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                    return@launch
+                }
+                var target: com.subsenpai.data.EpisodeItem? = null
+                var tries = 0
+                while (target == null && tries < 4) {
+                    val eps = repo.titleDetail(id).episodes
+                    target = eps.firstOrNull { it.episodeNo == item.episode }
+                        ?: eps.maxByOrNull { it.episodeNo }
+                    if (target == null && tries < 3) kotlinx.coroutines.delay(1500)
+                    tries++
+                }
+                if (target != null) onPlayEpisode(target.id) else onOpenTitle(id)
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(
+                    context, "Gagal membuka judul ini", android.widget.Toast.LENGTH_SHORT,
+                ).show()
+            } finally {
+                busyKey = null
+            }
+        }
+    }
 
     fun load(type: String) {
         scope.launch {
@@ -182,13 +242,7 @@ fun ScheduleScreen(
                         items(dayItems) { item ->
                             Row(
                                 modifier = Modifier.fillMaxWidth()
-                                    .then(
-                                        if (item.titleId != null) {
-                                            Modifier.clickable { onOpenTitle(item.titleId) }
-                                        } else {
-                                            Modifier
-                                        },
-                                    )
+                                    .clickable(enabled = busyKey == null) { openItem(item) }
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -242,7 +296,13 @@ fun ScheduleScreen(
                                         )
                                     }
                                 }
-                                if (item.titleId != null) {
+                                if (busyKey == selectedType + ":" + item.slug + ":" + item.title) {
+                                    CircularProgressIndicator(
+                                        color = NetflixRed,
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                } else {
                                     Icon(
                                         painterResource(R.drawable.ic_chevron_right),
                                         contentDescription = null,

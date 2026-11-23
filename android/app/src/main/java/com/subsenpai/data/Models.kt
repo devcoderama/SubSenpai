@@ -398,6 +398,8 @@ class CatalogRepository(
                                 episode = it.optInt("episode"),
                                 poster = it.optString("poster").ifBlank { null },
                                 titleId = it.optString("title_id").ifBlank { null },
+                                slug = it.optString("slug"),
+                                url = it.optString("url").ifBlank { null },
                             ),
                         )
                     }

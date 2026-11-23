@@ -55,6 +55,7 @@ type schedItemOut struct {
 	Time    string  `json:"time"`
 	Episode int     `json:"episode,omitempty"`
 	Poster  string  `json:"poster,omitempty"`
+	URL     string  `json:"url,omitempty"`
 	TitleID *string `json:"title_id,omitempty"`
 }
 
@@ -94,7 +95,7 @@ func (a *API) matchTitleIDs(r *http.Request, typ string, groups []sources.Schedu
 	for _, g := range groups {
 		go2 := schedGroupOut{Day: g.Day, Items: []schedItemOut{}}
 		for _, it := range g.Items {
-			o := schedItemOut{Title: it.Title, Slug: it.Slug, Time: it.Time, Episode: it.Episode, Poster: it.Poster}
+			o := schedItemOut{Title: it.Title, Slug: it.Slug, Time: it.Time, Episode: it.Episode, Poster: it.Poster, URL: it.URL}
 			if id, ok := ids[it.Slug]; ok {
 				o.TitleID = &id
 			}

@@ -352,6 +352,7 @@ class MainActivity : ComponentActivity() {
                             com.subsenpai.ui.ScheduleScreen(
                                 repo,
                                 onOpenTitle = { nav.navigate("detail/$it") },
+                                onPlayEpisode = { nav.navigate("player/$it") },
                             )
                         }
                         composable("transactions") {

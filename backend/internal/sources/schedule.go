@@ -23,6 +23,9 @@ type ScheduleItem struct {
 	Time    string
 	Episode int
 	Poster  string
+	// URL halaman judul di situs sumber — dipakai aplikasi untuk
+	// mengimpor judul yang belum ada di katalog saat diketuk.
+	URL string
 }
 
 // ScheduleGroup adalah daftar entri untuk satu hari ("Senin" ..
@@ -207,6 +210,7 @@ func ParseKuronimeSchedule(page string) []ScheduleGroup {
 				Time:    tm,
 				Episode: ep,
 				Poster:  schedPoster(ab),
+				URL:     "https://kuronime.sbs/anime/" + slug + "/",
 			})
 		}
 		if len(g.Items) > 0 {
@@ -272,6 +276,7 @@ func ParseAnichinSchedule(page string) []ScheduleGroup {
 				Time:    tm,
 				Episode: ep,
 				Poster:  poster,
+				URL:     "https://anichin.moe/" + slug + "/",
 			})
 			if len(g.Items) >= 80 {
 				break

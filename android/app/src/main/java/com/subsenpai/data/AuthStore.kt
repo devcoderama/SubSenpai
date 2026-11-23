@@ -100,6 +100,9 @@ data class ScheduleItem(
     val episode: Int,
     val poster: String?,
     val titleId: String?,
+    val slug: String = "",
+    /** URL halaman judul di situs sumber — untuk impor saat diketuk bila belum di katalog. */
+    val url: String? = null,
 )
 
 /** Grup jadwal satu hari ("Senin".."Minggu", "Update Acak", "Rilis Terbaru"). */
