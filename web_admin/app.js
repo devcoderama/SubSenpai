@@ -1276,6 +1276,7 @@ async function pageSistem(keep) {
     '<tr><th>Login Google</th><td>' + flag(cfg.google_login) + '</td></tr>' +
     '<tr><th>Tokopay</th><td>' + flag(cfg.tokopay) + '</td></tr>' +
     '<tr><th>Discord (bot komunitas)</th><td>' + flag(cfg.discord) + '</td></tr>' +
+    '<tr><th>Telegram (bot grup)</th><td>' + flag(cfg.telegram) + '</td></tr>' +
     '<tr><th>ImgBB (gambar feed)</th><td>' + flag(cfg.imgbb) + '</td></tr></table>' +
     '<p class="muted">Konfigurasi diatur lewat berkas env di VPS (<code>/etc/subsenpai/backend.env</code>), bukan dari halaman ini.</p></div>';
   $('pageBody').innerHTML = html;

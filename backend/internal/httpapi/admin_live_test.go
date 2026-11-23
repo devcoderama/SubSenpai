@@ -26,6 +26,7 @@ import (
 	"subsenpai/backend/internal/discord"
 	"subsenpai/backend/internal/jobs"
 	"subsenpai/backend/internal/middleware"
+	"subsenpai/backend/internal/telegram"
 )
 
 // TestAdminLive: endpoint dashboard admin (stats/users/role/
@@ -105,8 +106,40 @@ func TestAdminLive(t *testing.T) {
 		return false
 	}
 
+	// Server tangkap Telegram: cermin siaran harus tiba sebagai
+	// sendMessage ke topik Pengumuman grup lewat klien sungguhan.
+	var tmu sync.Mutex
+	var tmsgs []string
+	tsrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		tmu.Lock()
+		tmsgs = append(tmsgs, r.URL.Path+" "+string(b))
+		tmu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"result":{}}`))
+	}))
+	defer tsrv.Close()
+	oldTelegramBase := telegram.BaseURL
+	telegram.BaseURL = tsrv.URL
+	defer func() { telegram.BaseURL = oldTelegramBase }()
+	waitTelegram := func(substr string) bool {
+		for i := 0; i < 30; i++ {
+			tmu.Lock()
+			for _, m := range tmsgs {
+				if strings.Contains(m, substr) {
+					tmu.Unlock()
+					return true
+				}
+			}
+			tmu.Unlock()
+			time.Sleep(100 * time.Millisecond)
+		}
+		return false
+	}
+
 	cfg := config.Config{JWTSecret: "admin-test-secret", JWTTTLHours: 24, SessionTTLHours: 1,
-		DiscordBotToken: "token-uji", DiscordChannelPengumuman: "111", DiscordChannelUpdateAPK: "222"}
+		DiscordBotToken: "token-uji", DiscordChannelPengumuman: "111", DiscordChannelUpdateAPK: "222",
+		TelegramBotToken: "token-tg", TelegramGroupID: "-100123", TelegramTopicPengumuman: "20729"}
 	a := New(pool, middleware.NewSessions(time.Hour), cfg)
 	srv := httptest.NewServer(a.Router())
 	defer srv.Close()
@@ -494,7 +527,7 @@ func TestAdminLive(t *testing.T) {
 	st, _ = call("POST", "/api/v1/crashes", userJWT, map[string]any{
 		"app_version": "0.22.0", "version_code": 49,
 		"android_version": "Android 14 (SDK 34)", "device": "POCO X6",
-		"message": "java.lang.IllegalStateException: uji",
+		"message":     "java.lang.IllegalStateException: uji",
 		"stack_trace": "java.lang.IllegalStateException: uji\n\tat com.subsenpai.MainActivity.onCreate",
 	})
 	if st != 200 {
@@ -582,6 +615,11 @@ func TestAdminLive(t *testing.T) {
 	// Siaran yang sama juga terposting ke Discord #pengumuman.
 	if !waitDiscord("/channels/111/messages", "Halo Uji") {
 		t.Fatal("pesan Discord pengumuman tidak terkirim")
+	}
+	// Dan cerminnya ke topik Pengumuman grup Telegram (thread
+	// 20729, format HTML: ** menjadi <b>).
+	if !waitTelegram(`"message_thread_id":20729`) || !waitTelegram("Halo Uji") {
+		t.Fatal("pesan Telegram pengumuman tidak terkirim ke topik yang benar")
 	}
 	if st, _ := call("POST", "/api/v1/admin/notifications", userJWT,
 		map[string]any{"title": "x", "body": "y"}); st != 403 {

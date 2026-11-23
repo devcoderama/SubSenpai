@@ -82,6 +82,9 @@ func (a *API) handleAdminNotificationSend(w http.ResponseWriter, r *http.Request
 	// Cermin ke Discord komunitas (#pengumuman) — fire-and-forget.
 	a.discordNotify(a.cfg.DiscordChannelPengumuman,
 		"📣 **"+req.Title+"**\n\n"+req.Body)
+	// Cermin ke topik Pengumuman grup Telegram — fire-and-forget.
+	a.telegramNotify(a.cfg.TelegramTopicPengumuman,
+		"📣 **"+req.Title+"**\n\n"+req.Body)
 	writeJSON(w, http.StatusOK, map[string]any{"id": bid, "recipients": sent})
 }
 

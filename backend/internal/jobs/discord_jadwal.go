@@ -12,6 +12,7 @@ import (
 	"subsenpai/backend/internal/config"
 	"subsenpai/backend/internal/discord"
 	"subsenpai/backend/internal/sources"
+	"subsenpai/backend/internal/telegram"
 )
 
 // hariIndo memetakan time.Weekday ke nama hari kanonik yang dipakai
@@ -33,7 +34,9 @@ var hariIndo = map[time.Weekday]string{
 // 30-menit tidak memposting berulang. Kegagalan ambil jadwal tidak
 // menandai hari itu — siklus berikutnya mencoba lagi.
 func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) {
-	if cfg.DiscordBotToken == "" || cfg.DiscordChannelJadwal == "" {
+	discordOK := cfg.DiscordBotToken != "" && cfg.DiscordChannelJadwal != ""
+	telegramOK := cfg.TelegramBotToken != "" && cfg.TelegramGroupID != "" && cfg.TelegramTopicJadwal != ""
+	if !discordOK && !telegramOK {
 		return
 	}
 	loc, err := time.LoadLocation("Asia/Jakarta")
@@ -93,8 +96,23 @@ func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg con
 	}
 	b.WriteString("\nSelamat menonton di SubSenpai! 🍿 https://www.subsenpai.web.id")
 
-	if err := discord.New(cfg.DiscordBotToken).Send(ctx, cfg.DiscordChannelJadwal, b.String()); err != nil {
-		log.Printf("discord jadwal: kirim gagal: %v", err)
+	sent := false
+	if discordOK {
+		if err := discord.New(cfg.DiscordBotToken).Send(ctx, cfg.DiscordChannelJadwal, b.String()); err != nil {
+			log.Printf("discord jadwal: kirim gagal: %v", err)
+		} else {
+			sent = true
+		}
+	}
+	if telegramOK {
+		if err := telegram.New(cfg.TelegramBotToken).Send(ctx, cfg.TelegramGroupID,
+			cfg.TelegramTopicJadwal, telegram.ToHTML(b.String())); err != nil {
+			log.Printf("telegram jadwal: kirim gagal: %v", err)
+		} else {
+			sent = true
+		}
+	}
+	if !sent {
 		return
 	}
 	if _, err := pool.Exec(ctx, `

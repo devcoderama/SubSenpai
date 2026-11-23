@@ -55,6 +55,14 @@ type Config struct {
 	DiscordChannelPengumuman string
 	DiscordChannelUpdateAPK  string
 	DiscordChannelJadwal     string
+	// Telegram — cermin notifikasi komunitas ke topik grup
+	// Telegram (permintaan Rams 2026-11-23 malam). Token hanya
+	// dari env server; kosong = notifikasi Telegram nonaktif.
+	TelegramBotToken        string
+	TelegramGroupID         string
+	TelegramTopicPengumuman string
+	TelegramTopicUpdateAPK  string
+	TelegramTopicJadwal     string
 }
 
 func Load() Config {
@@ -67,32 +75,37 @@ func Load() Config {
 		jwtTTL = 720
 	}
 	return Config{
-		Host:            os.Getenv("HOST"),
-		Port:            getenv("PORT", "8080"),
-		DatabaseURL:     os.Getenv("DATABASE_URL"),
-		SessionTTLHours: ttl,
-		JWTSecret:       os.Getenv("JWT_SECRET"),
-		WebOrigins:      os.Getenv("WEB_ORIGINS"),
-		GoogleClientID:  os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleCertsURL:  getenv("GOOGLE_CERTS_URL", "https://www.googleapis.com/oauth2/v3/certs"),
-		JWTTTLHours:     jwtTTL,
-		MidtransServerKey:  os.Getenv("MIDTRANS_SERVER_KEY"),
-		MidtransProduction: os.Getenv("MIDTRANS_PRODUCTION") == "true",
-		XenditSecretKey:    os.Getenv("XENDIT_SECRET_KEY"),
-		XenditCallbackTok:  os.Getenv("XENDIT_CALLBACK_TOKEN"),
-		GoPayBaseURL:       os.Getenv("GOPAY_MERCHANT_URL"),
-		GoPayUsername:      os.Getenv("GOPAY_USERNAME"),
-		GoPayPassword:      os.Getenv("GOPAY_PASSWORD"),
-		TokopayMerchantID: os.Getenv("TOKOPAY_MERCHANT_ID"),
-		TokopaySecret:     os.Getenv("TOKOPAY_SECRET_KEY"),
-		TokopayAPIURL:     os.Getenv("TOKOPAY_API_URL"),
-		FeedUploadDir:     getenv("FEED_UPLOAD_DIR", "/opt/subsenpai/uploads/feed"),
-		ImgBBAPIKey:       os.Getenv("IMGBB_API_KEY"),
+		Host:                     os.Getenv("HOST"),
+		Port:                     getenv("PORT", "8080"),
+		DatabaseURL:              os.Getenv("DATABASE_URL"),
+		SessionTTLHours:          ttl,
+		JWTSecret:                os.Getenv("JWT_SECRET"),
+		WebOrigins:               os.Getenv("WEB_ORIGINS"),
+		GoogleClientID:           os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleCertsURL:           getenv("GOOGLE_CERTS_URL", "https://www.googleapis.com/oauth2/v3/certs"),
+		JWTTTLHours:              jwtTTL,
+		MidtransServerKey:        os.Getenv("MIDTRANS_SERVER_KEY"),
+		MidtransProduction:       os.Getenv("MIDTRANS_PRODUCTION") == "true",
+		XenditSecretKey:          os.Getenv("XENDIT_SECRET_KEY"),
+		XenditCallbackTok:        os.Getenv("XENDIT_CALLBACK_TOKEN"),
+		GoPayBaseURL:             os.Getenv("GOPAY_MERCHANT_URL"),
+		GoPayUsername:            os.Getenv("GOPAY_USERNAME"),
+		GoPayPassword:            os.Getenv("GOPAY_PASSWORD"),
+		TokopayMerchantID:        os.Getenv("TOKOPAY_MERCHANT_ID"),
+		TokopaySecret:            os.Getenv("TOKOPAY_SECRET_KEY"),
+		TokopayAPIURL:            os.Getenv("TOKOPAY_API_URL"),
+		FeedUploadDir:            getenv("FEED_UPLOAD_DIR", "/opt/subsenpai/uploads/feed"),
+		ImgBBAPIKey:              os.Getenv("IMGBB_API_KEY"),
 		DiscordBotToken:          os.Getenv("DISCORD_BOT_TOKEN"),
 		DiscordGuildID:           os.Getenv("DISCORD_GUILD_ID"),
 		DiscordChannelPengumuman: os.Getenv("DISCORD_CHANNEL_PENGUMUMAN"),
 		DiscordChannelUpdateAPK:  os.Getenv("DISCORD_CHANNEL_UPDATE_APK"),
 		DiscordChannelJadwal:     os.Getenv("DISCORD_CHANNEL_JADWAL"),
+		TelegramBotToken:         os.Getenv("TELEGRAM_BOT_TOKEN"),
+		TelegramGroupID:          os.Getenv("TELEGRAM_GROUP_ID"),
+		TelegramTopicPengumuman:  os.Getenv("TELEGRAM_TOPIC_PENGUMUMAN"),
+		TelegramTopicUpdateAPK:   os.Getenv("TELEGRAM_TOPIC_UPDATE_APK"),
+		TelegramTopicJadwal:      os.Getenv("TELEGRAM_TOPIC_JADWAL"),
 	}
 }
 

@@ -656,6 +656,7 @@ func (a *API) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 			"tokopay":      a.cfg.TokopayMerchantID != "" && a.cfg.TokopaySecret != "",
 			"imgbb":        a.cfg.ImgBBAPIKey != "",
 			"discord":      a.cfg.DiscordBotToken != "",
+			"telegram":     a.cfg.TelegramBotToken != "",
 		},
 	})
 }

@@ -14,6 +14,7 @@ import (
 
 	"subsenpai/backend/internal/config"
 	"subsenpai/backend/internal/discord"
+	"subsenpai/backend/internal/telegram"
 )
 
 // Notifikasi update APK OTOMATIS ke Discord (permintaan Rams
@@ -114,7 +115,9 @@ func compareVersions(a, b string) int {
 // bila token/channel kosong. Kegagalan hanya dicatat di log —
 // siklus worker tidak boleh terganggu.
 func PostUpdateToDiscordIfNew(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) {
-	if cfg.DiscordBotToken == "" || cfg.DiscordChannelUpdateAPK == "" {
+	discordOK := cfg.DiscordBotToken != "" && cfg.DiscordChannelUpdateAPK != ""
+	telegramOK := cfg.TelegramBotToken != "" && cfg.TelegramGroupID != "" && cfg.TelegramTopicUpdateAPK != ""
+	if !discordOK && !telegramOK {
 		return
 	}
 	latest, err := latestReleaseVersion(ctx)
@@ -130,8 +133,23 @@ func PostUpdateToDiscordIfNew(ctx context.Context, pool *pgxpool.Pool, cfg confi
 	}
 	msg := "🚀 **Update APK SubSenpai v" + latest + "**\n\n" +
 		"Versi terbaru sudah tersedia. Unduh di https://www.subsenpai.web.id"
-	if err := discord.New(cfg.DiscordBotToken).Send(ctx, cfg.DiscordChannelUpdateAPK, msg); err != nil {
-		log.Printf("discord update: kirim gagal: %v", err)
+	sent := false
+	if discordOK {
+		if err := discord.New(cfg.DiscordBotToken).Send(ctx, cfg.DiscordChannelUpdateAPK, msg); err != nil {
+			log.Printf("discord update: kirim gagal: %v", err)
+		} else {
+			sent = true
+		}
+	}
+	if telegramOK {
+		if err := telegram.New(cfg.TelegramBotToken).Send(ctx, cfg.TelegramGroupID,
+			cfg.TelegramTopicUpdateAPK, telegram.ToHTML(msg)); err != nil {
+			log.Printf("telegram update: kirim gagal: %v", err)
+		} else {
+			sent = true
+		}
+	}
+	if !sent {
 		return
 	}
 	if _, err := pool.Exec(ctx, `
