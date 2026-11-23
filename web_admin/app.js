@@ -77,7 +77,17 @@ function b64urlDecode(str) {
 
 let sessionId = null;
 let aesKey = null;
-let jwt = sessionStorage.getItem(JWT_KEY) || null;
+
+/* sessionStorage bisa MELEMPAR error di sebagian peramban (Brave
+ * Shields / mode blokir cookie): setItem/removeItem gagal sementara
+ * getItem jalan — login membeku diam bila tidak dibungkus. Semua
+ * akses storage lewat pembungkus aman ini dengan cadangan memori. */
+const memStore = {};
+const storeGet = (k) => { try { return sessionStorage.getItem(k); } catch (e) { return memStore[k] || null; } };
+const storeSet = (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { memStore[k] = v; } };
+const storeDel = (k) => { try { sessionStorage.removeItem(k); } catch (e) { delete memStore[k]; } };
+
+let jwt = storeGet(JWT_KEY) || null;
 let me = null;
 
 /* fetch dengan batas waktu — tanpa ini, jaringan yang menggantung
@@ -175,7 +185,7 @@ function toast(msg) {
 /* ================= Login ================= */
 function showLogin(msg) {
   jwt = null; me = null; stepFn = null;
-  sessionStorage.removeItem(JWT_KEY);
+  storeDel(JWT_KEY);
   $('appView').hidden = true;
   $('loginView').hidden = false;
   $('loginHint').textContent = 'Gunakan akun Google admin kamu.';
@@ -196,12 +206,12 @@ async function onGoogleCredential(resp) {
     }
     const prof = r.body.profile || {};
     if (prof.role !== 'admin') {
-      showLogin('Akun ' + (prof.email || '') + ' bukan admin. Dashboard ini hanya untuk ' +
-        'akun yang role-nya sudah admin di database.');
+      showLogin('Akun ' + (prof.email || '') + ' belum admin (role saat ini: "' +
+        (prof.role || '?') + '"). Ubah role-nya menjadi admin di database, lalu login lagi.');
       return;
     }
     jwt = r.body.token;
-    sessionStorage.setItem(JWT_KEY, jwt);
+    storeSet(JWT_KEY, jwt);
     me = prof;
     enterApp();
   } catch (e) {
