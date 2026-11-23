@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tonton di SubSenpai</title>
+<meta name="description" content="Buka judul ini di aplikasi SubSenpai — nonton anime, donghua & film subtitle Indonesia.">
+<meta property="og:title" content="SubSenpai">
+<meta property="og:description" content="Buka judul ini di aplikasi SubSenpai.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' fill='%23E50914' font-weight='900'>S</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<style>
+  :root{ --bg:#141414; --bg2:#0b0b0b; --card:#1f1f1f; --line:#2d2d2d; --text:#fff; --muted:#b3b3b3; --red:#E50914; --green:#46d369; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:'Zen Kaku Gothic New',system-ui,sans-serif;line-height:1.6;min-height:100vh}
+  a{color:inherit}
+  .wrap{max-width:880px;margin:0 auto;padding:0 4%}
+  header{background:var(--bg2);border-bottom:1px solid var(--line)}
+  .bar{display:flex;align-items:center;padding:14px 0}
+  .wordmark{color:var(--red);font-weight:900;font-size:1.5rem;letter-spacing:.06em;text-transform:uppercase;text-decoration:none;line-height:1}
+  main{padding:38px 0 60px}
+  .detail{display:flex;gap:26px;align-items:flex-start}
+  @media (max-width:640px){ .detail{flex-direction:column;align-items:center;text-align:center} }
+  .poster{flex:0 0 auto;width:220px;max-width:62vw;aspect-ratio:2/3;border-radius:10px;overflow:hidden;background:#232323;box-shadow:0 18px 44px rgba(0,0,0,.55)}
+  .poster img{width:100%;height:100%;object-fit:cover;display:block}
+  .info{flex:1;min-width:0}
+  .info h1{font-size:clamp(1.6rem,4.6vw,2.4rem);line-height:1.2;font-weight:900}
+  .meta{color:var(--muted);margin:10px 0 4px;font-size:.98rem}
+  .meta b{color:var(--green);font-weight:700}
+  .genres{color:#e5e5e5;font-size:.95rem}
+  .syn{color:#d7d7d7;margin:16px 0 26px;font-size:.99rem;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+  .btn{display:inline-flex;align-items:center;gap:9px;background:var(--red);color:#fff;font-weight:700;padding:13px 28px;border-radius:6px;text-decoration:none;font-size:1.02rem;border:0;cursor:pointer;transition:background .2s,transform .2s}
+  .btn:hover{background:#f6121d;transform:translateY(-1px)}
+  .btn.ghost{background:rgba(255,255,255,.14);margin-left:8px}
+  .btn.ghost:hover{background:rgba(255,255,255,.24)}
+  @media (max-width:640px){ .btn.ghost{margin-left:0;margin-top:10px} }
+  .note{color:var(--muted);font-size:.88rem;margin-top:14px}
+  .skel{border-radius:10px;background:linear-gradient(100deg,#1d1d1d 40%,#2a2a2a 50%,#1d1d1d 60%);background-size:200% 100%;animation:sh 1.3s infinite}
+  @keyframes sh{to{background-position:-200% 0}}
+  .err{background:var(--card);border-radius:10px;padding:28px;text-align:center;color:var(--muted)}
+  .err b{color:#fff;display:block;font-size:1.15rem;margin-bottom:6px}
+  footer{border-top:1px solid var(--line);padding:24px 0 36px;text-align:center;color:#8c8c8c;font-size:.88rem}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <a class="wordmark" href="/">SubSenpai</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="loading">
+    <div class="detail">
+      <div class="poster skel"></div>
+      <div class="info">
+        <div class="skel" style="height:38px;width:70%"></div>
+        <div class="skel" style="height:18px;width:45%;margin-top:14px"></div>
+        <div class="skel" style="height:80px;width:100%;margin-top:18px"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="content" hidden>
+    <div class="detail">
+      <div class="poster"><img id="poster" alt=""></div>
+      <div class="info">
+        <h1 id="title">SubSenpai</h1>
+        <div class="meta" id="meta"></div>
+        <div class="genres" id="genres"></div>
+        <p class="syn" id="syn"></p>
+        <a class="btn" id="openBtn" href="#"><i class="fa-solid fa-play"></i><span>Buka di Aplikasi SubSenpai</span></a>
+        <a class="btn ghost" href="/"><i class="fa-brands fa-android"></i><span>Download Aplikasi</span></a>
+        <div class="note">Kalau aplikasi tidak terbuka otomatis, ketuk tombol merah di atas. Belum punya aplikasinya? Download dulu — gratis.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="error" hidden>
+    <div class="err">
+      <b>Judul tidak ditemukan</b>
+      Tautan ini mungkin sudah tidak berlaku. Jelajahi katalog lengkapnya di halaman utama.
+      <div style="margin-top:16px"><a class="btn" href="/"><i class="fa-solid fa-house"></i><span>Ke Halaman Utama</span></a></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">© 2026 SubSenpai · <a href="/privacy.html">Kebijakan Privasi</a> · <a href="/terms.html">Syarat Layanan</a></div>
+</footer>
+
+<script>
+/* ============ Sesi terenkripsi ECDH (sama seperti halaman utama) ============ */
+const API_BASE = "https://subsenpai-api.botlynk.id";
+const _P = (1n << 255n) - 19n;
+const _mod = (a) => ((a % _P) + _P) % _P;
+function _leToBigInt(bytes) { let n = 0n; for (let i = bytes.length - 1; i >= 0; i--) n = (n << 8n) | BigInt(bytes[i]); return n; }
+function _bigIntToLe(n, len) { const out = new Uint8Array(len); for (let i = 0; i < len; i++) { out[i] = Number(n & 0xffn); n >>= 8n; } return out; }
+function _modInv(a) { let e = _P - 2n, base = _mod(a), r = 1n; while (e > 0n) { if (e & 1n) r = _mod(r * base); base = _mod(base * base); e >>= 1n; } return r; }
+function x25519(scalarBytes, uBytes) {
+  const k = Uint8Array.from(scalarBytes); k[0] &= 248; k[31] &= 127; k[31] |= 64;
+  const n = _leToBigInt(k);
+  const u = Uint8Array.from(uBytes); u[31] &= 127;
+  const x1 = _mod(_leToBigInt(u));
+  let x2 = 1n, z2 = 0n, x3 = x1, z3 = 1n, swap = 0n;
+  const a24 = 121665n;
+  for (let t = 254; t >= 0; t--) {
+    const kt = (n >> BigInt(t)) & 1n; swap ^= kt;
+    if (swap === 1n) { [x2, x3] = [x3, x2]; [z2, z3] = [z3, z2]; }
+    swap = kt;
+    const A = _mod(x2 + z2), AA = _mod(A * A);
+    const B = _mod(x2 - z2), BB = _mod(B * B);
+    const E = _mod(AA - BB);
+    const C = _mod(x3 + z3), D = _mod(x3 - z3);
+    const DA = _mod(D * A), CB = _mod(C * B);
+    x3 = _mod((DA + CB) * (DA + CB));
+    z3 = _mod(x1 * _mod((DA - CB) * (DA - CB)));
+    x2 = _mod(AA * BB);
+    z2 = _mod(E * _mod(AA + _mod(a24 * E)));
+  }
+  if (swap === 1n) { [x2, x3] = [x3, x2]; [z2, z3] = [z3, z2]; }
+  return _bigIntToLe(_mod(x2 * _modInv(z2)), 32);
+}
+const X25519_BASE = new Uint8Array(32); X25519_BASE[0] = 9;
+function b64urlEncode(bytes) { let s = ""; for (const b of bytes) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+function b64urlDecode(str) {
+  const s = str.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(s + "=".repeat((4 - (s.length % 4)) % 4));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+let sessionId = null, aesKey = null;
+async function handshake() {
+  const priv = crypto.getRandomValues(new Uint8Array(32));
+  const pub = x25519(priv, X25519_BASE);
+  const res = await fetch(API_BASE + "/api/v1/session", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ client_public_key: b64urlEncode(pub) }),
+  });
+  if (!res.ok) throw new Error("handshake " + res.status);
+  const hs = await res.json();
+  const shared = x25519(priv, b64urlDecode(hs.server_public_key));
+  const hkdfKey = await crypto.subtle.importKey("raw", shared, "HKDF", false, ["deriveKey"]);
+  aesKey = await crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: new TextEncoder().encode("subsenpai-xdata-v1") },
+    hkdfKey, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  sessionId = hs.session_id;
+}
+async function apiGet(path) {
+  if (!sessionId) await handshake();
+  const res = await fetch(API_BASE + path, { headers: { "X-Session-Id": sessionId } });
+  const env = await res.json();
+  if (env && env.xdata) {
+    const payload = b64urlDecode(env.xdata);
+    const plain = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: payload.slice(0, 12), additionalData: new TextEncoder().encode(String(env.xtime)) },
+      aesKey, payload.slice(12));
+    return JSON.parse(new TextDecoder().decode(plain));
+  }
+  return env;
+}
+function esc(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/* ============ Halaman bagikan judul ============ */
+(function () {
+  var parts = location.pathname.split("/").filter(Boolean);
+  var id = parts.length >= 2 && parts[0] === "judul" ? parts[1] : "";
+  var valid = /^[A-Za-z0-9-]{8,}$/.test(id);
+  var intentUrl = valid
+    ? "intent://title/" + id + "#Intent;scheme=subsenpai;package=com.subsenpai;" +
+      "S.browser_fallback_url=" + encodeURIComponent("https://www.subsenpai.web.id/#download") + ";end"
+    : "/";
+  var openBtn = document.getElementById("openBtn");
+  openBtn.href = intentUrl;
+
+  function showError() {
+    document.getElementById("loading").hidden = true;
+    document.getElementById("content").hidden = true;
+    document.getElementById("error").hidden = false;
+  }
+  if (!valid) { showError(); return; }
+
+  apiGet("/api/v1/titles/" + id).then(function (data) {
+    var t = data && data.title;
+    if (!t) { showError(); return; }
+    document.title = t.title + " — Tonton di SubSenpai";
+    document.getElementById("title").textContent = t.title || "SubSenpai";
+    var typeLabel = { anime: "Anime", donghua: "Donghua", film: "Film" }[t.type] || t.type || "";
+    var eps = (data.episodes || []).length;
+    var meta = [];
+    if (t.year) meta.push(esc(t.year));
+    if (typeLabel) meta.push(esc(typeLabel));
+    if (eps) meta.push(eps + " episode");
+    document.getElementById("meta").innerHTML = meta.join(" · ");
+    document.getElementById("genres").textContent = (t.genres || []).join(" • ");
+    document.getElementById("syn").textContent = t.synopsis || "";
+    if (t.poster_url) {
+      document.getElementById("poster").src = API_BASE + "/api/v1/img-proxy?u=" + encodeURIComponent(t.poster_url);
+    }
+    document.getElementById("loading").hidden = true;
+    document.getElementById("content").hidden = false;
+    // Coba buka aplikasi otomatis sekali (tombol tetap tersedia
+    // bila browser menahan pembukaan tanpa ketukan).
+    setTimeout(function () { location.href = intentUrl; }, 700);
+  }).catch(showError);
+})();
+</script>
+</body>
+</html>
