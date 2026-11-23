@@ -63,8 +63,6 @@ import kotlinx.coroutines.withContext
 fun MoreScreen(
     onOpenLogin: () -> Unit,
     onOpenHistory: () -> Unit,
-    onOpenNotifications: () -> Unit,
-    onOpenNotices: () -> Unit,
     onOpenWatchlist: () -> Unit,
     onOpenPremium: () -> Unit,
     onOpenFriends: () -> Unit,
@@ -139,12 +137,6 @@ fun MoreScreen(
             }
         }
         item { MoreSectionLabel("Menu") }
-        item {
-            MoreRow(R.drawable.ic_megaphone, "Pengumuman", "Pengumuman resmi dari admin", onOpenNotices)
-        }
-        item {
-            MoreRow(R.drawable.ic_bell, "Notifikasi", "Like, komentar & aktivitas sosial", onOpenNotifications)
-        }
         item {
             MoreRow(R.drawable.ic_history, "Riwayat Tontonan", "Judul yang pernah kamu tonton", onOpenHistory)
         }

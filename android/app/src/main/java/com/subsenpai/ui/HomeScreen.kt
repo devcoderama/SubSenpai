@@ -2,6 +2,7 @@ package com.subsenpai.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -58,6 +59,7 @@ import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.SettingsStore
 import com.subsenpai.data.TitleCard
 import com.subsenpai.data.TitleFacets
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val typeFilters = listOf(
@@ -85,6 +87,7 @@ fun HomeScreen(
     onOpenEpisode: (String) -> Unit,
     onLogin: () -> Unit,
     onOpenMore: () -> Unit,
+    onOpenNotices: () -> Unit = {},
     onFatalChange: (Boolean) -> Unit = {},
 ) {
     val homeContext = LocalContext.current
@@ -110,6 +113,21 @@ fun HomeScreen(
     var searchOpen by remember { mutableStateOf(false) }
     val browsing = type != null || query.isNotBlank()
     val scope = rememberCoroutineScope()
+
+    // Lencana lonceng di header: jumlah PENGUMUMAN admin yang belum
+    // dibaca, diperiksa berkala selama Beranda tampil (permintaan
+    // Rams: lonceng di samping tombol cari, bukan di tab Lainnya).
+    var notifUnread by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            try {
+                notifUnread = repo.feedNotifications("broadcast").second
+            } catch (e: Exception) {
+                // Tamu / gagal jaringan: lencana tetap seperti terakhir.
+            }
+            delay(60_000)
+        }
+    }
 
     LaunchedEffect(reloadKey) {
         try {
@@ -365,6 +383,29 @@ fun HomeScreen(
                         contentDescription = "Cari",
                         tint = Color.White,
                     )
+                }
+                Box {
+                    IconButton(onClick = onOpenNotices) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_bell),
+                            contentDescription = "Pengumuman",
+                            tint = Color.White,
+                        )
+                    }
+                    if (notifUnread > 0) {
+                        Box(
+                            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                                .background(NetflixRed, CircleShape)
+                                .padding(horizontal = 5.dp, vertical = 1.dp),
+                        ) {
+                            Text(
+                                notifUnread.coerceAtMost(99).toString(),
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
                 }
                 IconButton(onClick = onOpenMore) {
                     Icon(

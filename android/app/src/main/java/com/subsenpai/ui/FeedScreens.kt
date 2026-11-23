@@ -427,7 +427,7 @@ fun FeedScreen(
                 // Tab Grup menampilkan keadaan kosong bila gagal.
             }
             try {
-                unread = repo.feedNotifications().second
+                unread = repo.feedNotifications("social").second
             } catch (e: Exception) {
                 // Lencana dilewati bila gagal.
             }

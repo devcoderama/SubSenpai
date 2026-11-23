@@ -275,6 +275,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenEpisode = { nav.navigate("player/$it") },
                                 onLogin = { nav.navigate("login") },
                                 onOpenMore = { nav.navigate("more") },
+                                onOpenNotices = { nav.navigate("notices") },
                                 onFatalChange = { homeFatal = it },
                             )
                         }
@@ -282,8 +283,6 @@ class MainActivity : ComponentActivity() {
                             com.subsenpai.ui.MoreScreen(
                                 onOpenLogin = { nav.navigate("login") },
                                 onOpenHistory = { nav.navigate("history") },
-                                onOpenNotifications = { nav.navigate("feednotif") },
-                                onOpenNotices = { nav.navigate("notices") },
                                 onOpenWatchlist = { nav.navigate("watchlist") },
                                 onOpenPremium = { nav.navigate("premium") },
                                 onOpenFriends = { nav.navigate("friends") },
