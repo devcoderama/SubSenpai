@@ -85,6 +85,9 @@ func (a *API) Router() http.Handler {
 	// Gambar feed komunitas: publik, tanpa envelope — nama berkas
 	// acak 128-bit; dimuat langsung oleh Coil/peramban.
 	r.Get("/uploads/feed/{name}", a.handleFeedFile)
+	// Proxy poster untuk dashboard web: CDN sumber menolak hotlink
+	// asing; server mengambilkan gambar dengan Referer asal gambar.
+	r.With(middleware.RateLimit(120)).Get("/api/v1/img-proxy", a.handleImgProxy)
 	r.Group(func(r chi.Router) {
 		r.Use(func(next http.Handler) http.Handler {
 			return middleware.Envelope(a.sessions, next)

@@ -283,6 +283,14 @@ function route() {
   ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, pengumuman: pagePengumuman, notifikasi: pageNotifikasi, log: pageLog, sistem: pageSistem })[page]();
 }
 
+// Poster katalog lewat proxy server: CDN sumber menolak hotlink
+// dari domain dashboard, server mengambilkan dengan Referer asal.
+function posterSrc(u) {
+  if (!u) return '';
+  if (u.indexOf(API_BASE) === 0) return u;
+  return API_BASE + '/api/v1/img-proxy?u=' + encodeURIComponent(u);
+}
+
 function bodyError(r) {
   $('pageBody').innerHTML = '<p class="error">Gagal memuat: ' + esc((r.body && r.body.error) || ('HTTP ' + r.status)) + '</p>';
 }
@@ -622,7 +630,7 @@ async function loadJudul(reset) {
   judulOffset += list.length;
   let html = reset ? '<p class="muted">' + (r.body.total || 0) + ' judul</p><table><tr><th>Poster</th><th>Judul</th><th>Jenis</th><th>Tahun</th><th>Episode</th><th>Visibilitas</th><th>Aksi</th></tr>' : '';
   for (const x of list) {
-    html += '<tr><td>' + (x.poster_url ? '<img src="' + esc(x.poster_url) + '" alt="" style="width:38px;height:54px;object-fit:cover;border-radius:6px" loading="lazy">' : '—') + '</td>' +
+    html += '<tr><td>' + (x.poster_url ? '<img src="' + esc(posterSrc(x.poster_url)) + '" alt="" style="width:38px;height:54px;object-fit:cover;border-radius:6px" loading="lazy">' : '—') + '</td>' +
       '<td>' + esc(x.title) + '<div class="muted small">' + esc(x.slug) + '</div></td>' +
       '<td>' + esc(x.type) + '</td><td>' + (x.year || '—') + '</td><td>' + x.episode_count + '</td>' +
       '<td><span class="badge ' + (x.is_hidden ? 'expired' : 'premium') + '">' + (x.is_hidden ? 'Tersembunyi' : 'Tampil') + '</span></td>' +
