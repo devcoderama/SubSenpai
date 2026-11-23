@@ -79,6 +79,9 @@ func (a *API) handleAdminNotificationSend(w http.ResponseWriter, r *http.Request
 		insert into admin_logs (admin_id, action, target, detail)
 		values ($1::uuid, 'notification_send', $2, $3)`,
 		p.ID, bid, map[string]any{"title": req.Title, "audience": req.Audience, "recipients": sent})
+	// Cermin ke Discord komunitas (#pengumuman) — fire-and-forget.
+	a.discordNotify(a.cfg.DiscordChannelPengumuman,
+		"📣 **"+req.Title+"**\n\n"+req.Body)
 	writeJSON(w, http.StatusOK, map[string]any{"id": bid, "recipients": sent})
 }
 

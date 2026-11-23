@@ -72,6 +72,9 @@ func main() {
 		if err := jobs.PurgePosterless(ctx, pool); err != nil {
 			log.Printf("purge poster: %v", err)
 		}
+		// Jadwal rilis harian ke Discord komunitas (sekali sehari,
+		// penanda tanggal di app_settings; no-op bila token kosong).
+		jobs.PostDailyScheduleToDiscord(ctx, pool, cfg)
 	}
 	runSources()
 	var gopayClient *payments.GoPayClient

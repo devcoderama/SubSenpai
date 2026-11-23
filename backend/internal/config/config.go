@@ -46,6 +46,15 @@ type Config struct {
 	// sebagai URL publik (permintaan Rams 2026-11-22). Kosong =
 	// gambar disimpan lokal di FeedUploadDir.
 	ImgBBAPIKey string
+	// Discord — notifikasi komunitas lewat bot resmi SubSenpai
+	// (permintaan Rams 2026-11-23). Token hanya dari env server;
+	// kosong = semua notifikasi Discord nonaktif. Pengiriman cukup
+	// lewat REST API Discord (bot tidak perlu gateway/online).
+	DiscordBotToken          string
+	DiscordGuildID           string
+	DiscordChannelPengumuman string
+	DiscordChannelUpdateAPK  string
+	DiscordChannelJadwal     string
 }
 
 func Load() Config {
@@ -79,6 +88,11 @@ func Load() Config {
 		TokopayAPIURL:     os.Getenv("TOKOPAY_API_URL"),
 		FeedUploadDir:     getenv("FEED_UPLOAD_DIR", "/opt/subsenpai/uploads/feed"),
 		ImgBBAPIKey:       os.Getenv("IMGBB_API_KEY"),
+		DiscordBotToken:          os.Getenv("DISCORD_BOT_TOKEN"),
+		DiscordGuildID:           os.Getenv("DISCORD_GUILD_ID"),
+		DiscordChannelPengumuman: os.Getenv("DISCORD_CHANNEL_PENGUMUMAN"),
+		DiscordChannelUpdateAPK:  os.Getenv("DISCORD_CHANNEL_UPDATE_APK"),
+		DiscordChannelJadwal:     os.Getenv("DISCORD_CHANNEL_JADWAL"),
 	}
 }
 

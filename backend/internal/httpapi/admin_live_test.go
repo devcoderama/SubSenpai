@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 
 	"subsenpai/backend/internal/auth"
 	"subsenpai/backend/internal/config"
+	"subsenpai/backend/internal/discord"
 	"subsenpai/backend/internal/jobs"
 	"subsenpai/backend/internal/middleware"
 )
@@ -72,7 +74,39 @@ func TestAdminLive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := config.Config{JWTSecret: "admin-test-secret", JWTTTLHours: 24, SessionTTLHours: 1}
+	// Server tangkap Discord: kait notifikasi (pengumuman admin &
+	// kenaikan versi minimum) harus mengirim pesan ke channel yang
+	// benar lewat klien Discord sungguhan (BaseURL dialihkan ke sini).
+	var dmu sync.Mutex
+	var dmsgs []string
+	dsrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		dmu.Lock()
+		dmsgs = append(dmsgs, r.URL.Path+" "+string(b))
+		dmu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer dsrv.Close()
+	oldDiscordBase := discord.BaseURL
+	discord.BaseURL = dsrv.URL
+	defer func() { discord.BaseURL = oldDiscordBase }()
+	waitDiscord := func(pathPart, substr string) bool {
+		for i := 0; i < 30; i++ {
+			dmu.Lock()
+			for _, m := range dmsgs {
+				if strings.Contains(m, pathPart) && strings.Contains(m, substr) {
+					dmu.Unlock()
+					return true
+				}
+			}
+			dmu.Unlock()
+			time.Sleep(100 * time.Millisecond)
+		}
+		return false
+	}
+
+	cfg := config.Config{JWTSecret: "admin-test-secret", JWTTTLHours: 24, SessionTTLHours: 1,
+		DiscordBotToken: "token-uji", DiscordChannelPengumuman: "111", DiscordChannelUpdateAPK: "222"}
 	a := New(pool, middleware.NewSessions(time.Hour), cfg)
 	srv := httptest.NewServer(a.Router())
 	defer srv.Close()
@@ -381,6 +415,10 @@ func TestAdminLive(t *testing.T) {
 	if st != 200 || appCfg["min_version_name"] != "0.22.2" {
 		t.Fatalf("app-config min_version_name: status=%d body=%v", st, appCfg)
 	}
+	// Kenaikan versi minimum juga terposting ke Discord #update-apk.
+	if !waitDiscord("/channels/222/messages", "v0.22.2") {
+		t.Fatal("pesan Discord update-apk tidak terkirim")
+	}
 	if st, _ := call("PATCH", "/api/v1/admin/settings", adminJWT,
 		map[string]any{"min_version_name": "nol-koma"}); st != 400 {
 		t.Fatalf("min_version_name liar harus 400, dapat %d", st)
@@ -401,6 +439,10 @@ func TestAdminLive(t *testing.T) {
 	bid, _ := sent["id"].(string)
 	if bid == "" || sent["recipients"].(float64) < 1 {
 		t.Fatalf("hasil siaran janggal: %v", sent)
+	}
+	// Siaran yang sama juga terposting ke Discord #pengumuman.
+	if !waitDiscord("/channels/111/messages", "Halo Uji") {
+		t.Fatal("pesan Discord pengumuman tidak terkirim")
 	}
 	if st, _ := call("POST", "/api/v1/admin/notifications", userJWT,
 		map[string]any{"title": "x", "body": "y"}); st != 403 {
