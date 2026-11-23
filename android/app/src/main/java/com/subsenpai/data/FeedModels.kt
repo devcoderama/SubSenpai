@@ -102,6 +102,7 @@ data class FeedComment(
 
 data class FeedNotification(
     val id: String,
+    val kind: String,
     val title: String,
     val body: String,
     val refPostId: String?,
@@ -112,6 +113,7 @@ data class FeedNotification(
     companion object {
         fun fromJson(o: JSONObject) = FeedNotification(
             id = o.getString("id"),
+            kind = o.optString("kind", "social"),
             title = o.optString("title"),
             body = o.optString("body"),
             refPostId = o.optString("ref_post_id").ifBlank { null },

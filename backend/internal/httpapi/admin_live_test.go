@@ -389,6 +389,51 @@ func TestAdminLive(t *testing.T) {
 		t.Fatalf("kosongkan min_version_name: status=%d", st)
 	}
 
+	// Notifikasi siaran: admin mengirim -> pengguna menerimanya di
+	// daftar notifikasi (kind broadcast, belum dibaca) -> admin
+	// melihat jumlah penerima -> hapus siaran -> salinan ikut hilang.
+	st, sent := call("POST", "/api/v1/admin/notifications", adminJWT,
+		map[string]any{"title": "Halo Uji", "body": "Isi pengumuman uji", "audience": "all"})
+	if st != 200 {
+		t.Fatalf("kirim siaran: status=%d body=%v", st, sent)
+	}
+	bid, _ := sent["id"].(string)
+	if bid == "" || sent["recipients"].(float64) < 1 {
+		t.Fatalf("hasil siaran janggal: %v", sent)
+	}
+	if st, _ := call("POST", "/api/v1/admin/notifications", userJWT,
+		map[string]any{"title": "x", "body": "y"}); st != 403 {
+		t.Fatalf("user mengirim siaran harus 403, dapat %d", st)
+	}
+	st, mine := call("GET", "/api/v1/feed/notifications", userJWT, nil)
+	items, _ := mine["items"].([]any)
+	found := false
+	for _, it := range items {
+		m, _ := it.(map[string]any)
+		if m["kind"] == "broadcast" && m["title"] == "Halo Uji" {
+			found = true
+		}
+	}
+	if st != 200 || !found || mine["unread"].(float64) < 1 {
+		t.Fatalf("notifikasi user: status=%d found=%v body=%v", st, found, mine)
+	}
+	st, bl := call("GET", "/api/v1/admin/notifications", adminJWT, nil)
+	bs, _ := bl["broadcasts"].([]any)
+	if st != 200 || len(bs) < 1 {
+		t.Fatalf("daftar siaran admin: status=%d body=%v", st, bl)
+	}
+	if st, _ := call("DELETE", "/api/v1/admin/notifications/"+bid, adminJWT, nil); st != 200 {
+		t.Fatalf("hapus siaran: status=%d", st)
+	}
+	st, mine = call("GET", "/api/v1/feed/notifications", userJWT, nil)
+	items, _ = mine["items"].([]any)
+	for _, it := range items {
+		m, _ := it.(map[string]any)
+		if m["kind"] == "broadcast" && m["title"] == "Halo Uji" {
+			t.Fatalf("siaran terhapus masih tampil di user: %v", m)
+		}
+	}
+
 	// Log admin & info sistem bisa dibaca admin. (Tabel
 	// schema_migrations dirawat migrator Go di produksi; di uji
 	// lokal migrasi diterapkan via psql, jadi buat + isi di sini.)

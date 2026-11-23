@@ -272,7 +272,7 @@ function enterApp() {
 }
 
 const GROUP_LABELS = { va: 'Virtual Account', ewallet: 'E-Wallet', qris: 'QRIS', retail: 'Retail', pulsa: 'Pulsa' };
-const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', log: 'Log Admin', sistem: 'Info Sistem' };
+const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', notifikasi: 'Notifikasi', log: 'Log Admin', sistem: 'Info Sistem' };
 
 function route() {
   const name = (location.hash.replace('#/', '') || 'ringkasan').split('?')[0];
@@ -280,7 +280,7 @@ function route() {
   document.querySelectorAll('#mainNav a').forEach((a) =>
     a.classList.toggle('active', a.dataset.route === page));
   $('pageTitle').textContent = TITLES[page];
-  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, log: pageLog, sistem: pageSistem })[page]();
+  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, notifikasi: pageNotifikasi, log: pageLog, sistem: pageSistem })[page]();
 }
 
 function bodyError(r) {
@@ -694,9 +694,8 @@ async function pagePengaturan() {
     '<div class="toolbar"><label class="switch"><input type="checkbox" id="st-maint"' + (s.maintenance_mode === 'true' ? ' checked' : '') + '><span class="slider"></span></label><span id="st-maint-lbl">' + (s.maintenance_mode === 'true' ? 'Mode perawatan AKTIF' : 'Mode perawatan nonaktif') + '</span></div>' +
     '<label>Pesan perawatan<br><input type="text" id="st-maint-msg" value="' + esc(s.maintenance_message || '') + '" style="width:100%"></label></div>' +
     '<div class="card" style="margin-top:18px"><h2 style="margin-top:0">Pengumuman</h2>' +
-    '<p class="muted">Teks ini tampil sebagai banner di Beranda aplikasi. Tekan <b>Kirim Notifikasi</b> untuk langsung menerbitkannya — banner muncul di aplikasi pengguna (v0.22.2+) dalam maks 60 detik. Kosongkan teks lalu kirim untuk menarik pengumuman.</p>' +
-    '<input type="text" id="st-ann" value="' + esc(s.announcement || '') + '" placeholder="cth: Server pindah — selamat menonton!" style="width:100%">' +
-    '<div style="margin-top:12px"><button class="btn purple" id="st-ann-send"><i class="fa-solid fa-paper-plane"></i> Kirim Notifikasi</button></div></div>' +
+    '<p class="muted">Teks ini tampil sebagai banner di Beranda aplikasi (tersimpan lewat tombol Simpan Pengaturan di bawah). Untuk mengirim notifikasi beneran ke halaman Notifikasi pengguna, pakai halaman <b>Notifikasi</b> di menu samping.</p>' +
+    '<input type="text" id="st-ann" value="' + esc(s.announcement || '') + '" placeholder="cth: Server pindah — selamat menonton!" style="width:100%"></div>' +
     '<div class="card" style="margin-top:18px"><h2 style="margin-top:0">Paksa Perbarui</h2>' +
     '<p class="muted">Tulis versi seperti biasa (contoh: 0.22.2). Pengguna dengan versi aplikasi di bawah itu wajib memperbarui. Kosongkan untuk menonaktifkan.</p>' +
     '<div class="toolbar"><label>Versi minimum<br><input type="text" id="st-minver" value="' + esc(s.min_version_name || '') + '" placeholder="cth: 0.22.2" inputmode="decimal" style="width:160px"></label>' +
@@ -722,21 +721,6 @@ async function pagePengaturan() {
       toast('Gagal mengubah mode perawatan: ' + ((rr.body && rr.body.error) || rr.status));
     }
   });
-  // Kirim Notifikasi: terbitkan pengumuman SAAT ITU JUGA (banner
-  // sampai ke aplikasi yang berjalan dalam maks 60 detik).
-  $('st-ann-send').addEventListener('click', async () => {
-    const teks = $('st-ann').value;
-    const rr = await api('/api/v1/admin/settings', {
-      method: 'PATCH', body: { announcement: teks },
-    });
-    if (rr.status === 200) {
-      toast(teks.trim()
-        ? '📣 Notifikasi terkirim — banner tampil di aplikasi pengguna dalam maks 60 detik.'
-        : 'Pengumuman ditarik — banner hilang dari aplikasi dalam maks 60 detik.');
-    } else {
-      toast('Gagal mengirim: ' + ((rr.body && rr.body.error) || rr.status));
-    }
-  });
   $('st-save').addEventListener('click', async () => {
     const body = {
       maintenance_mode: $('st-maint').checked,
@@ -750,6 +734,59 @@ async function pagePengaturan() {
     if (rr.status === 200) toast('Pengaturan disimpan.');
     else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
   });
+}
+
+/* ----- Notifikasi (siaran ke aplikasi) ----- */
+async function pageNotifikasi() {
+  $('pageBody').innerHTML =
+    '<div class="card"><h2 style="margin-top:0"><i class="fa-solid fa-bell"></i> Kirim Notifikasi</h2>' +
+    '<p class="muted">Notifikasi terkirim ke <b>halaman Notifikasi</b> di aplikasi semua pengguna (lencana belum dibaca + notifikasi sistem Android muncul di aplikasi v0.22.4+ yang sedang berjalan, maks 60 detik). Beda dengan Pengumuman yang hanya berupa banner.</p>' +
+    '<label>Judul notifikasi<br><input type="text" id="nt-title" maxlength="140" placeholder="cth: Episode baru Wukong sudah rilis!" style="width:100%"></label>' +
+    '<label style="display:block;margin-top:10px">Isi<br><input type="text" id="nt-body" maxlength="1000" placeholder="cth: Tonton sekarang sebelum ketinggalan." style="width:100%"></label>' +
+    '<div class="toolbar" style="margin-top:12px"><label>Penerima<br><select id="nt-aud"><option value="all">Semua pengguna</option><option value="premium">Premium saja</option><option value="free">Gratis saja</option></select></label>' +
+    '<button class="btn purple" id="nt-send" style="align-self:flex-end"><i class="fa-solid fa-paper-plane"></i> Kirim Notifikasi</button></div></div>' +
+    '<h2 class="group-title">Riwayat Siaran</h2><div id="nt-list"><p class="muted">Memuat…</p></div>';
+  $('nt-send').addEventListener('click', async () => {
+    const title = $('nt-title').value.trim();
+    if (!title) { toast('Judul notifikasi wajib diisi.'); return; }
+    const rr = await api('/api/v1/admin/notifications', {
+      method: 'POST',
+      body: { title, body: $('nt-body').value.trim(), audience: $('nt-aud').value },
+    });
+    if (rr.status === 200) {
+      toast('📣 Notifikasi terkirim ke ' + rr.body.recipients + ' pengguna.');
+      $('nt-title').value = '';
+      $('nt-body').value = '';
+      loadBroadcasts();
+    } else {
+      toast('Gagal mengirim: ' + ((rr.body && rr.body.error) || rr.status));
+    }
+  });
+  loadBroadcasts();
+}
+
+async function loadBroadcasts() {
+  const r = await api('/api/v1/admin/notifications');
+  if (r.status !== 200) { $('nt-list').innerHTML = '<p class="error">Gagal memuat riwayat.</p>'; return; }
+  const list = r.body.broadcasts || [];
+  if (!list.length) { $('nt-list').innerHTML = '<p class="muted">Belum ada notifikasi terkirim.</p>'; return; }
+  const audLbl = { all: 'Semua', premium: 'Premium', free: 'Gratis' };
+  let html = '<table><tr><th>Waktu</th><th>Judul</th><th>Penerima</th><th>Terkirim</th><th>Dibaca</th><th></th></tr>';
+  for (const b of list) {
+    html += '<tr><td>' + esc(fmtDate(b.created_at)) + '</td>' +
+      '<td><b>' + esc(b.title) + '</b>' + (b.body ? '<br><span class="small muted">' + esc(b.body) + '</span>' : '') + '</td>' +
+      '<td>' + esc(audLbl[b.audience] || b.audience) + '</td>' +
+      '<td>' + b.sent_count + '</td><td>' + b.read_count + '</td>' +
+      '<td><button class="btn ghost small" data-del="' + esc(b.id) + '"><i class="fa-solid fa-trash"></i> Hapus</button></td></tr>';
+  }
+  $('nt-list').innerHTML = html + '</table>';
+  document.querySelectorAll('[data-del]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Hapus siaran ini? Salinannya di aplikasi pengguna ikut terhapus.')) return;
+      const rr = await api('/api/v1/admin/notifications/' + btn.dataset.del, { method: 'DELETE' });
+      if (rr.status === 200) { toast('Siaran dihapus.'); loadBroadcasts(); }
+      else toast('Gagal menghapus.');
+    }));
 }
 
 /* ----- Log Admin ----- */

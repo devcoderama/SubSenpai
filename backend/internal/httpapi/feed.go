@@ -906,13 +906,13 @@ func (a *API) handleFeedNotifications(w http.ResponseWriter, r *http.Request) {
 	var unread int
 	_ = a.pool.QueryRow(ctx, `
 		select count(*) from notifications
-		where user_id = $1::uuid and kind = 'social' and read_at is null`, p.ID).Scan(&unread)
+		where user_id = $1::uuid and kind in ('social','broadcast') and read_at is null`, p.ID).Scan(&unread)
 	rows, err := a.pool.Query(ctx, `
-		select n.id, n.title, n.body, n.ref_post_id, n.actor_id, n.read_at, n.created_at,
+		select n.id, n.kind, n.title, n.body, n.ref_post_id, n.actor_id, n.read_at, n.created_at,
 		       coalesce(pr.avatar_url, '')
 		from notifications n
 		left join profiles pr on pr.id = n.actor_id
-		where n.user_id = $1::uuid and n.kind = 'social'
+		where n.user_id = $1::uuid and n.kind in ('social','broadcast')
 		order by n.created_at desc limit 50`, p.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "kesalahan server")
@@ -921,6 +921,7 @@ func (a *API) handleFeedNotifications(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	type notif struct {
 		ID        string     `json:"id"`
+		Kind      string     `json:"kind"`
 		Title     string     `json:"title"`
 		Body      string     `json:"body"`
 		RefPostID *string    `json:"ref_post_id,omitempty"`
@@ -932,7 +933,7 @@ func (a *API) handleFeedNotifications(w http.ResponseWriter, r *http.Request) {
 	out := []notif{}
 	for rows.Next() {
 		var n notif
-		if err := rows.Scan(&n.ID, &n.Title, &n.Body, &n.RefPostID, &n.ActorID, &n.ReadAt, &n.CreatedAt, &n.AvatarURL); err != nil {
+		if err := rows.Scan(&n.ID, &n.Kind, &n.Title, &n.Body, &n.RefPostID, &n.ActorID, &n.ReadAt, &n.CreatedAt, &n.AvatarURL); err != nil {
 			writeErr(w, http.StatusInternalServerError, "kesalahan server")
 			return
 		}
@@ -945,7 +946,7 @@ func (a *API) handleFeedNotificationsRead(w http.ResponseWriter, r *http.Request
 	p := auth.FromContext(r.Context())
 	_, err := a.pool.Exec(r.Context(), `
 		update notifications set read_at = now()
-		where user_id = $1::uuid and kind = 'social' and read_at is null`, p.ID)
+		where user_id = $1::uuid and kind in ('social','broadcast') and read_at is null`, p.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "kesalahan server")
 		return

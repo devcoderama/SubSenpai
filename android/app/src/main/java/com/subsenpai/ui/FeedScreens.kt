@@ -1823,7 +1823,7 @@ fun FeedNotificationsScreen(
         }
         if (!loading && error == null && items.isEmpty()) {
             Text(
-                "Belum ada notifikasi. Like, komentar, dan balasan pada postinganmu akan muncul di sini.",
+                "Belum ada notifikasi. Pengumuman dari admin serta like, komentar, dan balasan pada postinganmu akan muncul di sini.",
                 color = Color(0xFFB3B3B3),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
@@ -1843,6 +1843,14 @@ fun FeedNotificationsScreen(
                     )
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
+                        if (n.kind == "broadcast") {
+                            Text(
+                                "📣 PENGUMUMAN ADMIN",
+                                color = FeedPurple,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                         Text(
                             "${n.title} ${n.body}",
                             color = Color.White,

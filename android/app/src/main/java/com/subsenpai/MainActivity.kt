@@ -22,6 +22,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -105,6 +110,22 @@ class MainActivity : ComponentActivity() {
                 var appConfig by remember { mutableStateOf<com.subsenpai.data.AppConfig?>(null) }
                 var configLoaded by remember { mutableStateOf(false) }
                 var announcementDismissed by remember { mutableStateOf(false) }
+                // Izin notifikasi sistem (Android 13+) — diminta sekali
+                // agar pengumuman admin bisa muncul di bilah status.
+                LaunchedEffect(Unit) {
+                    if (Build.VERSION.SDK_INT >= 33 &&
+                        ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.POST_NOTIFICATIONS,
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        ActivityCompat.requestPermissions(
+                            this@MainActivity,
+                            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                            9001,
+                        )
+                    }
+                }
+                var prevUnread by remember { mutableStateOf(-1) }
                 LaunchedEffect(Unit) {
                     com.subsenpai.data.CrashReporter.uploadPending(context, repo)
                     // Periksa konfigurasi server TIAP 60 DETIK (v0.22.2):
@@ -119,6 +140,27 @@ class MainActivity : ComponentActivity() {
                             // Abaikan: tanpa konfigurasi, tanpa gerbang.
                         }
                         configLoaded = true
+                        // Notifikasi sistem (v0.22.4): bila jumlah belum
+                        // dibaca BERTAMBAH (pengumuman admin / aktivitas
+                        // sosial baru), tampilkan notifikasi Android.
+                        // Poll pertama hanya jadi garis dasar.
+                        try {
+                            if (AuthStore(context).token != null) {
+                                val (items, unread) = repo.feedNotifications()
+                                if (prevUnread >= 0 && unread > prevUnread) {
+                                    items.firstOrNull { !it.read }?.let { n ->
+                                        com.subsenpai.data.Notifier.show(
+                                            context,
+                                            n.title.ifBlank { "SubSenpai" },
+                                            n.body,
+                                        )
+                                    }
+                                }
+                                prevUnread = unread
+                            }
+                        } catch (e: Exception) {
+                            // Abaikan: notifikasi sistem hanya bonus.
+                        }
                         delay(60_000)
                     }
                 }
@@ -240,6 +282,7 @@ class MainActivity : ComponentActivity() {
                             com.subsenpai.ui.MoreScreen(
                                 onOpenLogin = { nav.navigate("login") },
                                 onOpenHistory = { nav.navigate("history") },
+                                onOpenNotifications = { nav.navigate("feednotif") },
                                 onOpenWatchlist = { nav.navigate("watchlist") },
                                 onOpenPremium = { nav.navigate("premium") },
                                 onOpenFriends = { nav.navigate("friends") },
