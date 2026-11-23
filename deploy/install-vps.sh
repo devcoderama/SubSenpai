@@ -158,13 +158,24 @@ if [ -n "$DOMAIN_API" ]; then
     if [ "$DOMAIN_API" != "subsenpai-api.botlynk.id" ]; then
       SERVER_NAMES="$DOMAIN_API subsenpai-api.botlynk.id"
     fi
-    if grep -rqs "server_name $SERVER_NAMES" /etc/nginx/sites-enabled/; then
-      say "Vhost $DOMAIN_API sudah ada — dilewati."
+    # Blok HTTP deterministik (penanda v2 di baris pertama berkas).
+    # Ditulis ulang paksa bila penanda belum ada — termasuk untuk
+    # memperbaiki blok yang pernah diubah certbot --nginx (redirect
+    # paksa di origin + Cloudflare = putaran redirect tak berujung,
+    # dan nama lama kehilangan blok proxy-nya → 404; kejadian
+    # 2026-11-23 saat migrasi ke api.subsenpai.web.id).
+    if grep -qs "subsenpai-vhost-v2" /etc/nginx/sites-available/subsenpai-api 2>/dev/null; then
+      say "Vhost $DOMAIN_API (v2) sudah ada — dilewati."
     else
+      mkdir -p /var/www/html
       cat > /etc/nginx/sites-available/subsenpai-api <<EOF
+# subsenpai-vhost-v2
 server {
     listen 80;
     server_name $SERVER_NAMES;
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
     location / {
         proxy_pass http://127.0.0.1:$API_PORT;
         proxy_http_version 1.1;
@@ -180,23 +191,61 @@ server {
 EOF
       ln -sf /etc/nginx/sites-available/subsenpai-api /etc/nginx/sites-enabled/subsenpai-api
       nginx -t && systemctl reload nginx
-      say "Vhost nginx untuk $DOMAIN_API ditambahkan & nginx dimuat ulang."
+      say "Vhost nginx (v2) untuk $DOMAIN_API ditulis & nginx dimuat ulang."
     fi
     # Sertifikat HTTPS (Let's Encrypt) untuk domain yang menunjuk
-    # LANGSUNG ke VPS ini (DNS A tanpa Cloudflare) — tanpa ini
-    # https:// tidak bisa dibuka sama sekali. Domain lama di
-    # belakang Cloudflare Flexible tidak membutuhkannya.
-    if [ "$DOMAIN_API" != "subsenpai-api.botlynk.id" ] && [ ! -d "/etc/letsencrypt/live/$DOMAIN_API" ]; then
-      say "Memasang sertifikat HTTPS untuk $DOMAIN_API (Let's Encrypt)…"
-      if ! command -v certbot >/dev/null 2>&1; then
-        apt-get update -qq >/dev/null 2>&1 || true
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq certbot python3-certbot-nginx >/dev/null 2>&1 || true
+    # ke VPS ini — diterbitkan via webroot (certbot TIDAK mengutak-
+    # atik blok nginx) dan blok 443-nya ditulis installer sendiri di
+    # berkas terpisah, hanya untuk domain langsung itu. TANPA
+    # redirect paksa HTTP→HTTPS di origin: kombinasi redirect +
+    # perantara (Cloudflare Flexible) membuat putaran tak berujung.
+    if [ "$DOMAIN_API" != "subsenpai-api.botlynk.id" ]; then
+      if [ ! -d "/etc/letsencrypt/live/$DOMAIN_API" ]; then
+        say "Menerbitkan sertifikat HTTPS untuk $DOMAIN_API (Let's Encrypt)…"
+        if ! command -v certbot >/dev/null 2>&1; then
+          apt-get update -qq >/dev/null 2>&1 || true
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq certbot >/dev/null 2>&1 || true
+        fi
+        if command -v certbot >/dev/null 2>&1; then
+          certbot certonly --webroot -w /var/www/html -d "$DOMAIN_API" --non-interactive --agree-tos --register-unsafely-without-email \
+            || say "PERINGATAN: penerbitan sertifikat gagal (DNS belum mengarah ke VPS ini?). Jalankan ulang installer setelah DNS aktif."
+        else
+          say "PERINGATAN: certbot tidak tersedia — HTTPS untuk $DOMAIN_API belum aktif."
+        fi
       fi
-      if command -v certbot >/dev/null 2>&1; then
-        certbot --nginx -d "$DOMAIN_API" --non-interactive --agree-tos --register-unsafely-without-email --redirect \
-          || say "PERINGATAN: penerbitan sertifikat gagal (DNS belum mengarah ke VPS ini?). Jalankan ulang installer setelah DNS aktif."
-      else
-        say "PERINGATAN: certbot tidak tersedia — HTTPS untuk $DOMAIN_API belum aktif."
+      if [ -d "/etc/letsencrypt/live/$DOMAIN_API" ]; then
+        if grep -qs "subsenpai-vhost-v2" /etc/nginx/sites-available/subsenpai-api-ssl 2>/dev/null; then
+          say "Vhost HTTPS $DOMAIN_API (v2) sudah ada — dilewati."
+        else
+          cat > /etc/nginx/sites-available/subsenpai-api-ssl <<EOF
+# subsenpai-vhost-v2
+server {
+    listen 443 ssl;
+    server_name $DOMAIN_API;
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN_API/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN_API/privkey.pem;
+    location / {
+        proxy_pass http://127.0.0.1:$API_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 300s;
+    }
+}
+EOF
+          ln -sf /etc/nginx/sites-available/subsenpai-api-ssl /etc/nginx/sites-enabled/subsenpai-api-ssl
+          nginx -t && systemctl reload nginx
+          say "Vhost HTTPS (v2) untuk $DOMAIN_API ditulis & nginx dimuat ulang."
+        fi
+        # Sesudah perpanjangan sertifikat otomatis, nginx perlu
+        # memuat ulang agar memakai sertifikat yang baru.
+        mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+        printf '#!/bin/sh\nsystemctl reload nginx\n' > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+        chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
       fi
     fi
   else
