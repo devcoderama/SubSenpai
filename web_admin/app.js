@@ -690,8 +690,8 @@ async function pagePengaturan() {
   const s = r.body.settings || {};
   $('pageBody').innerHTML =
     '<div class="card"><h2 style="margin-top:0">Mode Perawatan</h2>' +
-    '<p class="muted">Saat aktif, aplikasi (v0.22.0+) hanya menampilkan halaman perawatan — pengguna tidak bisa menonton sampai dimatikan.</p>' +
-    '<div class="toolbar"><label class="switch"><input type="checkbox" id="st-maint"' + (s.maintenance_mode === 'true' ? ' checked' : '') + '><span></span></label><span>Mode perawatan aktif</span></div>' +
+    '<p class="muted">Geser tombol untuk langsung mengaktifkan/mematikan — tanpa perlu menekan Simpan. Saat aktif, aplikasi pengguna (v0.22.2+) otomatis menampilkan halaman perawatan dalam waktu maks 60 detik (aplikasi memeriksa pengaturan tiap menit), dan halaman itu lepas sendiri begitu mode dimatikan. Versi lama menerima perubahan saat aplikasi dibuka lagi.</p>' +
+    '<div class="toolbar"><label class="switch"><input type="checkbox" id="st-maint"' + (s.maintenance_mode === 'true' ? ' checked' : '') + '><span class="slider"></span></label><span id="st-maint-lbl">' + (s.maintenance_mode === 'true' ? 'Mode perawatan AKTIF' : 'Mode perawatan nonaktif') + '</span></div>' +
     '<label>Pesan perawatan<br><input type="text" id="st-maint-msg" value="' + esc(s.maintenance_message || '') + '" style="width:100%"></label></div>' +
     '<div class="card" style="margin-top:18px"><h2 style="margin-top:0">Paksa Perbarui</h2>' +
     '<p class="muted">Pengguna dengan kode versi aplikasi di bawah angka ini wajib memperbarui. v0.22.0 = kode 49. Isi 0 untuk menonaktifkan.</p>' +
@@ -701,6 +701,26 @@ async function pagePengaturan() {
     '<p class="muted">Teks ini tampil sebagai banner di Beranda aplikasi. Kosongkan untuk menyembunyikan.</p>' +
     '<input type="text" id="st-ann" value="' + esc(s.announcement || '') + '" placeholder="cth: Server pindah — selamat menonton!" style="width:100%"></div>' +
     '<div style="margin-top:18px"><button class="btn" id="st-save">Simpan Pengaturan</button></div>';
+  // Toggle mode perawatan: simpan LANGSUNG saat digeser (seperti
+  // halaman Metode Pembayaran) + kabari admin efeknya ke aplikasi.
+  $('st-maint').addEventListener('change', async (e) => {
+    const on = e.target.checked;
+    $('st-maint-lbl').textContent = on ? 'Mengaktifkan…' : 'Mematikan…';
+    const rr = await api('/api/v1/admin/settings', {
+      method: 'PATCH',
+      body: { maintenance_mode: on, maintenance_message: $('st-maint-msg').value },
+    });
+    if (rr.status === 200) {
+      $('st-maint-lbl').textContent = on ? 'Mode perawatan AKTIF' : 'Mode perawatan nonaktif';
+      toast(on
+        ? '🔧 Mode perawatan AKTIF — aplikasi pengguna menampilkan halaman perawatan dalam maks 60 detik.'
+        : 'Mode perawatan dimatikan — aplikasi kembali normal dalam maks 60 detik.');
+    } else {
+      e.target.checked = !on;
+      $('st-maint-lbl').textContent = !on ? 'Mode perawatan AKTIF' : 'Mode perawatan nonaktif';
+      toast('Gagal mengubah mode perawatan: ' + ((rr.body && rr.body.error) || rr.status));
+    }
+  });
   $('st-save').addEventListener('click', async () => {
     const body = {
       maintenance_mode: $('st-maint').checked,

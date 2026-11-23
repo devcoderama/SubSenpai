@@ -21,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -106,12 +107,20 @@ class MainActivity : ComponentActivity() {
                 var announcementDismissed by remember { mutableStateOf(false) }
                 LaunchedEffect(Unit) {
                     com.subsenpai.data.CrashReporter.uploadPending(context, repo)
-                    try {
-                        appConfig = repo.appConfig()
-                    } catch (e: Exception) {
-                        // Abaikan: tanpa konfigurasi, tanpa gerbang.
+                    // Periksa konfigurasi server TIAP 60 DETIK (v0.22.2):
+                    // mode perawatan / paksa perbarui / pengumuman dari
+                    // dashboard admin berlaku langsung tanpa membuka
+                    // ulang aplikasi — inilah "notifikasi" mode
+                    // perawatan ke aplikasi yang sedang berjalan.
+                    while (true) {
+                        try {
+                            appConfig = repo.appConfig()
+                        } catch (e: Exception) {
+                            // Abaikan: tanpa konfigurasi, tanpa gerbang.
+                        }
+                        configLoaded = true
+                        delay(60_000)
                     }
-                    configLoaded = true
                 }
                 val outdated = appConfig != null &&
                     BuildConfig.VERSION_CODE < (appConfig?.minVersionCode ?: 0)
