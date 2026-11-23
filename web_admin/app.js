@@ -766,7 +766,7 @@ const LAPORAN_ALASAN = {
 const LAPORAN_STATUS = { baru: 'Baru', diproses: 'Diproses', selesai: 'Selesai', diabaikan: 'Diabaikan' };
 async function pageLaporan() {
   $('pageBody').innerHTML =
-    '<p class="muted">Laporan masalah dari pengguna (tombol Laporkan di pemutar). Tindak langsung dari sini: perbaiki link episode, sembunyikan episode atau judulnya, tandai selesai, atau abaikan.</p>' +
+    '<p class="muted">Laporan masalah dari pengguna (tombol Laporkan di pemutar). Tindak langsung dari sini: perbaiki link episode, atur tampil/sembunyi episode dan judulnya lewat sakelar geser, tandai selesai, atau abaikan. Tabel bisa digeser ke samping.</p>' +
     '<div class="chiprow" id="lp-filters"></div>' +
     '<div id="lp-list"><p class="muted">Memuat…</p></div>';
   loadLaporan();
@@ -786,7 +786,7 @@ async function loadLaporan() {
   }));
   const list = r.body.reports || [];
   if (!list.length) { $('lp-list').innerHTML = '<p class="muted">Tidak ada laporan.</p>'; return; }
-  let html = '<table><tr><th>Waktu</th><th>Judul / Episode</th><th>Alasan</th><th>Catatan</th><th>Pelapor</th><th>Status</th><th>Aksi</th></tr>';
+  let html = '<div class="tscroll"><table class="ltable"><tr><th>Waktu</th><th>Judul / Episode</th><th>Alasan</th><th>Catatan</th><th>Pelapor</th><th>Status</th><th>Aksi</th></tr>';
   for (const x of list) {
     html += '<tr><td class="small">' + esc(fmtDate(x.created_at)) + '</td>' +
       '<td>' + esc(x.title) + (x.episode_no ? '<div class="muted small">Episode ' + x.episode_no + '</div>' : '') + '</td>' +
@@ -794,17 +794,35 @@ async function loadLaporan() {
       '<td class="small">' + esc(x.note || '—') + '</td>' +
       '<td class="small">' + esc(x.reporter) + '</td>' +
       '<td><span class="badge ' + (x.status === 'baru' ? 'premium' : 'expired') + '">' + esc(LAPORAN_STATUS[x.status] || x.status) + '</span></td>' +
-      '<td>' +
-      (x.episode_id ? '<button class="btn small" data-lp-act="fix" data-lp-id="' + esc(x.id) + '">Perbaiki Link</button> ' : '') +
-      (x.episode_id ? '<button class="btn ghost small" data-lp-act="hideep" data-lp-id="' + esc(x.id) + '">Sembunyikan Episode</button> ' : '') +
-      (x.title_id ? '<button class="btn ghost small" data-lp-act="hidetitle" data-lp-id="' + esc(x.id) + '">Sembunyikan Judul</button> ' : '') +
-      (x.status !== 'selesai' ? '<button class="btn ghost small" data-lp-act="done" data-lp-id="' + esc(x.id) + '">Selesai</button> ' : '') +
-      (x.status !== 'diabaikan' ? '<button class="btn ghost small" data-lp-act="ignore" data-lp-id="' + esc(x.id) + '">Abaikan</button> ' : '') +
+      '<td><div class="lp-actions">' +
+      (x.episode_id ? '<button class="btn small" data-lp-act="fix" data-lp-id="' + esc(x.id) + '">Perbaiki Link</button>' : '') +
+      (x.episode_id ? '<span class="lp-vis">Episode <label class="switch"><input type="checkbox" data-lp-vis="episode" data-lp-id="' + esc(x.id) + '"' + (x.episode_hidden ? '' : ' checked') + '><span class="slider"></span></label></span>' : '') +
+      (x.title_id ? '<span class="lp-vis">Judul <label class="switch"><input type="checkbox" data-lp-vis="title" data-lp-id="' + esc(x.id) + '"' + (x.title_hidden ? '' : ' checked') + '><span class="slider"></span></label></span>' : '') +
+      (x.status !== 'selesai' ? '<button class="btn ghost small" data-lp-act="done" data-lp-id="' + esc(x.id) + '">Selesai</button>' : '') +
+      (x.status !== 'diabaikan' ? '<button class="btn ghost small" data-lp-act="ignore" data-lp-id="' + esc(x.id) + '">Abaikan</button>' : '') +
       '<button class="btn ghost small" data-lp-act="del" data-lp-id="' + esc(x.id) + '">Hapus</button>' +
-      '</td></tr>';
+      '</div></td></tr>';
   }
-  $('lp-list').innerHTML = html + '</table>';
+  $('lp-list').innerHTML = html + '</table></div>';
   $('lp-list').querySelectorAll('[data-lp-act]').forEach((b) => b.addEventListener('click', () => laporanAksi(b.dataset.lpAct, b.dataset.lpId)));
+  $('lp-list').querySelectorAll('[data-lp-vis]').forEach((el) => el.addEventListener('change', () => laporanVis(el)));
+}
+// Sakelar geser tampil/sembunyi episode & judul (seperti sakelar
+// metode pembayaran Tokopay): ON = tampil di aplikasi, OFF =
+// tersembunyi. Menyembunyikan tetap dikonfirmasi dulu.
+async function laporanVis(el) {
+  const id = el.dataset.lpId, kind = el.dataset.lpVis, show = el.checked;
+  if (!show && !confirm(kind === 'episode' ? 'Sembunyikan episode ini dari aplikasi?' : 'Sembunyikan SELURUH judul ini dari aplikasi?')) {
+    el.checked = true;
+    return;
+  }
+  const path = kind === 'episode'
+    ? (show ? '/show-episode' : '/hide-episode')
+    : (show ? '/show-title' : '/hide-title');
+  const rr = await api('/api/v1/admin/reports/' + encodeURIComponent(id) + path, { method: 'POST' });
+  if (rr.status === 200) toast(show ? 'Ditampilkan lagi di aplikasi.' : 'Disembunyikan dari aplikasi.');
+  else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+  loadLaporan();
 }
 async function laporanAksi(act, id) {
   const base = '/api/v1/admin/reports/' + encodeURIComponent(id);
@@ -812,14 +830,6 @@ async function laporanAksi(act, id) {
   if (act === 'fix') {
     rr = await api(base + '/fix-links', { method: 'POST' });
     if (rr.status === 200) toast('Sumber lama dibuang; episode sedang di-resolve ulang dari situs sumber.');
-  } else if (act === 'hideep') {
-    if (!confirm('Sembunyikan episode ini dari aplikasi?')) return;
-    rr = await api(base + '/hide-episode', { method: 'POST' });
-    if (rr.status === 200) toast('Episode disembunyikan.');
-  } else if (act === 'hidetitle') {
-    if (!confirm('Sembunyikan SELURUH judul ini dari aplikasi?')) return;
-    rr = await api(base + '/hide-title', { method: 'POST' });
-    if (rr.status === 200) toast('Judul disembunyikan.');
   } else if (act === 'done') {
     rr = await api(base, { method: 'PATCH', body: { status: 'selesai' } });
     if (rr.status === 200) toast('Laporan ditandai selesai.');

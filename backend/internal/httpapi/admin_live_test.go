@@ -1020,6 +1020,26 @@ func TestAdminLive(t *testing.T) {
 	if st, _ := call("GET", "/api/v1/episodes/"+lapEp2+"/playback", userJWT, nil); st != 404 {
 		t.Fatalf("putar episode tersembunyi harus 404, dapat %d", st)
 	}
+	// Daftar laporan memuat status sembunyi episode, dan episode
+	// bisa ditampilkan lagi dari laporan yang sama.
+	st, lstSembunyi := call("GET", "/api/v1/admin/reports", adminJWT, nil)
+	epHidden := false
+	for _, it := range lstSembunyi["reports"].([]any) {
+		m := it.(map[string]any)
+		if m["id"] == rep2ID && m["episode_hidden"] == true {
+			epHidden = true
+		}
+	}
+	if st != 200 || !epHidden {
+		t.Fatalf("episode_hidden harus true sesudah hide-episode: status=%d", st)
+	}
+	if st, _ := call("POST", "/api/v1/admin/reports/"+rep2ID+"/show-episode", adminJWT, nil); st != 200 {
+		t.Fatalf("show-episode: status=%d", st)
+	}
+	st, detLap2 := call("GET", "/api/v1/titles/"+lapTitleID, userJWT, nil)
+	if st != 200 || !strings.Contains(fmt.Sprint(detLap2["episodes"]), lapEp2) {
+		t.Fatalf("episode harus tampil lagi sesudah show-episode: status=%d", st)
+	}
 	// Ubah status manual + sembunyikan judul + hapus laporan.
 	if st, _ := call("PATCH", "/api/v1/admin/reports/"+rep1ID, adminJWT,
 		map[string]any{"status": "diabaikan"}); st != 200 {
@@ -1030,6 +1050,12 @@ func TestAdminLive(t *testing.T) {
 	}
 	if st, _ := call("GET", "/api/v1/titles/"+lapTitleID, userJWT, nil); st != 404 {
 		t.Fatalf("detail judul tersembunyi harus 404, dapat %d", st)
+	}
+	if st, _ := call("POST", "/api/v1/admin/reports/"+rep1ID+"/show-title", adminJWT, nil); st != 200 {
+		t.Fatalf("show-title: status=%d", st)
+	}
+	if st, _ := call("GET", "/api/v1/titles/"+lapTitleID, userJWT, nil); st != 200 {
+		t.Fatalf("detail judul harus tampil lagi sesudah show-title, dapat %d", st)
 	}
 	if st, _ := call("DELETE", "/api/v1/admin/reports/"+rep2ID, adminJWT, nil); st != 200 {
 		t.Fatalf("hapus laporan: status=%d", st)

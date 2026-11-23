@@ -91,16 +91,18 @@ func (a *API) handleCreateReport(w http.ResponseWriter, r *http.Request) {
 /* ---------- sisi admin ---------- */
 
 type adminReport struct {
-	ID        string    `json:"id"`
-	TitleID   *string   `json:"title_id,omitempty"`
-	Title     string    `json:"title"`
-	EpisodeID *string   `json:"episode_id,omitempty"`
-	EpisodeNo *int      `json:"episode_no,omitempty"`
-	Reason    string    `json:"reason"`
-	Note      string    `json:"note"`
-	Status    string    `json:"status"`
-	Reporter  string    `json:"reporter"`
-	CreatedAt time.Time `json:"created_at"`
+	ID            string    `json:"id"`
+	TitleID       *string   `json:"title_id,omitempty"`
+	Title         string    `json:"title"`
+	TitleHidden   bool      `json:"title_hidden"`
+	EpisodeID     *string   `json:"episode_id,omitempty"`
+	EpisodeNo     *int      `json:"episode_no,omitempty"`
+	EpisodeHidden bool      `json:"episode_hidden"`
+	Reason        string    `json:"reason"`
+	Note          string    `json:"note"`
+	Status        string    `json:"status"`
+	Reporter      string    `json:"reporter"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 func (a *API) handleAdminReports(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +137,9 @@ func (a *API) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	args = append(args, limit, offset)
 	rows, err := a.pool.Query(ctx, `
 		select ur.id, ur.title_id, coalesce(t.title, '(judul terhapus)'),
-		       ur.episode_id, e.episode_no, ur.reason, ur.note, ur.status,
+		       coalesce(t.is_hidden, false),
+		       ur.episode_id, e.episode_no, coalesce(e.is_hidden, false),
+		       ur.reason, ur.note, ur.status,
 		       coalesce(p.email, 'Tamu'), ur.created_at
 		from user_reports ur
 		left join titles t on t.id = ur.title_id
@@ -152,8 +156,8 @@ func (a *API) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	out := []adminReport{}
 	for rows.Next() {
 		var rp adminReport
-		if err := rows.Scan(&rp.ID, &rp.TitleID, &rp.Title, &rp.EpisodeID, &rp.EpisodeNo,
-			&rp.Reason, &rp.Note, &rp.Status, &rp.Reporter, &rp.CreatedAt); err == nil {
+		if err := rows.Scan(&rp.ID, &rp.TitleID, &rp.Title, &rp.TitleHidden, &rp.EpisodeID, &rp.EpisodeNo,
+			&rp.EpisodeHidden, &rp.Reason, &rp.Note, &rp.Status, &rp.Reporter, &rp.CreatedAt); err == nil {
 			out = append(out, rp)
 		}
 	}
@@ -293,6 +297,58 @@ func (a *API) handleAdminReportHideEpisode(w http.ResponseWriter, r *http.Reques
 		insert into admin_logs (admin_id, action, target, detail)
 		values ($1::uuid, 'report_hide_episode', $2, $3)`, p.ID, id, map[string]any{"episode_id": *episodeID})
 	writeJSON(w, http.StatusOK, map[string]any{"status": "selesai", "hidden": "episode"})
+}
+
+// handleAdminReportShowEpisode: tampilkan lagi episode yang
+// disembunyikan (pasangan hide; permintaan Rams 2026-11-23 malam —
+// yang bisa disembunyikan harus bisa ditampilkan lagi dari halaman
+// yang sama, lewat sakelar geser). Status laporan tidak diubah.
+func (a *API) handleAdminReportShowEpisode(w http.ResponseWriter, r *http.Request) {
+	p, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+	_, episodeID, err := a.loadReport(ctx, id)
+	if err != nil || episodeID == nil {
+		writeErr(w, http.StatusNotFound, "laporan/episode tidak ditemukan")
+		return
+	}
+	if _, err := a.pool.Exec(ctx,
+		`update episodes set is_hidden = false where id = $1::uuid`, *episodeID); err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal menampilkan episode")
+		return
+	}
+	_, _ = a.pool.Exec(ctx, `
+		insert into admin_logs (admin_id, action, target, detail)
+		values ($1::uuid, 'report_show_episode', $2, $3)`, p.ID, id, map[string]any{"episode_id": *episodeID})
+	writeJSON(w, http.StatusOK, map[string]any{"shown": "episode"})
+}
+
+// handleAdminReportShowTitle: tampilkan lagi judul yang
+// disembunyikan (pasangan hide-title).
+func (a *API) handleAdminReportShowTitle(w http.ResponseWriter, r *http.Request) {
+	p, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+	titleID, _, err := a.loadReport(ctx, id)
+	if err != nil || titleID == nil {
+		writeErr(w, http.StatusNotFound, "laporan/judul tidak ditemukan")
+		return
+	}
+	if _, err := a.pool.Exec(ctx,
+		`update titles set is_hidden = false where id = $1::uuid`, *titleID); err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal menampilkan judul")
+		return
+	}
+	_, _ = a.pool.Exec(ctx, `
+		insert into admin_logs (admin_id, action, target, detail)
+		values ($1::uuid, 'report_show_title', $2, $3)`, p.ID, id, map[string]any{"title_id": *titleID})
+	writeJSON(w, http.StatusOK, map[string]any{"shown": "title"})
 }
 
 func (a *API) handleAdminReportDelete(w http.ResponseWriter, r *http.Request) {

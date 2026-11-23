@@ -144,6 +144,8 @@ func (a *API) Router() http.Handler {
 			r.Post("/api/v1/admin/reports/{id}/fix-links", a.handleAdminReportFixLinks)
 			r.Post("/api/v1/admin/reports/{id}/hide-title", a.handleAdminReportHideTitle)
 			r.Post("/api/v1/admin/reports/{id}/hide-episode", a.handleAdminReportHideEpisode)
+			r.Post("/api/v1/admin/reports/{id}/show-episode", a.handleAdminReportShowEpisode)
+			r.Post("/api/v1/admin/reports/{id}/show-title", a.handleAdminReportShowTitle)
 			r.Delete("/api/v1/admin/reports/{id}", a.handleAdminReportDelete)
 			r.Patch("/api/v1/admin/titles/{id}", a.handleAdminTitleUpdate)
 			r.Get("/api/v1/admin/crashes", a.handleAdminCrashes)

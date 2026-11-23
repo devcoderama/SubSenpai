@@ -173,6 +173,12 @@ input:focus, select:focus { outline: none; border-color: var(--red); box-shadow:
 .slider::before { content: ""; position: absolute; width: 19px; height: 19px; border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: 0.2s; }
 .switch input:checked + .slider { background: var(--green); }
 .switch input:checked + .slider::before { transform: translateX(21px); }
+/* Tabel laporan: bisa digeser ke samping; aksi sebaris rata tengah */
+.tscroll { overflow-x: auto; border-radius: 8px; }
+.ltable { min-width: 820px; }
+.lp-actions { display: flex; align-items: center; justify-content: safe center; gap: 10px; overflow-x: auto; padding: 2px; }
+.lp-actions .btn { white-space: nowrap; flex: 0 0 auto; }
+.lp-vis { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 0.85rem; color: var(--muted); flex: 0 0 auto; }
 
 .toast {
   position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
