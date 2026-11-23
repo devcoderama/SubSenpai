@@ -272,7 +272,7 @@ function enterApp() {
 }
 
 const GROUP_LABELS = { va: 'Virtual Account', ewallet: 'E-Wallet', qris: 'QRIS', retail: 'Retail', pulsa: 'Pulsa' };
-const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi' };
+const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher' };
 
 function route() {
   const name = (location.hash.replace('#/', '') || 'ringkasan').split('?')[0];
@@ -280,7 +280,7 @@ function route() {
   document.querySelectorAll('#mainNav a').forEach((a) =>
     a.classList.toggle('active', a.dataset.route === page));
   $('pageTitle').textContent = TITLES[page];
-  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi })[page]();
+  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher })[page]();
 }
 
 function bodyError(r) {
@@ -495,6 +495,105 @@ function renderTrx(editId) {
       const rr = await api('/api/v1/admin/transactions/' + encodeURIComponent(el.dataset.trxDel), { method: 'DELETE' });
       if (rr.status === 200) { toast('Transaksi dihapus.'); pageTransaksi(); }
       else toast('Gagal menghapus: ' + ((rr.body && rr.body.error) || rr.status));
+    }));
+}
+
+/* ----- Voucher ----- */
+function copyText(text, msg) {
+  const done = () => toast(msg || 'Disalin.');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) { toast('Gagal menyalin — salin manual ya.'); }
+  ta.remove();
+}
+
+async function pageVoucher() {
+  $('pageBody').innerHTML =
+    '<div class="card" style="margin-bottom:20px"><h2 style="margin-top:0">Buat Voucher Hadiah</h2>' +
+    '<p class="muted">Kode yang dibuat di sini ditukar pengguna lewat aplikasi ' +
+    '(Premium › Beli Voucher › Tukar kode) dan langsung menambah hari premium penukar.</p>' +
+    '<div class="toolbar">' +
+    '<label>Durasi (hari)<br><input type="number" id="vc-days" value="30" min="1" max="3650" style="width:120px"></label>' +
+    '<label>Jumlah kode<br><input type="number" id="vc-qty" value="1" min="1" max="50" style="width:110px"></label>' +
+    '<label>Masa berlaku kode (hari, opsional)<br><input type="number" id="vc-valid" min="0" placeholder="tanpa batas" style="width:170px"></label>' +
+    '</div>' +
+    '<div class="toolbar"><label style="flex:1">Khusus email pengguna ini (opsional)<br>' +
+    '<input type="text" id="vc-email" placeholder="kosongkan = siapa saja boleh menukar" style="width:100%"></label></div>' +
+    '<button class="btn" id="vc-create">Buat Voucher</button>' +
+    '<div id="vc-result" style="margin-top:16px"></div></div>' +
+    '<h2>Daftar Voucher</h2><div id="vc-list"><p class="muted">Memuat…</p></div>';
+  $('vc-create').addEventListener('click', async () => {
+    const body = {
+      duration_days: parseInt($('vc-days').value, 10),
+      quantity: parseInt($('vc-qty').value, 10) || 1,
+      assigned_email: $('vc-email').value.trim(),
+      valid_days: parseInt($('vc-valid').value, 10) || 0,
+    };
+    const btn = $('vc-create');
+    btn.disabled = true; btn.textContent = 'Membuat…';
+    const r = await api('/api/v1/admin/vouchers', { method: 'POST', body });
+    btn.disabled = false; btn.textContent = 'Buat Voucher';
+    if (r.status !== 200) {
+      $('vc-result').innerHTML = '<p class="error">Gagal: ' + esc((r.body && r.body.error) || r.status) + '</p>';
+      return;
+    }
+    const codes = (r.body.vouchers || []).map((v) => v.code);
+    let html = '<p><b>' + codes.length + ' kode dibuat</b> — bagikan ke pengguna:</p>';
+    for (const c of codes) {
+      html += '<div class="toolbar" style="align-items:center"><code style="font-size:1.05rem;letter-spacing:1px">' + esc(c) + '</code>' +
+        '<button class="btn ghost small" data-copy="' + esc(c) + '">Salin</button></div>';
+    }
+    if (codes.length > 1) {
+      html += '<button class="btn purple small" id="vc-copyall">Salin Semua Kode</button>';
+    }
+    $('vc-result').innerHTML = html;
+    document.querySelectorAll('button[data-copy]').forEach((el) =>
+      el.addEventListener('click', () => copyText(el.dataset.copy, 'Kode disalin.')));
+    const all = $('vc-copyall');
+    if (all) all.addEventListener('click', () => copyText(codes.join('\n'), 'Semua kode disalin.'));
+    loadVoucherList();
+  });
+  loadVoucherList();
+}
+
+async function loadVoucherList() {
+  const r = await api('/api/v1/admin/vouchers?limit=100');
+  if (r.status !== 200) { $('vc-list').innerHTML = '<p class="error">Gagal memuat voucher.</p>'; return; }
+  const list = r.body.vouchers || [];
+  if (!list.length) { $('vc-list').innerHTML = '<p class="muted">Belum ada voucher.</p>'; return; }
+  let html = '<table><tr><th>Kode</th><th>Durasi</th><th>Sumber</th><th>Untuk</th><th>Status</th><th>Ditukar oleh</th><th>Dibuat</th><th>Aksi</th></tr>';
+  for (const v of list) {
+    html += '<tr><td><code>' + esc(v.code) + '</code></td>' +
+      '<td>' + v.duration_days + ' hari</td><td>' + esc(v.source) + '</td>' +
+      '<td>' + esc(v.assigned_to_email || 'siapa saja') + '</td>' +
+      '<td><span class="badge ' + (v.status === 'active' ? 'premium' : v.status === 'redeemed' ? 'paid' : 'expired') + '">' + esc(v.status) + '</span>' +
+      (v.expires_at && v.status === 'active' ? '<div class="muted small">s.d. ' + esc(fmtDate(v.expires_at)) + '</div>' : '') + '</td>' +
+      '<td>' + esc(v.redeemed_by_email || '—') + '</td>' +
+      '<td>' + esc(fmtDate(v.created_at)) + '</td>' +
+      '<td><div class="row-actions"><button class="btn ghost small" data-vc-copy="' + esc(v.code) + '">Salin</button>' +
+      (v.status !== 'redeemed' ? '<button class="btn small" data-vc-del="' + esc(v.id) + '|' + esc(v.code) + '">Hapus</button>' : '') +
+      '</div></td></tr>';
+  }
+  $('vc-list').innerHTML = html + '</table>';
+  document.querySelectorAll('button[data-vc-copy]').forEach((el) =>
+    el.addEventListener('click', () => copyText(el.dataset.vcCopy, 'Kode disalin.')));
+  document.querySelectorAll('button[data-vc-del]').forEach((el) =>
+    el.addEventListener('click', async () => {
+      const [id, code] = el.dataset.vcDel.split('|');
+      if (!confirm('Hapus voucher ' + code + '? Kode ini tidak akan bisa ditukar lagi.')) return;
+      const rr = await api('/api/v1/admin/vouchers/' + encodeURIComponent(id), { method: 'DELETE' });
+      if (rr.status === 200) { toast('Voucher dihapus.'); loadVoucherList(); }
+      else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
     }));
 }
 

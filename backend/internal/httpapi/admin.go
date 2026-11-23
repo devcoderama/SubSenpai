@@ -340,6 +340,176 @@ func (a *API) handleAdminTransactions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"transactions": out})
 }
 
+type adminVoucher struct {
+	ID            string     `json:"id"`
+	Code          string     `json:"code"`
+	Source        string     `json:"source"`
+	DurationDays  int        `json:"duration_days"`
+	Status        string     `json:"status"`
+	CreatedBy     string     `json:"created_by_email"`
+	AssignedTo    string     `json:"assigned_to_email,omitempty"`
+	RedeemedBy    string     `json:"redeemed_by_email,omitempty"`
+	RedeemedAt    *time.Time `json:"redeemed_at,omitempty"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
+// handleAdminVouchers: daftar voucher semua sumber (terbaru dulu).
+// Status 'active' yang masa berlakunya lewat ditampilkan 'expired'.
+func (a *API) handleAdminVouchers(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	rows, err := a.pool.Query(r.Context(), `
+		select v.id, v.code, v.source, v.duration_days,
+		       case when v.status = 'active' and v.expires_at < now()
+		            then 'expired' else v.status end,
+		       coalesce(cb.email, ''), coalesce(at.email, ''),
+		       coalesce(rb.email, ''), v.redeemed_at, v.expires_at, v.created_at
+		from vouchers v
+		left join profiles cb on cb.id = v.created_by
+		left join profiles at on at.id = v.assigned_to
+		left join profiles rb on rb.id = v.redeemed_by
+		order by v.created_at desc
+		limit $1`, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal memuat voucher")
+		return
+	}
+	defer rows.Close()
+	out := []adminVoucher{}
+	for rows.Next() {
+		var v adminVoucher
+		if err := rows.Scan(&v.ID, &v.Code, &v.Source, &v.DurationDays, &v.Status,
+			&v.CreatedBy, &v.AssignedTo, &v.RedeemedBy,
+			&v.RedeemedAt, &v.ExpiresAt, &v.CreatedAt); err != nil {
+			writeErr(w, http.StatusInternalServerError, "gagal membaca voucher")
+			return
+		}
+		out = append(out, v)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"vouchers": out})
+}
+
+// handleAdminVoucherCreate: buat voucher hadiah (source 'admin')
+// untuk dibagikan ke pengguna — ditukar lewat menu Premium di
+// aplikasi dan langsung menambah hari premium penukar.
+func (a *API) handleAdminVoucherCreate(w http.ResponseWriter, r *http.Request) {
+	p, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		DurationDays int    `json:"duration_days"`
+		Quantity     int    `json:"quantity"`
+		AssignedEmail string `json:"assigned_email"`
+		ValidDays    int    `json:"valid_days"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "format permintaan tidak valid")
+		return
+	}
+	if req.DurationDays < 1 || req.DurationDays > 3650 {
+		writeErr(w, http.StatusBadRequest, "durasi harus 1–3650 hari")
+		return
+	}
+	if req.Quantity == 0 {
+		req.Quantity = 1
+	}
+	if req.Quantity < 1 || req.Quantity > 50 {
+		writeErr(w, http.StatusBadRequest, "jumlah harus 1–50 kode")
+		return
+	}
+	if req.ValidDays < 0 {
+		writeErr(w, http.StatusBadRequest, "masa berlaku tidak boleh negatif")
+		return
+	}
+	ctx := r.Context()
+	var assignedID, assignedEmail string
+	if req.AssignedEmail != "" {
+		err := a.pool.QueryRow(ctx, `
+			select id, email from profiles where lower(email) = lower($1)`,
+			req.AssignedEmail).Scan(&assignedID, &assignedEmail)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "pengguna dengan email itu tidak ditemukan")
+			return
+		}
+	}
+	var expiresAt *time.Time
+	if req.ValidDays > 0 {
+		t := time.Now().Add(time.Duration(req.ValidDays) * 24 * time.Hour)
+		expiresAt = &t
+	}
+	created := []adminVoucher{}
+	for i := 0; i < req.Quantity; i++ {
+		var v adminVoucher
+		var err error
+		// Kode unik — tabrakan sangat jarang; coba ulang beberapa kali.
+		for attempt := 0; attempt < 5; attempt++ {
+			err = a.pool.QueryRow(ctx, `
+				insert into vouchers (code, source, duration_days, created_by, assigned_to, expires_at)
+				values ($1, 'admin', $2, $3::uuid, $4::uuid, $5)
+				returning id, code, source, duration_days, status, created_at`,
+				giftCode(), req.DurationDays, p.ID, nullStr(assignedID), expiresAt,
+			).Scan(&v.ID, &v.Code, &v.Source, &v.DurationDays, &v.Status, &v.CreatedAt)
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "gagal membuat voucher")
+			return
+		}
+		v.CreatedBy = p.Email
+		v.AssignedTo = assignedEmail
+		v.ExpiresAt = expiresAt
+		created = append(created, v)
+	}
+	_, _ = a.pool.Exec(ctx, `
+		insert into admin_logs (admin_id, action, target, detail)
+		values ($1::uuid, 'voucher_create', $2, $3)`,
+		p.ID, created[0].ID, map[string]any{
+			"duration_days": req.DurationDays, "quantity": req.Quantity,
+			"assigned_email": assignedEmail, "valid_days": req.ValidDays,
+		})
+	writeJSON(w, http.StatusOK, map[string]any{"vouchers": created})
+}
+
+// handleAdminVoucherDelete: hapus voucher yang belum ditukar
+// (yang sudah ditukar adalah riwayat — tidak bisa dihapus).
+func (a *API) handleAdminVoucherDelete(w http.ResponseWriter, r *http.Request) {
+	p, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+	var code, status string
+	err := a.pool.QueryRow(ctx, `
+		select code, status from vouchers where id = $1::uuid`, id).Scan(&code, &status)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "voucher tidak ditemukan")
+		return
+	}
+	if status == "redeemed" {
+		writeErr(w, http.StatusBadRequest, "voucher sudah ditukar — tidak bisa dihapus")
+		return
+	}
+	if _, err := a.pool.Exec(ctx, `delete from vouchers where id = $1::uuid`, id); err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal menghapus voucher")
+		return
+	}
+	_, _ = a.pool.Exec(ctx, `
+		insert into admin_logs (admin_id, action, target, detail)
+		values ($1::uuid, 'voucher_delete', $2, $3)`,
+		p.ID, id, map[string]any{"code": code, "status": status})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 type adminPlan struct {
 	ID        string `json:"id"`
 	Days      int    `json:"days"`

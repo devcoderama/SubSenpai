@@ -247,6 +247,50 @@ func TestAdminLive(t *testing.T) {
 		t.Fatalf("transaksi harus terhapus dari database, sisa=%d", sisa)
 	}
 
+	// Admin: buat 2 voucher hadiah -> user menukar satu (premium
+	// bertambah), yang sudah ditukar tidak bisa dihapus, sisanya bisa.
+	st, vc := call("POST", "/api/v1/admin/vouchers", adminJWT,
+		map[string]any{"duration_days": 30, "quantity": 2})
+	if st != 200 || len(vc["vouchers"].([]any)) != 2 {
+		t.Fatalf("buat voucher: status=%d body=%v", st, vc)
+	}
+	vouchers := vc["vouchers"].([]any)
+	code0 := vouchers[0].(map[string]any)["code"].(string)
+	id0 := vouchers[0].(map[string]any)["id"].(string)
+	id1 := vouchers[1].(map[string]any)["id"].(string)
+	if len(code0) < 3 || code0[:3] != "SS-" {
+		t.Fatalf("format kode voucher salah: %q", code0)
+	}
+	var before time.Time
+	_ = pool.QueryRow(ctx, `select coalesce(premium_until, now()) from profiles where id = $1::uuid`, userID).Scan(&before)
+	st, redeem := call("POST", "/api/v1/vouchers/redeem", userJWT, map[string]any{"code": code0})
+	if st != 200 {
+		t.Fatalf("tukar voucher oleh user: status=%d body=%v", st, redeem)
+	}
+	var after time.Time
+	if err := pool.QueryRow(ctx, `select premium_until from profiles where id = $1::uuid`, userID).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if after.Before(before.Add(29 * 24 * time.Hour)) {
+		t.Fatalf("premium harus bertambah ~30 hari: sebelum=%v sesudah=%v", before, after)
+	}
+	if st, _ := call("DELETE", "/api/v1/admin/vouchers/"+id0, adminJWT, nil); st != 400 {
+		t.Fatalf("hapus voucher yang sudah ditukar harus 400, dapat %d", st)
+	}
+	if st, _ := call("DELETE", "/api/v1/admin/vouchers/"+id1, adminJWT, nil); st != 200 {
+		t.Fatalf("hapus voucher aktif: status=%d", st)
+	}
+	if st, _ := call("POST", "/api/v1/admin/vouchers", userJWT,
+		map[string]any{"duration_days": 30}); st != 403 {
+		t.Fatalf("buat voucher oleh user harus 403, dapat %d", st)
+	}
+	// Voucher bertanda tangan (assigned) untuk user uji.
+	st, vc2 := call("POST", "/api/v1/admin/vouchers", adminJWT,
+		map[string]any{"duration_days": 7, "assigned_email": "user-test@local"})
+	if st != 200 || vc2["vouchers"].([]any)[0].(map[string]any)["assigned_to_email"] != "user-test@local" {
+		t.Fatalf("buat voucher assigned: status=%d body=%v", st, vc2)
+	}
+
 	// CORS: preflight dari origin Netlify dijawab dengan echo origin;
 	// origin asing tidak mendapat izin.
 	for _, tc := range []struct {
