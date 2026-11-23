@@ -32,6 +32,7 @@ var GitHubAPIBase = "https://api.github.com"
 
 const subsenpaiRepo = "devcoderama/SubSenpai"
 const discordUpdateNotifiedKey = "discord_update_notified"
+const telegramUpdateNotifiedKey = "telegram_update_notified"
 
 type ghRelease struct {
 	TagName string `json:"tag_name"`
@@ -125,37 +126,43 @@ func PostUpdateToDiscordIfNew(ctx context.Context, pool *pgxpool.Pool, cfg confi
 		log.Printf("discord update: cek rilis: %v", err)
 		return
 	}
-	var notified string
-	_ = pool.QueryRow(ctx,
-		`select value from app_settings where key = $1`, discordUpdateNotifiedKey).Scan(&notified)
-	if notified != "" && compareVersions(latest, notified) <= 0 {
-		return
+	// Penanda per kanal (perbaikan 2026-11-24): dulu satu penanda
+	// bersama — kanal yang dikonfigurasi belakangan (Telegram)
+	// tidak pernah menerima versi yang sudah terlanjur diumumkan
+	// di kanal lain (Discord), karena penandanya sudah terangkat.
+	readMarker := func(key string) string {
+		var v string
+		_ = pool.QueryRow(ctx,
+			`select value from app_settings where key = $1`, key).Scan(&v)
+		return v
+	}
+	writeMarker := func(key string) {
+		if _, err := pool.Exec(ctx, `
+			insert into app_settings (key, value) values ($1, $2)
+			on conflict (key) do update set value = excluded.value, updated_at = now()`,
+			key, latest); err != nil {
+			log.Printf("update notif: simpan penanda %s: %v", key, err)
+		}
+	}
+	due := func(key string) bool {
+		n := readMarker(key)
+		return n == "" || compareVersions(latest, n) > 0
 	}
 	msg := "🚀 **Update APK SubSenpai v" + latest + "**\n\n" +
 		"Versi terbaru sudah tersedia. Unduh di https://www.subsenpai.web.id"
-	sent := false
-	if discordOK {
+	if discordOK && due(discordUpdateNotifiedKey) {
 		if err := discord.New(cfg.DiscordBotToken).Send(ctx, cfg.DiscordChannelUpdateAPK, msg); err != nil {
 			log.Printf("discord update: kirim gagal: %v", err)
 		} else {
-			sent = true
+			writeMarker(discordUpdateNotifiedKey)
 		}
 	}
-	if telegramOK {
+	if telegramOK && due(telegramUpdateNotifiedKey) {
 		if err := telegram.New(cfg.TelegramBotToken).Send(ctx, cfg.TelegramGroupID,
 			cfg.TelegramTopicUpdateAPK, telegram.ToHTML(msg)); err != nil {
 			log.Printf("telegram update: kirim gagal: %v", err)
 		} else {
-			sent = true
+			writeMarker(telegramUpdateNotifiedKey)
 		}
-	}
-	if !sent {
-		return
-	}
-	if _, err := pool.Exec(ctx, `
-		insert into app_settings (key, value) values ($1, $2)
-		on conflict (key) do update set value = excluded.value, updated_at = now()`,
-		discordUpdateNotifiedKey, latest); err != nil {
-		log.Printf("discord update: simpan penanda: %v", err)
 	}
 }

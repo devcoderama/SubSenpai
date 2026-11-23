@@ -15,6 +15,9 @@ import (
 	"subsenpai/backend/internal/telegram"
 )
 
+const discordJadwalLastDateKey = "discord_jadwal_last_date"
+const telegramJadwalLastDateKey = "telegram_jadwal_last_date"
+
 // hariIndo memetakan time.Weekday ke nama hari kanonik yang dipakai
 // grup jadwal sumber ("Jum'at" sudah dinormalkan menjadi "Jumat").
 var hariIndo = map[time.Weekday]string{
@@ -48,10 +51,19 @@ func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg con
 		return
 	}
 	today := now.Format("2006-01-02")
-	var last string
-	_ = pool.QueryRow(ctx,
-		`select value from app_settings where key = 'discord_jadwal_last_date'`).Scan(&last)
-	if last == today {
+	// Penanda harian per kanal (perbaikan 2026-11-24, pola sama
+	// dengan notifikasi update APK): kanal yang dikonfigurasi
+	// belakangan tetap menerima jadwal hari ini walau kanal lain
+	// sudah mempostingnya lebih dulu.
+	readDay := func(key string) string {
+		var v string
+		_ = pool.QueryRow(ctx,
+			`select value from app_settings where key = $1`, key).Scan(&v)
+		return v
+	}
+	discordDue := discordOK && readDay(discordJadwalLastDateKey) != today
+	telegramDue := telegramOK && readDay(telegramJadwalLastDateKey) != today
+	if !discordDue && !telegramDue {
 		return
 	}
 	day := hariIndo[now.Weekday()]
@@ -96,30 +108,29 @@ func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg con
 	}
 	b.WriteString("\nSelamat menonton di SubSenpai! 🍿 https://www.subsenpai.web.id")
 
-	sent := false
-	if discordOK {
+	markDay := func(key string) {
+		if _, err := pool.Exec(ctx, `
+			insert into app_settings (key, value) values ($1, $2)
+			on conflict (key) do update set value = excluded.value, updated_at = now()`,
+			key, today); err != nil {
+			log.Printf("jadwal: simpan penanda %s: %v", key, err)
+		}
+	}
+	if discordDue {
 		if err := discord.New(cfg.DiscordBotToken).Send(ctx, cfg.DiscordChannelJadwal, b.String()); err != nil {
 			log.Printf("discord jadwal: kirim gagal: %v", err)
 		} else {
-			sent = true
+			markDay(discordJadwalLastDateKey)
+			log.Printf("discord jadwal: jadwal %s terposting", today)
 		}
 	}
-	if telegramOK {
+	if telegramDue {
 		if err := telegram.New(cfg.TelegramBotToken).Send(ctx, cfg.TelegramGroupID,
 			cfg.TelegramTopicJadwal, telegram.ToHTML(b.String())); err != nil {
 			log.Printf("telegram jadwal: kirim gagal: %v", err)
 		} else {
-			sent = true
+			markDay(telegramJadwalLastDateKey)
+			log.Printf("telegram jadwal: jadwal %s terposting", today)
 		}
 	}
-	if !sent {
-		return
-	}
-	if _, err := pool.Exec(ctx, `
-		insert into app_settings (key, value) values ('discord_jadwal_last_date', $1)
-		on conflict (key) do update set value = excluded.value, updated_at = now()`, today); err != nil {
-		log.Printf("discord jadwal: simpan penanda: %v", err)
-		return
-	}
-	log.Printf("discord jadwal: jadwal %s terposting", today)
 }
