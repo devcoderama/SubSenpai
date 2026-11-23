@@ -31,16 +31,10 @@ const (
 	// onDemandTimeout membatasi percobaan pengisian yang dilakukan
 	// selagi user menunggu respons detail.
 	onDemandTimeout = 10 * time.Second
-	// titleFillTimeout khusus pengisian detail judul (episode dari
-	// sumber): scraping halaman seri sumber kerap butuh lebih dari
-	// 10 detik, dan batas baca klien aplikasi 30 detik — 25 detik
-	// membuat episode umumnya sudah ada pada respons pertama
-	// (keluhan Rams 2026-11-22: detail dari pencarian tampil tanpa
-	// episode karena tarikan depan keburu timeout).
-	titleFillTimeout = 25 * time.Second
-	// onDemandBackgroundTimeout membatasi penyelesaian latar
-	// belakang setelah percobaan depan gagal/timeout.
-	onDemandBackgroundTimeout = 2 * time.Minute
+	// onDemandBackgroundTimeout membatasi pengisian latar
+	// belakang (detail judul sepenuhnya di latar sejak 2026-11-23;
+	// episode per episode tetap dicoba di depan sebentar).
+	onDemandBackgroundTimeout = 3 * time.Minute
 	// onDemandCooldown adalah jeda sebelum judul (atau kata
 	// pencarian) yang tarikannya gagal boleh dicoba lagi.
 	onDemandCooldown = 10 * time.Minute
@@ -178,22 +172,17 @@ func (a *API) fillTitle(ctx context.Context, titleID string, needMeta, needEps b
 	return errNoProgress
 }
 
-// fillOnDemand mencoba mengisi judul selagi user menunggu (timeout
-// pendek). Mengembalikan true bila pemanggil sebaiknya membaca
-// ulang detail dari DB (ada kemungkinan kemajuan). Bila percobaan
-// depan gagal/timeout, penyelesaian dilanjutkan di goroutine latar
-// dengan konteks sendiri — tetap di bawah kunci per judul yang
-// sama, dan cooldown dipasang bila itu pun gagal.
+// fillOnDemand memicu pengisian judul SEPENUHNYA di latar belakang
+// dan selalu mengembalikan false: respons detail TIDAK PERNAH lagi
+// menunggu scraping sumber (cara lama menunggu sampai 25 detik di
+// depan user — halaman detail terasa sangat lambat, keluhan Rams
+// 2026-11-23). Metadata dari DB tampil seketika; aplikasi memuat
+// ulang detail berkala sampai episode tiba (pengisian kini juga
+// jauh lebih cepat: penyelesaian aliran episode paralel di
+// jobs.syncTitle). Cooldown dipasang bila pengisian gagal.
 func (a *API) fillOnDemand(r *http.Request, titleID string, needMeta, needEps bool) bool {
 	if !a.guard.tryStart(titleID) {
 		return false
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), titleFillTimeout)
-	err := a.fillTitle(ctx, titleID, needMeta, needEps)
-	cancel()
-	if err == nil {
-		a.guard.finish(titleID, false)
-		return true
 	}
 	go func() {
 		bctx, bcancel := context.WithTimeout(context.Background(), onDemandBackgroundTimeout)
@@ -201,7 +190,7 @@ func (a *API) fillOnDemand(r *http.Request, titleID string, needMeta, needEps bo
 		berr := a.fillTitle(bctx, titleID, needMeta, needEps)
 		a.guard.finish(titleID, berr != nil)
 	}()
-	return true
+	return false
 }
 
 // fillEpisodeOnDemand menyelesaikan aliran satu episode yang

@@ -103,8 +103,12 @@ fun DetailScreen(
             ) {
                 epLoading = true
                 var tries = 0
-                while (d.episodes.isEmpty() && tries < 4) {
-                    delay(if (tries == 0) 4000 else 7000)
+                // Server kini mengisi di latar (respons detail
+                // seketika) dan penyelesaiannya paralel — episode
+                // biasanya tiba dalam hitungan detik. Muat ulang
+                // rapat di awal, total jendela ±30 detik.
+                while (d.episodes.isEmpty() && tries < 12) {
+                    delay(if (tries == 0) 2000 else 2500)
                     tries++
                     try {
                         d = repo.titleDetail(titleId)

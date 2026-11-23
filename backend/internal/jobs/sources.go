@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -592,6 +593,12 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 	_ = pool.QueryRow(ctx, `
 		select count(*) from episodes where title_id = $1::uuid`, titleID).Scan(&hadEps)
 	var newEps []int
+	type resolveJob struct {
+		id string
+		ep sources.EpisodeRef
+	}
+	var jobList []resolveJob
+	budget := maxResolvePerRun - *resolved
 	for _, ep := range eps {
 		var epID string
 		err := pool.QueryRow(ctx, `
@@ -606,25 +613,51 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 			}
 			newEps = append(newEps, ep.Number)
 		}
-		// 3) Selesaikan aliran + trek untuk episode yang belum punya sumber.
+		// 3) Kumpulkan episode yang belum punya sumber untuk
+		// diselesaikan alirannya (dibatasi anggaran putaran ini).
 		var have int
 		if err := pool.QueryRow(ctx, `
 			select count(*) from episode_sources where episode_id = $1::uuid`,
 			epID).Scan(&have); err != nil {
 			return err
 		}
-		if have > 0 || *resolved >= maxResolvePerRun {
+		if have > 0 || len(jobList) >= budget {
 			continue
 		}
-		res, err := resolver.Resolve(ctx, src, ep)
-		if err != nil {
-			log.Printf("resolve %s ep %d dari %s: %v", titleName, ep.Number, src.Name, err)
-			continue
+		jobList = append(jobList, resolveJob{epID, ep})
+	}
+	// Selesaikan aliran kandidat secara PARALEL (maks 5 bersamaan).
+	// Cara lama satu per satu membuat pengisian 20 episode bisa
+	// memakan semenit lebih — halaman detail yang menunggu terasa
+	// sangat lambat (keluhan Rams 2026-11-23). Kandidat berurutan
+	// menaik sehingga episode awal masuk antrean pekerja lebih dulu.
+	if len(jobList) > 0 {
+		sem := make(chan struct{}, 5)
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		done := 0
+		for _, jb := range jobList {
+			wg.Add(1)
+			go func(jb resolveJob) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				res, err := resolver.Resolve(ctx, src, jb.ep)
+				if err != nil {
+					log.Printf("resolve %s ep %d dari %s: %v", titleName, jb.ep.Number, src.Name, err)
+					return
+				}
+				if err := storeResolved(ctx, pool, jb.id, res); err != nil {
+					log.Printf("simpan hasil resolve %s ep %d: %v", titleName, jb.ep.Number, err)
+					return
+				}
+				mu.Lock()
+				done++
+				mu.Unlock()
+			}(jb)
 		}
-		if err := storeResolved(ctx, pool, epID, res); err != nil {
-			return err
-		}
-		*resolved++
+		wg.Wait()
+		*resolved += done
 	}
 	// Notifikasi rilis ke pemfavorit judul (Daftar Saya) — hanya
 	// bila judul sudah punya episode sebelumnya (bukan backfill).
