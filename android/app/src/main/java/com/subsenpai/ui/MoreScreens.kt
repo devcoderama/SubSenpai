@@ -400,20 +400,6 @@ fun SettingsScreen(onBack: () -> Unit) {
         item {
             MoreRow(R.drawable.ic_info, "Versi aplikasi", "SubSenpai v$version") {}
         }
-        item {
-            MoreRow(R.drawable.ic_info, "Situs resmi", "Dokumentasi & unduhan SubSenpai") {
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse("https://celebrated-semolina-d9f3c5.netlify.app"))
-                )
-            }
-        }
-        item {
-            MoreRow(R.drawable.ic_info, "GitHub", "Kode sumber & rilis terbaru") {
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/devcoderama/SubSenpai"))
-                )
-            }
-        }
         item { Spacer(Modifier.height(20.dp)) }
     }
 }

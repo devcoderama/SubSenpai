@@ -8,6 +8,8 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -159,7 +161,7 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -
     var methods by remember { mutableStateOf<List<PaymentMethodItem>>(emptyList()) }
     var selectedPlan by remember { mutableStateOf<PlanItem?>(null) }
     var selectedMethod by remember { mutableStateOf<PaymentMethodItem?>(null) }
-    var qty by remember { mutableStateOf(1) }
+    var qtyText by remember { mutableStateOf("1") }
     var payResult by remember { mutableStateOf<PayResult?>(null) }
     var payPaid by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
@@ -208,6 +210,10 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -
     }
 
     val isVoucher = tab == 1
+    val isRedeem = tab == 2
+    // Jumlah voucher dari kolom input (permintaan Rams 2026-11-23:
+    // bukan stepper lagi) — diketik bebas, berlaku 1–10.
+    val qty = qtyText.toIntOrNull()?.coerceIn(1, 10) ?: 1
     val total = (selectedPlan?.price ?: 0) * (if (isVoucher) qty else 1)
 
     Column(
@@ -223,9 +229,9 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -
         }
         Text("Premium", style = MaterialTheme.typography.headlineSmall)
 
-        // Kategori: langganan langsung / beli voucher.
+        // Kategori: langganan langsung / beli voucher / tukar voucher.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Langganan Premium", "Beli Voucher").forEachIndexed { i, label ->
+            listOf("Langganan", "Beli Voucher", "Tukar Voucher").forEachIndexed { i, label ->
                 Card(
                     modifier = Modifier.weight(1f)
                         .border(
@@ -249,6 +255,46 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -
             }
         }
 
+        if (isRedeem) {
+            // Kategori Tukar Voucher (permintaan Rams 2026-11-23):
+            // penukaran kode dipindah dari bawah tab Beli Voucher ke
+            // kategorinya sendiri — tanpa langkah-langkah pembayaran.
+            Text(
+                "Masukkan kode voucher yang kamu punya — premium langsung " +
+                    "aktif di akunmu begitu kode berhasil ditukar.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFB3B3B3),
+            )
+            OutlinedTextField(
+                value = redeemCode,
+                onValueChange = { redeemCode = it },
+                label = { Text("Kode voucher") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+            Button(
+                enabled = redeemCode.isNotBlank(),
+                onClick = {
+                    if (!repo.isLoggedIn) {
+                        onNeedLogin()
+                        return@Button
+                    }
+                    val code = redeemCode.trim()
+                    scope.launch {
+                        error = null
+                        try {
+                            val o = repo.redeemVoucher(code)
+                            redeemCode = ""
+                            info = "Voucher ditukar! Premium sampai " +
+                                o.optString("premium_until").take(10)
+                        } catch (e: Exception) {
+                            error = e.message
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Tukar Voucher") }
+        } else {
         Text(
             "Langkah $step dari 3 · " + when (step) {
                 1 -> "Pilih paket"
@@ -307,15 +353,20 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -
                             Text("Mau dibagikan ke berapa orang?", style = MaterialTheme.typography.titleSmall)
                             Spacer(Modifier.height(8.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                OutlinedButton(onClick = { if (qty > 1) qty-- }) { Text("−") }
-                                Text(
-                                    "$qty",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    modifier = Modifier.padding(horizontal = 18.dp),
+                                OutlinedTextField(
+                                    value = qtyText,
+                                    onValueChange = { v ->
+                                        qtyText = v.filter { it.isDigit() }.take(2)
+                                    },
+                                    label = { Text("Jumlah orang") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                    ),
+                                    modifier = Modifier.width(130.dp),
                                 )
-                                OutlinedButton(onClick = { if (qty < 10) qty++ }) { Text("+") }
                                 Spacer(Modifier.width(10.dp))
-                                Text("kode voucher", color = Color(0xFFB3B3B3))
+                                Text("kode voucher (maks 10)", color = Color(0xFFB3B3B3))
                             }
                             Spacer(Modifier.height(6.dp))
                             Text(
@@ -336,40 +387,6 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Lanjut") }
-                if (isVoucher) {
-                    Spacer(Modifier.height(4.dp))
-                    Text("Punya kode voucher?", style = MaterialTheme.typography.titleSmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = redeemCode,
-                            onValueChange = { redeemCode = it },
-                            label = { Text("Kode voucher") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                        )
-                        Button(
-                            enabled = redeemCode.isNotBlank(),
-                            onClick = {
-                                if (!repo.isLoggedIn) {
-                                    onNeedLogin()
-                                    return@Button
-                                }
-                                val code = redeemCode.trim()
-                                scope.launch {
-                                    error = null
-                                    try {
-                                        val o = repo.redeemVoucher(code)
-                                        redeemCode = ""
-                                        info = "Voucher ditukar! Premium sampai " +
-                                            o.optString("premium_until").take(10)
-                                    } catch (e: Exception) {
-                                        error = e.message
-                                    }
-                                }
-                            },
-                        ) { Text("Tukar") }
-                    }
-                }
             }
 
             2 -> {
@@ -664,6 +681,7 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -
                     Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Selesai") }
                 }
             }
+        }
         }
 
         if (info != null) Text(info!!, style = MaterialTheme.typography.bodyMedium)
