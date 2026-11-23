@@ -298,6 +298,7 @@ class CatalogRepository(
             maintenanceMode = o.optBoolean("maintenance_mode"),
             maintenanceMessage = o.optString("maintenance_message"),
             minVersionCode = o.optInt("min_version_code"),
+            minVersionName = o.optString("min_version_name"),
             updateUrl = o.optString("update_url"),
             announcement = o.optString("announcement"),
         )

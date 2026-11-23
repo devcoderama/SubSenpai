@@ -693,13 +693,14 @@ async function pagePengaturan() {
     '<p class="muted">Geser tombol untuk langsung mengaktifkan/mematikan — tanpa perlu menekan Simpan. Saat aktif, aplikasi pengguna (v0.22.2+) otomatis menampilkan halaman perawatan dalam waktu maks 60 detik (aplikasi memeriksa pengaturan tiap menit), dan halaman itu lepas sendiri begitu mode dimatikan. Versi lama menerima perubahan saat aplikasi dibuka lagi.</p>' +
     '<div class="toolbar"><label class="switch"><input type="checkbox" id="st-maint"' + (s.maintenance_mode === 'true' ? ' checked' : '') + '><span class="slider"></span></label><span id="st-maint-lbl">' + (s.maintenance_mode === 'true' ? 'Mode perawatan AKTIF' : 'Mode perawatan nonaktif') + '</span></div>' +
     '<label>Pesan perawatan<br><input type="text" id="st-maint-msg" value="' + esc(s.maintenance_message || '') + '" style="width:100%"></label></div>' +
-    '<div class="card" style="margin-top:18px"><h2 style="margin-top:0">Paksa Perbarui</h2>' +
-    '<p class="muted">Pengguna dengan kode versi aplikasi di bawah angka ini wajib memperbarui. v0.22.0 = kode 49. Isi 0 untuk menonaktifkan.</p>' +
-    '<div class="toolbar"><label>Kode versi minimum<br><input type="number" id="st-minver" value="' + esc(s.min_version_code || '0') + '" min="0" style="width:140px"></label>' +
-    '<label style="flex:1">Tautan unduh versi baru<br><input type="text" id="st-url" value="' + esc(s.update_url || '') + '" style="width:100%"></label></div></div>' +
     '<div class="card" style="margin-top:18px"><h2 style="margin-top:0">Pengumuman</h2>' +
-    '<p class="muted">Teks ini tampil sebagai banner di Beranda aplikasi. Kosongkan untuk menyembunyikan.</p>' +
-    '<input type="text" id="st-ann" value="' + esc(s.announcement || '') + '" placeholder="cth: Server pindah — selamat menonton!" style="width:100%"></div>' +
+    '<p class="muted">Teks ini tampil sebagai banner di Beranda aplikasi. Tekan <b>Kirim Notifikasi</b> untuk langsung menerbitkannya — banner muncul di aplikasi pengguna (v0.22.2+) dalam maks 60 detik. Kosongkan teks lalu kirim untuk menarik pengumuman.</p>' +
+    '<input type="text" id="st-ann" value="' + esc(s.announcement || '') + '" placeholder="cth: Server pindah — selamat menonton!" style="width:100%">' +
+    '<div style="margin-top:12px"><button class="btn purple" id="st-ann-send"><i class="fa-solid fa-paper-plane"></i> Kirim Notifikasi</button></div></div>' +
+    '<div class="card" style="margin-top:18px"><h2 style="margin-top:0">Paksa Perbarui</h2>' +
+    '<p class="muted">Tulis versi seperti biasa (contoh: 0.22.2). Pengguna dengan versi aplikasi di bawah itu wajib memperbarui. Kosongkan untuk menonaktifkan.</p>' +
+    '<div class="toolbar"><label>Versi minimum<br><input type="text" id="st-minver" value="' + esc(s.min_version_name || '') + '" placeholder="cth: 0.22.2" inputmode="decimal" style="width:160px"></label>' +
+    '<label style="flex:1">Tautan unduh versi baru<br><input type="text" id="st-url" value="' + esc(s.update_url || '') + '" style="width:100%"></label></div></div>' +
     '<div style="margin-top:18px"><button class="btn" id="st-save">Simpan Pengaturan</button></div>';
   // Toggle mode perawatan: simpan LANGSUNG saat digeser (seperti
   // halaman Metode Pembayaran) + kabari admin efeknya ke aplikasi.
@@ -721,11 +722,27 @@ async function pagePengaturan() {
       toast('Gagal mengubah mode perawatan: ' + ((rr.body && rr.body.error) || rr.status));
     }
   });
+  // Kirim Notifikasi: terbitkan pengumuman SAAT ITU JUGA (banner
+  // sampai ke aplikasi yang berjalan dalam maks 60 detik).
+  $('st-ann-send').addEventListener('click', async () => {
+    const teks = $('st-ann').value;
+    const rr = await api('/api/v1/admin/settings', {
+      method: 'PATCH', body: { announcement: teks },
+    });
+    if (rr.status === 200) {
+      toast(teks.trim()
+        ? '📣 Notifikasi terkirim — banner tampil di aplikasi pengguna dalam maks 60 detik.'
+        : 'Pengumuman ditarik — banner hilang dari aplikasi dalam maks 60 detik.');
+    } else {
+      toast('Gagal mengirim: ' + ((rr.body && rr.body.error) || rr.status));
+    }
+  });
   $('st-save').addEventListener('click', async () => {
     const body = {
       maintenance_mode: $('st-maint').checked,
       maintenance_message: $('st-maint-msg').value,
-      min_version_code: parseInt($('st-minver').value, 10) || 0,
+      min_version_name: $('st-minver').value.trim(),
+      min_version_code: 0,
       update_url: $('st-url').value.trim(),
       announcement: $('st-ann').value,
     };

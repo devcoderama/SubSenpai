@@ -369,6 +369,25 @@ func TestAdminLive(t *testing.T) {
 		map[string]any{"maintenance_mode": false, "announcement": ""}); st != 200 {
 		t.Fatalf("kembalikan settings: status=%d", st)
 	}
+	// Versi minimum berbasis NAMA versi (permintaan Rams: admin
+	// mengetik "0.22.2", bukan kode versi): tersimpan, tampil di
+	// app-config, dan format liar ditolak.
+	if st, _ := call("PATCH", "/api/v1/admin/settings", adminJWT,
+		map[string]any{"min_version_name": "0.22.2"}); st != 200 {
+		t.Fatalf("simpan min_version_name: status=%d", st)
+	}
+	st, appCfg = call("GET", "/api/v1/app-config", "", nil)
+	if st != 200 || appCfg["min_version_name"] != "0.22.2" {
+		t.Fatalf("app-config min_version_name: status=%d body=%v", st, appCfg)
+	}
+	if st, _ := call("PATCH", "/api/v1/admin/settings", adminJWT,
+		map[string]any{"min_version_name": "nol-koma"}); st != 400 {
+		t.Fatalf("min_version_name liar harus 400, dapat %d", st)
+	}
+	if st, _ := call("PATCH", "/api/v1/admin/settings", adminJWT,
+		map[string]any{"min_version_name": ""}); st != 200 {
+		t.Fatalf("kosongkan min_version_name: status=%d", st)
+	}
 
 	// Log admin & info sistem bisa dibaca admin. (Tabel
 	// schema_migrations dirawat migrator Go di produksi; di uji

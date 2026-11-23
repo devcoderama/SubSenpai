@@ -60,9 +60,21 @@ data class AppConfig(
     val maintenanceMode: Boolean,
     val maintenanceMessage: String,
     val minVersionCode: Int,
+    val minVersionName: String,
     val updateUrl: String,
     val announcement: String,
 )
+
+/** Bandingkan dua nama versi ("0.22.2"): negatif bila a < b. */
+fun compareVersionNames(a: String, b: String): Int {
+    val pa = a.split('.').map { it.toIntOrNull() ?: 0 }
+    val pb = b.split('.').map { it.toIntOrNull() ?: 0 }
+    for (i in 0 until maxOf(pa.size, pb.size)) {
+        val d = (pa.getOrElse(i) { 0 }) - (pb.getOrElse(i) { 0 })
+        if (d != 0) return d
+    }
+    return 0
+}
 
 /** Metode pembayaran Tokopay dari database (migrasi 0015). */
 data class PaymentMethodItem(val code: String, val name: String, val group: String, val iconUrl: String)

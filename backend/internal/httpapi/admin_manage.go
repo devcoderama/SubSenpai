@@ -242,7 +242,27 @@ func (a *API) handleAdminCrashesClear(w http.ResponseWriter, r *http.Request) {
 
 var settingKeys = []string{
 	"maintenance_mode", "maintenance_message",
-	"min_version_code", "update_url", "announcement",
+	"min_version_code", "min_version_name", "update_url", "announcement",
+}
+
+// validVersionName: nama versi seperti "0.22.2" (2–4 segmen angka).
+func validVersionName(s string) bool {
+	if s == "" {
+		return true
+	}
+	parts := strings.Split(s, ".")
+	if len(parts) < 2 || len(parts) > 4 {
+		return false
+	}
+	for _, p := range parts {
+		if p == "" {
+			return false
+		}
+		if _, err := strconv.Atoi(p); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *API) loadSettings(r *http.Request) map[string]string {
@@ -269,6 +289,7 @@ func (a *API) handleAppConfig(w http.ResponseWriter, r *http.Request) {
 		"maintenance_mode":    s["maintenance_mode"] == "true",
 		"maintenance_message": s["maintenance_message"],
 		"min_version_code":    minVer,
+		"min_version_name":    s["min_version_name"],
 		"update_url":          s["update_url"],
 		"announcement":        s["announcement"],
 	})
@@ -290,6 +311,7 @@ func (a *API) handleAdminSettingsUpdate(w http.ResponseWriter, r *http.Request) 
 		MaintenanceMode    *bool   `json:"maintenance_mode"`
 		MaintenanceMessage *string `json:"maintenance_message"`
 		MinVersionCode     *int    `json:"min_version_code"`
+		MinVersionName     *string `json:"min_version_name"`
 		UpdateURL          *string `json:"update_url"`
 		Announcement       *string `json:"announcement"`
 	}
@@ -301,6 +323,10 @@ func (a *API) handleAdminSettingsUpdate(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusBadRequest, "min_version_code tidak boleh negatif")
 		return
 	}
+	if req.MinVersionName != nil && !validVersionName(strings.TrimSpace(*req.MinVersionName)) {
+		writeErr(w, http.StatusBadRequest, "format versi tidak valid — contoh: 0.22.2")
+		return
+	}
 	updates := map[string]string{}
 	if req.MaintenanceMode != nil {
 		updates["maintenance_mode"] = strconv.FormatBool(*req.MaintenanceMode)
@@ -310,6 +336,9 @@ func (a *API) handleAdminSettingsUpdate(w http.ResponseWriter, r *http.Request) 
 	}
 	if req.MinVersionCode != nil {
 		updates["min_version_code"] = strconv.Itoa(*req.MinVersionCode)
+	}
+	if req.MinVersionName != nil {
+		updates["min_version_name"] = strings.TrimSpace(*req.MinVersionName)
 	}
 	if req.UpdateURL != nil {
 		updates["update_url"] = truncate(*req.UpdateURL, 500)

@@ -122,8 +122,14 @@ class MainActivity : ComponentActivity() {
                         delay(60_000)
                     }
                 }
-                val outdated = appConfig != null &&
+                // Paksa perbarui: utamakan NAMA versi dari dashboard
+                // (admin mengetik "0.22.2"); kode versi hanya cadangan.
+                val minName = appConfig?.minVersionName?.takeIf { it.isNotBlank() }
+                val outdated = appConfig != null && if (minName != null) {
+                    com.subsenpai.data.compareVersionNames(BuildConfig.VERSION_NAME, minName) < 0
+                } else {
                     BuildConfig.VERSION_CODE < (appConfig?.minVersionCode ?: 0)
+                }
                 val gated = !configLoaded || appConfig?.maintenanceMode == true || outdated
                 val backEntry by nav.currentBackStackEntryAsState()
                 val route = backEntry?.destination?.route
