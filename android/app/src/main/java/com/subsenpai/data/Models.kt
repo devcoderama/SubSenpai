@@ -112,6 +112,44 @@ data class TitleDetail(
     }
 }
 
+// Teks bagikan kaya (v0.24.17, permintaan Rams 2026-11-24):
+// format sama dengan notifikasi jadwal rilis — judul, judul
+// lain, genre, studio, musim, sinopsis ringkas, tautan nonton.
+// Dari pemutar (episodeId terisi), tautannya /nonton/{episodeId}
+// yang membuka aplikasi langsung memutar episode itu; dari
+// halaman detail, tautannya /judul/{id}.
+fun shareTextFor(detail: TitleDetail, episodeId: String? = null, episodeNo: Int? = null): String {
+    val d = detail
+    val b = StringBuilder()
+    b.append("Nonton ").append(d.card.title)
+    if (episodeNo != null) b.append(" — Episode ").append(episodeNo)
+    b.append(" di SubSenpai")
+    d.card.titleAlt?.takeIf { it.isNotBlank() }?.let { b.append("\nJudul lain: ").append(it) }
+    if (d.card.genres.isNotEmpty()) {
+        b.append("\nGenre: ").append(d.card.genres.joinToString(", "))
+    }
+    val meta = mutableListOf<String>()
+    d.studio?.takeIf { it.isNotBlank() }?.let { meta += "Studio: $it" }
+    val seasonLabel = d.season?.takeIf { it.isNotBlank() }?.let { s ->
+        s.replaceFirstChar { it.uppercase() } + (d.card.year?.let { " $it" } ?: "")
+    }
+    if (seasonLabel != null) meta += "Musim: $seasonLabel"
+    else d.card.year?.let { meta += "Tahun: $it" }
+    if (meta.isNotEmpty()) b.append("\n").append(meta.joinToString(" • "))
+    d.synopsis?.takeIf { it.isNotBlank() }?.let {
+        val ringkas = if (it.length > 180) it.take(180).trimEnd() + "…" else it
+        b.append("\n").append(ringkas)
+    }
+    if (episodeId != null) {
+        b.append("\n▶️ Nonton")
+        if (episodeNo != null) b.append(" Episode ").append(episodeNo)
+        b.append(": https://www.subsenpai.web.id/nonton/").append(episodeId)
+    } else {
+        b.append("\n▶️ Nonton: https://www.subsenpai.web.id/judul/").append(d.card.id)
+    }
+    return b.toString()
+}
+
 data class PlaybackSource(
     val url: String,
     val label: String?,

@@ -467,13 +467,17 @@ fun PlayerScreen(
                             onShareSystem = {
                                 val d = detail
                                 if (d != null) {
+                                    // Bagikan dari pemutar menautkan
+                                    // EPISODE yang sedang diputar
+                                    // (/nonton/{id}), bukan detail.
+                                    val cur = episodes.getOrNull(curEpIdx)
                                     val send = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
                                         putExtra(
                                             Intent.EXTRA_TEXT,
-                                            "Nonton ${d.card.title} di SubSenpai\n" +
-                                                "https://www.subsenpai.web.id/judul/${d.card.id}" +
-                                                (d.synopsis?.let { "\n\n$it" } ?: ""),
+                                            com.subsenpai.data.shareTextFor(
+                                                d, cur?.id, cur?.episodeNo,
+                                            ),
                                         )
                                     }
                                     context.startActivity(Intent.createChooser(send, "Bagikan"))
