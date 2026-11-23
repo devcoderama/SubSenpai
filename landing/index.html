@@ -115,15 +115,15 @@
 <main class="wrap">
   <section class="rows" id="katalog">
     <div class="rowblock" id="row-anime" hidden>
-      <h2>Anime <span>ketuk poster untuk membuka di aplikasi</span></h2>
+      <h2>Anime <span>terbaru &amp; populer dari situs resminya — ketuk untuk membuka di aplikasi</span></h2>
       <div class="rail" data-rail="anime"></div>
     </div>
     <div class="rowblock" id="row-donghua" hidden>
-      <h2>Donghua <span>ketuk poster untuk membuka di aplikasi</span></h2>
+      <h2>Donghua <span>terbaru &amp; populer dari situs resminya — ketuk untuk membuka di aplikasi</span></h2>
       <div class="rail" data-rail="donghua"></div>
     </div>
     <div class="rowblock" id="row-film" hidden>
-      <h2>Film <span>ketuk poster untuk membuka di aplikasi</span></h2>
+      <h2>Film <span>terbaru &amp; populer dari situs resminya — ketuk untuk membuka di aplikasi</span></h2>
       <div class="rail" data-rail="film"></div>
     </div>
     <div class="rowblock" id="row-skeleton">
@@ -289,10 +289,7 @@ async function handshake() {
     hkdfKey, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
   sessionId = hs.session_id;
 }
-async function apiGet(path) {
-  if (!sessionId) await handshake();
-  const res = await fetch(API_BASE + path, { headers: { "X-Session-Id": sessionId } });
-  const env = await res.json();
+async function openEnv(env) {
   if (env && env.xdata) {
     const payload = b64urlDecode(env.xdata);
     const plain = await crypto.subtle.decrypt(
@@ -302,6 +299,20 @@ async function apiGet(path) {
   }
   return env;
 }
+async function apiGet(path) {
+  if (!sessionId) await handshake();
+  const res = await fetch(API_BASE + path, { headers: { "X-Session-Id": sessionId } });
+  return openEnv(await res.json());
+}
+async function apiPost(path, bodyObj) {
+  if (!sessionId) await handshake();
+  const res = await fetch(API_BASE + path, {
+    method: "POST",
+    headers: { "X-Session-Id": sessionId, "Content-Type": "application/json" },
+    body: JSON.stringify(bodyObj),
+  });
+  return openEnv(await res.json());
+}
 function esc(s) {
   return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -309,28 +320,68 @@ function deepLink(id) {
   return "intent://title/" + id + "#Intent;scheme=subsenpai;package=com.subsenpai;" +
     "S.browser_fallback_url=" + encodeURIComponent("https://app-subsenpai.netlify.app/#download") + ";end";
 }
+/* Baris katalog diisi dari LIVE-BROWSE (beranda situs sumber:
+ * terbaru/populer persis seperti di situs resminya). Judul yang
+ * belum ada di katalog diimpor dulu saat diklik, lalu deep link
+ * membuka aplikasinya. Bila live-browse kosong (mis. backend
+ * belum diperbarui), cadangannya katalog lokal. */
+let catalogItems = { anime: [], donghua: [], film: [] };
+async function openTitle(type, idx) {
+  const item = catalogItems[type][idx];
+  if (!item) return;
+  let id = item.catalog_id || item.id || null;
+  if (!id && item.url) {
+    try {
+      const res = await apiPost("/api/v1/titles/import", {
+        type: type, url: item.url, title: item.title,
+        poster_url: item.poster_url || "", year: item.year || 0,
+        genres: item.genres || [],
+      });
+      id = res && res.id;
+    } catch (e) { /* abaikan: jatuh ke bagian download */ }
+  }
+  if (id) { location.href = deepLink(id); }
+  else { location.hash = "download"; }
+}
 function renderRow(type, items) {
   const block = document.getElementById("row-" + type);
   const rail = block.querySelector("[data-rail]");
   const withPoster = items.filter(function (t) { return t.poster_url; });
   if (!withPoster.length) return;
-  rail.innerHTML = withPoster.map(function (t) {
+  catalogItems[type] = withPoster;
+  rail.innerHTML = withPoster.map(function (t, i) {
     const img = API_BASE + "/api/v1/img-proxy?u=" + encodeURIComponent(t.poster_url);
-    return '<a class="pcard" href="' + deepLink(t.id) + '">' +
+    return '<a class="pcard" href="#katalog" data-type="' + type + '" data-idx="' + i + '">' +
       '<div class="ph"><img loading="lazy" alt="" src="' + esc(img) + '"></div>' +
       '<div class="t">' + esc(t.title) + "</div>" +
       (t.year ? '<div class="y">' + esc(t.year) + "</div>" : "") + "</a>";
   }).join("");
+  rail.querySelectorAll(".pcard").forEach(function (a) {
+    a.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      openTitle(a.getAttribute("data-type"), Number(a.getAttribute("data-idx")));
+    });
+  });
   block.hidden = false;
 }
 (async function loadCatalog() {
-  try {
-    const types = ["anime", "donghua", "film"];
-    for (const type of types) {
-      const data = await apiGet("/api/v1/titles?type=" + type + "&limit=14");
-      renderRow(type, (data && data.items) || []);
+  const types = ["anime", "donghua", "film"];
+  for (const type of types) {
+    let items = [];
+    try {
+      const live = await apiGet("/api/v1/live-browse?type=" + type + "&page=1");
+      items = (live && live.items) || [];
+    } catch (e) { items = []; }
+    if (!items.length) {
+      try {
+        const data = await apiGet("/api/v1/titles?type=" + type + "&limit=14");
+        items = ((data && data.items) || []).map(function (t) {
+          return { id: t.id, title: t.title, poster_url: t.poster_url, year: t.year };
+        });
+      } catch (e) { items = []; }
     }
-  } catch (e) { /* katalog gagal dimuat: halaman unduhan tetap berfungsi */ }
+    renderRow(type, items);
+  }
   const sk = document.getElementById("row-skeleton");
   if (sk) sk.remove();
 })();
