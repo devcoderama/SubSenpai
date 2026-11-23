@@ -22,6 +22,7 @@ import (
 
 	"subsenpai/backend/internal/auth"
 	"subsenpai/backend/internal/config"
+	"subsenpai/backend/internal/jobs"
 	"subsenpai/backend/internal/middleware"
 )
 
@@ -508,6 +509,60 @@ func TestAdminLive(t *testing.T) {
 	if st != 200 || len(hist["items"].([]any)) != 1 ||
 		hist["items"].([]any)[0].(map[string]any)["title"] != "Film Riwayat Uji" {
 		t.Fatalf("daftar riwayat: status=%d body=%v", st, hist)
+	}
+
+	// Notifikasi rilis favorit: user memfavoritkan judul -> sebaran
+	// jobs.NotifyRelease -> tampil HANYA di ?kind=release, membawa
+	// ref_title_id, dan tidak bocor ke ?kind=social.
+	_, _ = pool.Exec(ctx, `delete from titles where slug = 'judul-rilis-uji'`)
+	var relTitleID string
+	if err := pool.QueryRow(ctx, `
+		insert into titles (slug, type, title)
+		values ('judul-rilis-uji', 'anime', 'Anime Rilis Uji') returning id`).Scan(&relTitleID); err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Exec(ctx, `delete from titles where slug = 'judul-rilis-uji'`)
+	var vpID string
+	if err := pool.QueryRow(ctx, `
+		select id from viewing_profiles where account_id = $1::uuid limit 1`, userID).Scan(&vpID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into watchlist (user_id, viewing_profile_id, title_id, notify)
+		values ($1::uuid, $2::uuid, $3::uuid, true)`, userID, vpID, relTitleID); err != nil {
+		t.Fatal(err)
+	}
+	if err := jobs.NotifyRelease(ctx, pool, relTitleID, "Anime Rilis Uji", []int{7}); err != nil {
+		t.Fatalf("NotifyRelease: %v", err)
+	}
+	st, rel := call("GET", "/api/v1/feed/notifications?kind=release", userJWT, nil)
+	relItems, _ := rel["items"].([]any)
+	if st != 200 || len(relItems) != 1 {
+		t.Fatalf("kind=release: status=%d body=%v", st, rel)
+	}
+	relItem, _ := relItems[0].(map[string]any)
+	if relItem["kind"] != "release" || relItem["ref_title_id"] != relTitleID ||
+		relItem["title"] != "Episode baru: Anime Rilis Uji" {
+		t.Fatalf("isi notifikasi rilis salah: %v", relItem)
+	}
+	if rel["unread"].(float64) < 1 {
+		t.Fatalf("unread rilis: %v", rel)
+	}
+	st, soc2 := call("GET", "/api/v1/feed/notifications?kind=social", userJWT, nil)
+	if st != 200 {
+		t.Fatalf("kind=social (cek rilis): status=%d", st)
+	}
+	for _, it := range soc2["items"].([]any) {
+		if it.(map[string]any)["kind"] == "release" {
+			t.Fatalf("notifikasi rilis bocor ke kind=social: %v", it)
+		}
+	}
+	if st, _ := call("POST", "/api/v1/feed/notifications/read", userJWT,
+		map[string]any{"kind": "release"}); st != 200 {
+		t.Fatalf("read kind=release: status=%d", st)
+	}
+	if _, after := call("GET", "/api/v1/feed/notifications?kind=release", userJWT, nil); after["unread"].(float64) != 0 {
+		t.Fatalf("read kind=release tidak menandai: %v", after)
 	}
 
 	// CORS: preflight dari origin Netlify dijawab dengan echo origin;

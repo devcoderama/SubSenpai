@@ -114,14 +114,15 @@ fun HomeScreen(
     val browsing = type != null || query.isNotBlank()
     val scope = rememberCoroutineScope()
 
-    // Lencana lonceng di header: jumlah PENGUMUMAN admin yang belum
-    // dibaca, diperiksa berkala selama Beranda tampil (permintaan
-    // Rams: lonceng di samping tombol cari, bukan di tab Lainnya).
+    // Lencana lonceng di header: jumlah SEMUA notifikasi yang belum
+    // dibaca (admin + postingan + episode baru favorit), diperiksa
+    // berkala selama Beranda tampil (permintaan Rams: lonceng di
+    // samping tombol cari, bukan di tab Lainnya).
     var notifUnread by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
         while (true) {
             try {
-                notifUnread = repo.feedNotifications("broadcast").second
+                notifUnread = repo.feedNotifications(null).second
             } catch (e: Exception) {
                 // Tamu / gagal jaringan: lencana tetap seperti terakhir.
             }
@@ -388,7 +389,7 @@ fun HomeScreen(
                     IconButton(onClick = onOpenNotices) {
                         Icon(
                             painter = painterResource(R.drawable.ic_bell),
-                            contentDescription = "Pengumuman",
+                            contentDescription = "Notifikasi",
                             tint = Color.White,
                         )
                     }

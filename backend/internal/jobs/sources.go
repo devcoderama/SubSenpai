@@ -585,6 +585,13 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 	if err != nil {
 		return err
 	}
+	// Episode yang sudah ada SEBELUM sinkron ini: notifikasi rilis
+	// hanya untuk judul yang memang sudah punya episode (bukan
+	// pengisian awal katalog yang bisa ratusan episode sekaligus).
+	var hadEps int
+	_ = pool.QueryRow(ctx, `
+		select count(*) from episodes where title_id = $1::uuid`, titleID).Scan(&hadEps)
+	var newEps []int
 	for _, ep := range eps {
 		var epID string
 		err := pool.QueryRow(ctx, `
@@ -597,6 +604,7 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 				titleID, ep.Number, nullIfEmpty(ep.Title), ep.URL).Scan(&epID); err != nil {
 				return err
 			}
+			newEps = append(newEps, ep.Number)
 		}
 		// 3) Selesaikan aliran + trek untuk episode yang belum punya sumber.
 		var have int
@@ -617,6 +625,13 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 			return err
 		}
 		*resolved++
+	}
+	// Notifikasi rilis ke pemfavorit judul (Daftar Saya) — hanya
+	// bila judul sudah punya episode sebelumnya (bukan backfill).
+	if len(newEps) > 0 && hadEps > 0 {
+		if err := NotifyRelease(ctx, pool, titleID, titleName, newEps); err != nil {
+			log.Printf("notifikasi rilis %s: %v", titleName, err)
+		}
 	}
 	return nil
 }

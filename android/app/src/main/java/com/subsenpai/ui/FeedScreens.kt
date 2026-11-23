@@ -1789,10 +1789,17 @@ fun FeedNotificationsScreen(
     onOpenPost: (String) -> Unit,
     kind: String? = null,
     title: String = "Notifikasi",
+    onOpenTitle: (String) -> Unit = {},
+    showTabs: Boolean = false,
 ) {
     var items by remember { mutableStateOf<List<FeedNotification>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    // Tab sumber notifikasi (halaman Notifikasi utama dari lonceng
+    // Beranda): Semua / Admin / Postingan / Episode Baru — isinya
+    // tetap terpisah per tab, tidak dicampur.
+    var tab by remember { mutableStateOf("") }
+    val shown = if (!showTabs || tab.isEmpty()) items else items.filter { it.kind == tab }
 
     LaunchedEffect(Unit) {
         try {
@@ -1815,6 +1822,35 @@ fun FeedNotificationsScreen(
             }
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
+        if (showTabs) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(
+                    "" to "Semua",
+                    "broadcast" to "Admin",
+                    "social" to "Postingan",
+                    "release" to "Episode Baru",
+                ).forEach { (value, label) ->
+                    val active = tab == value
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(if (active) FeedPurple else Color(0xFF2A2A35))
+                            .clickable { tab = value }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text(
+                            label,
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    }
+                }
+            }
+        }
         if (loading) {
             Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = FeedPurple)
@@ -1823,23 +1859,36 @@ fun FeedNotificationsScreen(
         if (error != null) {
             Text("Gagal memuat: $error", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
         }
-        if (!loading && error == null && items.isEmpty()) {
+        if (!loading && error == null && shown.isEmpty()) {
             Text(
-                if (kind == "broadcast") {
-                    "Belum ada pengumuman dari admin. Pengumuman penting akan muncul di sini."
-                } else {
-                    "Belum ada notifikasi. Like, komentar, dan balasan pada postinganmu akan muncul di sini."
+                when {
+                    showTabs && tab == "broadcast" ->
+                        "Belum ada pengumuman dari admin. Pengumuman penting akan muncul di sini."
+                    showTabs && tab == "release" ->
+                        "Belum ada episode baru. Tambahkan anime, donghua, atau film ke Daftar Saya — episode barunya akan diberitahu di sini."
+                    showTabs && tab == "social" ->
+                        "Belum ada aktivitas postingan. Like, komentar, dan balasan pada postinganmu akan muncul di sini."
+                    kind == "broadcast" ->
+                        "Belum ada pengumuman dari admin. Pengumuman penting akan muncul di sini."
+                    else ->
+                        "Belum ada notifikasi. Pengumuman admin, aktivitas postingan, dan episode baru judul favoritmu akan muncul di sini."
                 },
                 color = Color(0xFFB3B3B3),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            items(items, key = { it.id }) { n ->
+            items(shown, key = { it.id }) { n ->
                 Row(
                     modifier = Modifier.fillMaxWidth()
                         .background(if (n.read) Color.Transparent else Color(0xFF241B3A))
-                        .clickable { n.refPostId?.let(onOpenPost) }
+                        .clickable {
+                            if (n.kind == "release") {
+                                n.refTitleId?.let(onOpenTitle)
+                            } else {
+                                n.refPostId?.let(onOpenPost)
+                            }
+                        }
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -1853,6 +1902,14 @@ fun FeedNotificationsScreen(
                             Text(
                                 "📣 PENGUMUMAN ADMIN",
                                 color = FeedPurple,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        if (n.kind == "release") {
+                            Text(
+                                "🎬 EPISODE BARU",
+                                color = Color(0xFF46D369),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                             )

@@ -910,8 +910,10 @@ func notifKindClause(kind string) string {
 		return "kind = 'social'"
 	case "broadcast":
 		return "kind = 'broadcast'"
+	case "release":
+		return "kind = 'release'"
 	default:
-		return "kind in ('social','broadcast')"
+		return "kind in ('social','broadcast','release')"
 	}
 }
 
@@ -925,7 +927,7 @@ func (a *API) handleFeedNotifications(w http.ResponseWriter, r *http.Request) {
 		where user_id = $1::uuid and `+kc+` and read_at is null`, p.ID).Scan(&unread)
 	rows, err := a.pool.Query(ctx, `
 		select n.id, n.kind, n.title, n.body, n.ref_post_id, n.actor_id, n.read_at, n.created_at,
-		       coalesce(pr.avatar_url, '')
+		       coalesce(pr.avatar_url, ''), n.ref_title_id
 		from notifications n
 		left join profiles pr on pr.id = n.actor_id
 		where n.user_id = $1::uuid and n.`+kc+`
@@ -936,20 +938,21 @@ func (a *API) handleFeedNotifications(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 	type notif struct {
-		ID        string     `json:"id"`
-		Kind      string     `json:"kind"`
-		Title     string     `json:"title"`
-		Body      string     `json:"body"`
-		RefPostID *string    `json:"ref_post_id,omitempty"`
-		ActorID   *string    `json:"actor_id,omitempty"`
-		AvatarURL string     `json:"actor_avatar_url"`
-		ReadAt    *time.Time `json:"read_at,omitempty"`
-		CreatedAt time.Time  `json:"created_at"`
+		ID         string     `json:"id"`
+		Kind       string     `json:"kind"`
+		Title      string     `json:"title"`
+		Body       string     `json:"body"`
+		RefPostID  *string    `json:"ref_post_id,omitempty"`
+		RefTitleID *string    `json:"ref_title_id,omitempty"`
+		ActorID    *string    `json:"actor_id,omitempty"`
+		AvatarURL  string     `json:"actor_avatar_url"`
+		ReadAt     *time.Time `json:"read_at,omitempty"`
+		CreatedAt  time.Time  `json:"created_at"`
 	}
 	out := []notif{}
 	for rows.Next() {
 		var n notif
-		if err := rows.Scan(&n.ID, &n.Kind, &n.Title, &n.Body, &n.RefPostID, &n.ActorID, &n.ReadAt, &n.CreatedAt, &n.AvatarURL); err != nil {
+		if err := rows.Scan(&n.ID, &n.Kind, &n.Title, &n.Body, &n.RefPostID, &n.ActorID, &n.ReadAt, &n.CreatedAt, &n.AvatarURL, &n.RefTitleID); err != nil {
 			writeErr(w, http.StatusInternalServerError, "kesalahan server")
 			return
 		}

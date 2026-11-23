@@ -367,8 +367,10 @@ class MainActivity : ComponentActivity() {
                                 repo,
                                 onBack = { nav.popBackStack() },
                                 onOpenPost = { postId -> nav.navigate("comments/$postId") },
-                                kind = "broadcast",
-                                title = "Pengumuman",
+                                kind = null,
+                                title = "Notifikasi",
+                                onOpenTitle = { nav.navigate("detail/$it") },
+                                showTabs = true,
                             )
                         }
                         composable(

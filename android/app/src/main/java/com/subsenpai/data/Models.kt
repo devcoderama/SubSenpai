@@ -229,7 +229,7 @@ class CatalogRepository(
         api.get("/api/v1/watchlist/$titleId").optBoolean("in_watchlist")
 
     suspend fun watchlistAdd(titleId: String) {
-        api.post("/api/v1/watchlist/$titleId", JSONObject().put("notify", false))
+        api.post("/api/v1/watchlist/$titleId", JSONObject().put("notify", true))
     }
 
     suspend fun watchlistRemove(titleId: String) {
