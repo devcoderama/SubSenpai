@@ -426,23 +426,25 @@ func (a *API) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 		select version from schema_migrations order by version desc limit 1`).Scan(&migration)
 	var dbSize int64
 	_ = a.pool.QueryRow(ctx, `select pg_database_size(current_database())`).Scan(&dbSize)
+	srvMetrics, srvHistory := collectServerMetrics()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"go_version":       runtime.Version(),
 		"server_time":      time.Now(),
 		"latest_migration": migration,
-		"server":           collectServerMetrics(),
+		"server":           srvMetrics,
+		"history":          srvHistory,
 		"db_size_bytes":    dbSize,
 		"counts": map[string]any{
-			"users":         count(`select count(*) from profiles`),
-			"admins":        count(`select count(*) from profiles where role = 'admin'`),
-			"premium_users": count(`select count(*) from profiles where premium_until > now()`),
-			"titles":        count(`select count(*) from titles`),
-			"titles_hidden": count(`select count(*) from titles where is_hidden`),
-			"episodes":      count(`select count(*) from episodes`),
-			"transactions":  count(`select count(*) from payment_sessions`),
+			"users":           count(`select count(*) from profiles`),
+			"admins":          count(`select count(*) from profiles where role = 'admin'`),
+			"premium_users":   count(`select count(*) from profiles where premium_until > now()`),
+			"titles":          count(`select count(*) from titles`),
+			"titles_hidden":   count(`select count(*) from titles where is_hidden`),
+			"episodes":        count(`select count(*) from episodes`),
+			"transactions":    count(`select count(*) from payment_sessions`),
 			"vouchers_active": count(`select count(*) from vouchers where status = 'active'`),
-			"crash_reports": count(`select count(*) from crash_reports`),
-			"feed_posts":    count(`select count(*) from feed_posts`),
+			"crash_reports":   count(`select count(*) from crash_reports`),
+			"feed_posts":      count(`select count(*) from feed_posts`),
 		},
 		"config": map[string]any{
 			"google_login": a.cfg.GoogleClientID != "",

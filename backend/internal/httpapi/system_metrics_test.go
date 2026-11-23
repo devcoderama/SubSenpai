@@ -43,6 +43,19 @@ func TestParseNetDev(t *testing.T) {
 	}
 }
 
+func TestParseDiskstats(t *testing.T) {
+	content := "   8       0 sda 100 0 2048 10 200 0 4096 20 0 0 0\n" +
+		"   8       1 sda1 50 0 1024 5 100 0 2048 10 0 0 0\n" +
+		"   7       0 loop0 10 0 80 1 0 0 0 0 0 0 0\n" +
+		" 259       0 nvme0n1 300 0 8192 30 400 0 2048 40 0 0 0\n" +
+		" 259       1 nvme0n1p1 60 0 512 3 70 0 512 7 0 0 0\n"
+	read, written := parseDiskstats(content)
+	// Hanya disk utuh: sda (2048/4096 sektor) + nvme0n1 (8192/2048).
+	if read != (2048+8192)*512 || written != (4096+2048)*512 {
+		t.Fatalf("read=%d written=%d", read, written)
+	}
+}
+
 func TestParseStatmRSS(t *testing.T) {
 	if got := parseStatmRSS("12345 2500 900 5 0 8000 0", 4096); got != 2500*4096 {
 		t.Fatalf("rss=%d", got)

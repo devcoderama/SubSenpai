@@ -196,6 +196,35 @@ function resCard(lbl, valText, pct, sub) {
     resBar(pct) +
     (sub ? '<div class="lbl" style="margin-top:6px">' + sub + '</div>' : '') + '</div>';
 }
+function gaugeCard(label, valueText, unit, pct, color) {
+  const p = Math.max(0, Math.min(100, pct || 0));
+  return '<div class="card gauge-card"><div class="lbl">' + esc(label) + '</div>' +
+    '<div class="gauge"><svg viewBox="0 0 120 120">' +
+    '<circle class="g-track" cx="60" cy="60" r="52" pathLength="100"/>' +
+    '<circle class="g-val" cx="60" cy="60" r="52" pathLength="100" stroke="' + color +
+    '" stroke-dasharray="' + (p * 0.75).toFixed(1) + ' 100"/>' +
+    '</svg><div class="g-num">' + esc(valueText) + '<span>' + esc(unit) + '</span></div></div></div>';
+}
+function sparkSVG(seriesList) {
+  const w = 260, h = 44, pad = 2;
+  let max = 0;
+  seriesList.forEach((s) => s.data.forEach((v) => { if (v > max) max = v; }));
+  if (max <= 0) max = 1;
+  const lines = seriesList.map((s) => {
+    if (s.data.length < 2) return '';
+    const pts = s.data.map((v, i) =>
+      (pad + i * (w - 2 * pad) / (s.data.length - 1)).toFixed(1) + ',' +
+      (h - pad - (v / max) * (h - 2 * pad)).toFixed(1)).join(' ');
+    return '<polyline points="' + pts + '" fill="none" stroke="' + s.color + '" stroke-width="1.6"/>';
+  }).join('');
+  if (!lines) return '';
+  return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">' + lines + '</svg>';
+}
+function sparkCard(label, bigText, seriesList) {
+  return '<div class="card"><div class="lbl">' + esc(label) + '</div>' +
+    '<div class="num" style="font-size:1.3rem">' + esc(bigText) + '</div>' +
+    sparkSVG(seriesList) + '</div>';
+}
 let toastTimer = null;
 function toast(msg) {
   const t = $('toast');
@@ -870,22 +899,42 @@ async function pageSistem(keep) {
   const b = r.body, c = b.counts || {}, cfg = b.config || {}, sv = b.server || {};
   const flag = (v) => v ? '<span class="badge premium">terhubung</span>' : '<span class="badge expired">belum diatur</span>';
   const loadTxt = (sv.load || []).map((x) => Number(x).toFixed(2)).join(' · ');
-  let html = '<h2 style="margin-top:4px">Sumber Daya Server</h2><div class="cards">' +
-    resCard('CPU', (Number(sv.cpu_percent || 0)).toFixed(1) + '%', sv.cpu_percent,
-      'Load ' + esc(loadTxt || '—') + ' · ' + esc(sv.num_cpu || 0) + ' core') +
-    resCard('RAM terpakai', fmtBytes(sv.mem_used_bytes), sv.mem_percent,
-      'dari ' + fmtBytes(sv.mem_total_bytes) + ' · sisa ' + fmtBytes((sv.mem_total_bytes || 0) - (sv.mem_used_bytes || 0))) +
-    resCard('Disk terpakai', fmtBytes(sv.disk_used_bytes), sv.disk_percent,
-      'dari ' + fmtBytes(sv.disk_total_bytes) + ' · sisa ' + fmtBytes((sv.disk_total_bytes || 0) - (sv.disk_used_bytes || 0))) +
-    resCard('Bandwidth (sejak server nyala)', '↓ ' + fmtBytes(sv.net_rx_bytes) + ' · ↑ ' + fmtBytes(sv.net_tx_bytes), 0,
-      'Laju sekarang: ↓ ' + fmtBytes(sv.net_rx_rate) + '/dtk · ↑ ' + fmtBytes(sv.net_tx_rate) + '/dtk') +
+  const hist = b.history || [];
+  const hCpu = hist.map((p) => p.cpu || 0), hMem = hist.map((p) => p.mem || 0);
+  const hLoad = hist.map((p) => p.load1 || 0);
+  const hRx = hist.map((p) => (p.rx_rate || 0) * 8 / 1e6), hTx = hist.map((p) => (p.tx_rate || 0) * 8 / 1e6);
+  const hDR = hist.map((p) => (p.disk_read_rate || 0) / 1048576), hDW = hist.map((p) => (p.disk_write_rate || 0) / 1048576);
+  const peak = (arr, floor) => Math.max.apply(null, [floor].concat(arr)) * 1.25;
+  const rxMbps = (sv.net_rx_rate || 0) * 8 / 1e6, txMbps = (sv.net_tx_rate || 0) * 8 / 1e6;
+  const drMBs = (sv.disk_read_rate || 0) / 1048576, dwMBs = (sv.disk_write_rate || 0) / 1048576;
+  let html = '<h2 style="margin-top:4px">Sumber Daya Server</h2><div class="gauges">' +
+    gaugeCard('CPU', (Number(sv.cpu_percent || 0)).toFixed(1), '%', sv.cpu_percent, '#4da3ff') +
+    gaugeCard('RAM Terpakai', (Number(sv.mem_percent || 0)).toFixed(1), '%', sv.mem_percent, '#e8b93e') +
+    gaugeCard('Jaringan Masuk', rxMbps.toFixed(2), 'Mbps', rxMbps / peak(hRx, 8) * 100, '#4da3ff') +
+    gaugeCard('Jaringan Keluar', txMbps.toFixed(2), 'Mbps', txMbps / peak(hTx, 8) * 100, '#ff5a3c') +
+    gaugeCard('Disk Baca', drMBs.toFixed(2), 'MB/dtk', drMBs / peak(hDR, 1) * 100, '#4da3ff') +
+    gaugeCard('Disk Tulis', dwMBs.toFixed(2), 'MB/dtk', dwMBs / peak(hDW, 1) * 100, '#ff5a3c') +
+    '</div>';
+  html += '<div class="cards">' +
+    sparkCard('CPU %', (Number(sv.cpu_percent || 0)).toFixed(1) + '%', [{ data: hCpu, color: '#4da3ff' }]) +
+    sparkCard('RAM %', (Number(sv.mem_percent || 0)).toFixed(1) + '%', [{ data: hMem, color: '#e8b93e' }]) +
+    sparkCard('Load (1 mnt) · ' + esc(sv.num_cpu || 0) + ' core', loadTxt || '—',
+      [{ data: hLoad, color: '#46d369' }]) +
+    sparkCard('Jaringan Mbps (masuk / keluar)', rxMbps.toFixed(2) + ' / ' + txMbps.toFixed(2),
+      [{ data: hRx, color: '#4da3ff' }, { data: hTx, color: '#ff5a3c' }]) +
+    sparkCard('Disk MB/dtk (baca / tulis)', drMBs.toFixed(2) + ' / ' + dwMBs.toFixed(2),
+      [{ data: hDR, color: '#4da3ff' }, { data: hDW, color: '#ff5a3c' }]) +
+    sparkCard('Disk Terpakai', fmtBytes(sv.disk_used_bytes) + ' / ' + fmtBytes(sv.disk_total_bytes), []) +
     '</div>';
   html += '<div class="card" style="margin-bottom:18px"><table>' +
     '<tr><th>Hostname</th><td>' + esc(sv.hostname || '—') + ' (' + esc(sv.os || '—') + ')</td></tr>' +
     '<tr><th>Uptime server</th><td>' + esc(fmtUptime(sv.uptime_seconds)) + '</td></tr>' +
+    '<tr><th>RAM</th><td>' + fmtBytes(sv.mem_used_bytes) + ' terpakai dari ' + fmtBytes(sv.mem_total_bytes) +
+      ' · sisa ' + fmtBytes((sv.mem_total_bytes || 0) - (sv.mem_used_bytes || 0)) + '</td></tr>' +
+    '<tr><th>Bandwidth total</th><td>↓ ' + fmtBytes(sv.net_rx_bytes) + ' · ↑ ' + fmtBytes(sv.net_tx_bytes) + ' (sejak server menyala)</td></tr>' +
     '<tr><th>Memori proses API</th><td>' + fmtBytes(sv.process_mem_bytes) + ' · ' + esc(sv.goroutines || 0) + ' goroutine</td></tr>' +
     '<tr><th>Ukuran database</th><td>' + fmtBytes(b.db_size_bytes) + '</td></tr></table>' +
-    '<p class="muted" style="margin-bottom:0">Halaman ini menyegarkan otomatis tiap 10 detik. Total bandwidth dihitung OS sejak server menyala; kuota bulanan hanya terlihat di panel penyedia VPS.</p></div>';
+    '<p class="muted" style="margin-bottom:0">Halaman ini menyegarkan otomatis tiap 10 detik. Grafik = riwayat 30 menit terakhir (sampel tiap 5 detik, tersimpan di memori server — mulai dari nol tiap server restart). Total bandwidth dihitung OS sejak server menyala; kuota bulanan hanya terlihat di panel penyedia VPS.</p></div>';
   html += '<div class="cards">' +
     card('Pengguna', c.users) + card('Admin', c.admins) + card('Premium aktif', c.premium_users) +
     card('Judul', c.titles) + card('Judul tersembunyi', c.titles_hidden) + card('Episode', c.episodes) +
