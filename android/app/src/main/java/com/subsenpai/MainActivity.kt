@@ -86,14 +86,6 @@ class MainActivity : ComponentActivity() {
             com.subsenpai.ui.SubSenpaiTheme {
                 val context = LocalContext.current
                 val nav = rememberNavController()
-                // Buka detail judul dari deep link web (bila ada).
-                val pendingTitle = deepLinkTitle.value
-                LaunchedEffect(pendingTitle) {
-                    if (pendingTitle != null) {
-                        nav.navigate("detail/$pendingTitle")
-                        deepLinkTitle.value = null
-                    }
-                }
                 val repo = remember { CatalogRepository(auth = AuthStore(context)) }
                 // Bagikan judul ke tab Post: isi prefill composer lalu
                 // pindah ke tab Post (FeedScreen menerapkannya).
@@ -522,6 +514,20 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onOpenAdUnlock = { nav.navigate("adunlock/$it") },
                             )
+                        }
+                    }
+                    // Deep link web: navigasi HARUS di sini, SETELAH
+                    // NavHost terkomposisi (graf navigasi sudah
+                    // terpasang). Di v0.24.5 efek ini ditaruh di samping
+                    // rememberNavController dan menyebabkan crash
+                    // "Navigation graph has not been set" saat aplikasi
+                    // dibuka dingin lewat deep link — jangan dipindah
+                    // ke atas lagi.
+                    val pendingTitle = deepLinkTitle.value
+                    LaunchedEffect(pendingTitle) {
+                        if (pendingTitle != null) {
+                            nav.navigate("detail/$pendingTitle")
+                            deepLinkTitle.value = null
                         }
                     }
                         }
