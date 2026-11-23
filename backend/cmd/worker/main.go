@@ -60,6 +60,12 @@ func main() {
 		if err := jobs.SyncSources(ctx, pool); err != nil {
 			log.Printf("sinkron sumber: %v", err)
 		}
+		// Audit kelengkapan: judul yang masih bolong (metadata,
+		// episode, sumber putar) diperbaiki satu per satu menurut
+		// prioritas kekurangan + permintaan pengguna.
+		if err := jobs.RepairCatalog(ctx, pool); err != nil {
+			log.Printf("perbaikan katalog: %v", err)
+		}
 		if err := jobs.DiscoverTitles(ctx, pool); err != nil {
 			log.Printf("penemuan judul: %v", err)
 		}
