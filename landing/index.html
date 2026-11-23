@@ -272,7 +272,7 @@
  * Sesi terenkripsi ECDH sama seperti aplikasi & dashboard:
  * handshake POST /api/v1/session (X25519 + HKDF-SHA256), respons
  * dibungkus envelope {xdata, xtime} AES-256-GCM. */
-const API_BASE = "https://subsenpai-api.botlynk.id";
+const API_BASE = "https://api.subsenpai.web.id";
 const _P = (1n << 255n) - 19n;
 const _mod = (a) => ((a % _P) + _P) % _P;
 function _leToBigInt(bytes) { let n = 0n; for (let i = bytes.length - 1; i >= 0; i--) n = (n << 8n) | BigInt(bytes[i]); return n; }

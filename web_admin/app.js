@@ -7,7 +7,7 @@
  */
 'use strict';
 
-const API_BASE = 'https://subsenpai-api.botlynk.id';
+const API_BASE = 'https://api.subsenpai.web.id';
 const GOOGLE_CLIENT_ID = '673952283037-h0qkk02cvlqdjgnv8f5k4os9ti281dta.apps.googleusercontent.com';
 const JWT_KEY = 'ssadmin.jwt';
 

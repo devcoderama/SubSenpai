@@ -151,13 +151,20 @@ fi
 # --- 8. Vhost subdomain (opsional, hanya menambah — tidak mengubah situs lain)
 if [ -n "$DOMAIN_API" ]; then
   if command -v nginx >/dev/null 2>&1 && [ -d /etc/nginx/sites-available ]; then
-    if grep -rqs "server_name $DOMAIN_API" /etc/nginx/sites-enabled/; then
+    # Domain API lama tetap dilayani sebagai alias dalam blok yang
+    # sama agar aplikasi versi lama (yang masih memakai domain itu
+    # lewat Cloudflare) tidak putus saat domain utama diganti.
+    SERVER_NAMES="$DOMAIN_API"
+    if [ "$DOMAIN_API" != "subsenpai-api.botlynk.id" ]; then
+      SERVER_NAMES="$DOMAIN_API subsenpai-api.botlynk.id"
+    fi
+    if grep -rqs "server_name $SERVER_NAMES" /etc/nginx/sites-enabled/; then
       say "Vhost $DOMAIN_API sudah ada — dilewati."
     else
       cat > /etc/nginx/sites-available/subsenpai-api <<EOF
 server {
     listen 80;
-    server_name $DOMAIN_API;
+    server_name $SERVER_NAMES;
     location / {
         proxy_pass http://127.0.0.1:$API_PORT;
         proxy_http_version 1.1;
@@ -174,6 +181,23 @@ EOF
       ln -sf /etc/nginx/sites-available/subsenpai-api /etc/nginx/sites-enabled/subsenpai-api
       nginx -t && systemctl reload nginx
       say "Vhost nginx untuk $DOMAIN_API ditambahkan & nginx dimuat ulang."
+    fi
+    # Sertifikat HTTPS (Let's Encrypt) untuk domain yang menunjuk
+    # LANGSUNG ke VPS ini (DNS A tanpa Cloudflare) — tanpa ini
+    # https:// tidak bisa dibuka sama sekali. Domain lama di
+    # belakang Cloudflare Flexible tidak membutuhkannya.
+    if [ "$DOMAIN_API" != "subsenpai-api.botlynk.id" ] && [ ! -d "/etc/letsencrypt/live/$DOMAIN_API" ]; then
+      say "Memasang sertifikat HTTPS untuk $DOMAIN_API (Let's Encrypt)…"
+      if ! command -v certbot >/dev/null 2>&1; then
+        apt-get update -qq >/dev/null 2>&1 || true
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq certbot python3-certbot-nginx >/dev/null 2>&1 || true
+      fi
+      if command -v certbot >/dev/null 2>&1; then
+        certbot --nginx -d "$DOMAIN_API" --non-interactive --agree-tos --register-unsafely-without-email --redirect \
+          || say "PERINGATAN: penerbitan sertifikat gagal (DNS belum mengarah ke VPS ini?). Jalankan ulang installer setelah DNS aktif."
+      else
+        say "PERINGATAN: certbot tidak tersedia — HTTPS untuk $DOMAIN_API belum aktif."
+      fi
     fi
   else
     say "DOMAIN_API diisi tapi nginx tidak terdeteksi — vhost dilewati (atur manual: proxy ke 127.0.0.1:$API_PORT)."
