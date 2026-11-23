@@ -89,12 +89,12 @@ class MainActivity : ComponentActivity() {
                 val backEntry by nav.currentBackStackEntryAsState()
                 val route = backEntry?.destination?.route
                 // Bilah bawah ala Netflix: hanya di layar-layar utama.
-                val mainRoutes = setOf("home", "chat", "premium", "watchlist", "more")
+                val mainRoutes = setOf("home", "chat", "premium", "history", "more")
                 val bottomItems = listOf(
                     Triple("home", "Beranda", R.drawable.ic_home),
                     Triple("chat", "Post", R.drawable.ic_chat),
                     Triple("premium", "Premium", R.drawable.ic_star),
-                    Triple("watchlist", "Daftar Saya", R.drawable.ic_bookmark),
+                    Triple("history", "Riwayat", R.drawable.ic_history),
                     Triple("more", "Lainnya", R.drawable.ic_menu),
                 )
                 Scaffold(
