@@ -88,6 +88,10 @@ func (a *API) Router() http.Handler {
 	// Proxy poster untuk dashboard web: CDN sumber menolak hotlink
 	// asing; server mengambilkan gambar dengan Referer asal gambar.
 	r.With(middleware.RateLimit(120)).Get("/api/v1/img-proxy", a.handleImgProxy)
+	// Halaman bagikan (Open Graph) untuk tautan domain resmi
+	// /judul/{id} yang di-proxy Netlify ke sini: dirender server
+	// agar pratinjau WhatsApp/medsos berisi poster judul.
+	r.With(middleware.RateLimit(120)).Get("/share/{id}", a.handleSharePage)
 	r.Group(func(r chi.Router) {
 		r.Use(func(next http.Handler) http.Handler {
 			return middleware.Envelope(a.sessions, next)
