@@ -95,6 +95,9 @@ fun HomeScreen(
     var hasil by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
     var lanjut by remember { mutableStateOf<List<com.subsenpai.data.WatchHistoryItem>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var fatalKind by remember { mutableStateOf<AppErrorKind?>(null) }
+    var fatalTech by remember { mutableStateOf<String?>(null) }
+    var reloadKey by remember { mutableStateOf(0) }
     var type by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
     var genre by remember { mutableStateOf<String?>(null) }
@@ -108,13 +111,18 @@ fun HomeScreen(
     val browsing = type != null || query.isNotBlank()
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(reloadKey) {
         try {
             val (tr, te) = repo.home()
             trending = tr
             terbaru = te
+            fatalKind = null
+            fatalTech = null
         } catch (e: Exception) {
-            error = e.message
+            // Kegagalan muat utama TIDAK ditampilkan mentah di Beranda:
+            // pengguna diarahkan ke halaman peringatan khusus.
+            fatalKind = classifyError(e)
+            fatalTech = e.message
         }
         homeLoaded = true
         val loaded = mutableMapOf<String, List<TitleCard>>()
@@ -162,9 +170,23 @@ fun HomeScreen(
         if (!browsing) return@LaunchedEffect
         try {
             hasil = repo.titles(type, query.ifBlank { null }, genre, year, country, network)
+            error = null
         } catch (e: Exception) {
-            error = e.message
+            error = friendlyInlineError(e)
         }
+    }
+
+    if (fatalKind != null) {
+        ErrorPage(
+            kind = fatalKind!!,
+            technical = fatalTech,
+            onRetry = {
+                fatalKind = null
+                homeLoaded = false
+                reloadKey++
+            },
+        )
+        return
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -183,7 +205,7 @@ fun HomeScreen(
             if (error != null) {
                 item {
                     Text(
-                        "Gagal memuat: $error",
+                        error!!,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
