@@ -417,6 +417,34 @@ func TestAdminLive(t *testing.T) {
 	if st != 200 || !found || mine["unread"].(float64) < 1 {
 		t.Fatalf("notifikasi user: status=%d found=%v body=%v", st, found, mine)
 	}
+	// Pemisahan jenis: ?kind=social TIDAK memuat siaran, ?kind=
+	// broadcast hanya siaran; tandai-dibaca per jenis tidak
+	// menyentuh jenis lain.
+	st, soc := call("GET", "/api/v1/feed/notifications?kind=social", userJWT, nil)
+	for _, it := range soc["items"].([]any) {
+		if it.(map[string]any)["kind"] == "broadcast" {
+			t.Fatalf("kind=social memuat siaran: %v", soc)
+		}
+	}
+	st, bro := call("GET", "/api/v1/feed/notifications?kind=broadcast", userJWT, nil)
+	bItems, _ := bro["items"].([]any)
+	if st != 200 || len(bItems) < 1 || bro["unread"].(float64) < 1 {
+		t.Fatalf("kind=broadcast: status=%d body=%v", st, bro)
+	}
+	if st, _ := call("POST", "/api/v1/feed/notifications/read", userJWT,
+		map[string]any{"kind": "social"}); st != 200 {
+		t.Fatalf("read kind=social: status=%d", st)
+	}
+	if _, after := call("GET", "/api/v1/feed/notifications?kind=broadcast", userJWT, nil); after["unread"].(float64) < 1 {
+		t.Fatalf("read kind=social ikut menandai siaran: %v", after)
+	}
+	if st, _ := call("POST", "/api/v1/feed/notifications/read", userJWT,
+		map[string]any{"kind": "broadcast"}); st != 200 {
+		t.Fatalf("read kind=broadcast: status=%d", st)
+	}
+	if _, after := call("GET", "/api/v1/feed/notifications?kind=broadcast", userJWT, nil); after["unread"].(float64) != 0 {
+		t.Fatalf("read kind=broadcast tidak menandai: %v", after)
+	}
 	st, bl := call("GET", "/api/v1/admin/notifications", adminJWT, nil)
 	bs, _ := bl["broadcasts"].([]any)
 	if st != 200 || len(bs) < 1 {

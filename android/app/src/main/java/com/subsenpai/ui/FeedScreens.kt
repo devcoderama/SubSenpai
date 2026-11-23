@@ -1787,6 +1787,8 @@ fun FeedNotificationsScreen(
     repo: CatalogRepository,
     onBack: () -> Unit,
     onOpenPost: (String) -> Unit,
+    kind: String? = null,
+    title: String = "Notifikasi",
 ) {
     var items by remember { mutableStateOf<List<FeedNotification>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -1794,8 +1796,8 @@ fun FeedNotificationsScreen(
 
     LaunchedEffect(Unit) {
         try {
-            items = repo.feedNotifications().first
-            repo.feedNotificationsRead()
+            items = repo.feedNotifications(kind).first
+            repo.feedNotificationsRead(kind)
         } catch (e: Exception) {
             error = e.message
         } finally {
@@ -1811,7 +1813,7 @@ fun FeedNotificationsScreen(
             IconButton(onClick = onBack) {
                 Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Kembali", tint = Color.White)
             }
-            Text("Notifikasi", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         if (loading) {
             Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -1823,7 +1825,11 @@ fun FeedNotificationsScreen(
         }
         if (!loading && error == null && items.isEmpty()) {
             Text(
-                "Belum ada notifikasi. Pengumuman dari admin serta like, komentar, dan balasan pada postinganmu akan muncul di sini.",
+                if (kind == "broadcast") {
+                    "Belum ada pengumuman dari admin. Pengumuman penting akan muncul di sini."
+                } else {
+                    "Belum ada notifikasi. Like, komentar, dan balasan pada postinganmu akan muncul di sini."
+                },
                 color = Color(0xFFB3B3B3),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )

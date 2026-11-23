@@ -272,7 +272,7 @@ function enterApp() {
 }
 
 const GROUP_LABELS = { va: 'Virtual Account', ewallet: 'E-Wallet', qris: 'QRIS', retail: 'Retail', pulsa: 'Pulsa' };
-const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', notifikasi: 'Notifikasi', log: 'Log Admin', sistem: 'Info Sistem' };
+const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', pengumuman: 'Pengumuman Banner', notifikasi: 'Notifikasi', log: 'Log Admin', sistem: 'Info Sistem' };
 
 function route() {
   const name = (location.hash.replace('#/', '') || 'ringkasan').split('?')[0];
@@ -280,7 +280,7 @@ function route() {
   document.querySelectorAll('#mainNav a').forEach((a) =>
     a.classList.toggle('active', a.dataset.route === page));
   $('pageTitle').textContent = TITLES[page];
-  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, notifikasi: pageNotifikasi, log: pageLog, sistem: pageSistem })[page]();
+  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, pengumuman: pagePengumuman, notifikasi: pageNotifikasi, log: pageLog, sistem: pageSistem })[page]();
 }
 
 function bodyError(r) {
@@ -693,9 +693,6 @@ async function pagePengaturan() {
     '<p class="muted">Geser tombol untuk langsung mengaktifkan/mematikan — tanpa perlu menekan Simpan. Saat aktif, aplikasi pengguna (v0.22.2+) otomatis menampilkan halaman perawatan dalam waktu maks 60 detik (aplikasi memeriksa pengaturan tiap menit), dan halaman itu lepas sendiri begitu mode dimatikan. Versi lama menerima perubahan saat aplikasi dibuka lagi.</p>' +
     '<div class="toolbar"><label class="switch"><input type="checkbox" id="st-maint"' + (s.maintenance_mode === 'true' ? ' checked' : '') + '><span class="slider"></span></label><span id="st-maint-lbl">' + (s.maintenance_mode === 'true' ? 'Mode perawatan AKTIF' : 'Mode perawatan nonaktif') + '</span></div>' +
     '<label>Pesan perawatan<br><input type="text" id="st-maint-msg" value="' + esc(s.maintenance_message || '') + '" style="width:100%"></label></div>' +
-    '<div class="card" style="margin-top:18px"><h2 style="margin-top:0">Pengumuman</h2>' +
-    '<p class="muted">Teks ini tampil sebagai banner di Beranda aplikasi (tersimpan lewat tombol Simpan Pengaturan di bawah). Untuk mengirim notifikasi beneran ke halaman Notifikasi pengguna, pakai halaman <b>Notifikasi</b> di menu samping.</p>' +
-    '<input type="text" id="st-ann" value="' + esc(s.announcement || '') + '" placeholder="cth: Server pindah — selamat menonton!" style="width:100%"></div>' +
     '<div class="card" style="margin-top:18px"><h2 style="margin-top:0">Paksa Perbarui</h2>' +
     '<p class="muted">Tulis versi seperti biasa (contoh: 0.22.2). Pengguna dengan versi aplikasi di bawah itu wajib memperbarui. Kosongkan untuk menonaktifkan.</p>' +
     '<div class="toolbar"><label>Versi minimum<br><input type="text" id="st-minver" value="' + esc(s.min_version_name || '') + '" placeholder="cth: 0.22.2" inputmode="decimal" style="width:160px"></label>' +
@@ -728,10 +725,31 @@ async function pagePengaturan() {
       min_version_name: $('st-minver').value.trim(),
       min_version_code: 0,
       update_url: $('st-url').value.trim(),
-      announcement: $('st-ann').value,
     };
     const rr = await api('/api/v1/admin/settings', { method: 'PATCH', body });
     if (rr.status === 200) toast('Pengaturan disimpan.');
+    else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+  });
+}
+
+/* ----- Pengumuman Banner (halaman khusus, terpisah dari
+   Notifikasi — permintaan Rams: dua hal, jangan digabung) ----- */
+async function pagePengumuman() {
+  $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
+  const r = await api('/api/v1/admin/settings');
+  if (r.status !== 200) return bodyError(r);
+  const s = r.body.settings || {};
+  $('pageBody').innerHTML =
+    '<div class="card"><h2 style="margin-top:0"><i class="fa-solid fa-bullhorn"></i> Pengumuman Banner</h2>' +
+    '<p class="muted">Satu-satunya fungsi halaman ini: mengatur teks <b>banner</b> yang tampil di Beranda aplikasi. Ini BUKAN notifikasi — untuk mengirim notifikasi ke halaman Notifikasi pengguna, pakai halaman <b>Notifikasi</b>. Banner tampil di aplikasi (v0.22.2+) dalam maks 60 detik setelah disimpan; kosongkan teks untuk menyembunyikan banner.</p>' +
+    '<label>Teks banner<br><input type="text" id="pg-ann" value="' + esc(s.announcement || '') + '" placeholder="cth: Server pindah — selamat menonton!" style="width:100%"></label>' +
+    '<p class="small muted" style="margin-top:10px">Status saat ini: ' + (s.announcement ? '<b style="color:var(--green)">banner AKTIF</b>' : '<b>banner kosong (tidak tampil)</b>') + '</p>' +
+    '<div style="margin-top:12px"><button class="btn" id="pg-save"><i class="fa-solid fa-floppy-disk"></i> Simpan Banner</button></div></div>';
+  $('pg-save').addEventListener('click', async () => {
+    const rr = await api('/api/v1/admin/settings', {
+      method: 'PATCH', body: { announcement: $('pg-ann').value },
+    });
+    if (rr.status === 200) { toast('Banner disimpan.'); pagePengumuman(); }
     else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
   });
 }

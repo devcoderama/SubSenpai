@@ -720,8 +720,15 @@ class CatalogRepository(
     /** Unduh berkas mentah (poster untuk Bagikan ke Post). */
     suspend fun downloadBytes(url: String): ByteArray? = api.downloadBytes(url)
 
-    suspend fun feedNotifications(): Pair<List<FeedNotification>, Int> {
-        val o = api.get("/api/v1/feed/notifications")
+    /**
+     * Notifikasi pengguna. Pengumuman admin (kind "broadcast") dan
+     * aktivitas sosial (kind "social") adalah dua hal TERPISAH:
+     * saring dengan kind, atau null untuk keduanya (perilaku lama,
+     * dipakai lencana & polling notifikasi sistem).
+     */
+    suspend fun feedNotifications(kind: String? = null): Pair<List<FeedNotification>, Int> {
+        val path = if (kind != null) "/api/v1/feed/notifications?kind=$kind" else "/api/v1/feed/notifications"
+        val o = api.get(path)
         val items = buildList {
             val arr = o.optJSONArray("items")
             if (arr != null) for (i in 0 until arr.length()) add(FeedNotification.fromJson(arr.getJSONObject(i)))
@@ -729,7 +736,15 @@ class CatalogRepository(
         return items to o.optInt("unread")
     }
 
-    suspend fun feedNotificationsRead() {
-        api.post("/api/v1/feed/notifications/read")
+    /** Tandai dibaca; kind membatasi hanya jenis itu saja. */
+    suspend fun feedNotificationsRead(kind: String? = null) {
+        if (kind != null) {
+            api.post(
+                "/api/v1/feed/notifications/read",
+                org.json.JSONObject().put("kind", kind),
+            )
+        } else {
+            api.post("/api/v1/feed/notifications/read")
+        }
     }
 }

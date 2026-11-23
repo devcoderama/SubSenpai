@@ -900,19 +900,35 @@ func (a *API) handleFeedFile(w http.ResponseWriter, r *http.Request) {
 
 // ---------- Notifikasi sosial ----------
 
+// notifKindClause: pengumuman admin (broadcast) dan aktivitas
+// sosial adalah DUA hal terpisah (permintaan Rams) — klien dapat
+// meminta satu jenis saja lewat ?kind=social|broadcast. Tanpa
+// parameter, keduanya dikembalikan (kompatibilitas aplikasi lama).
+func notifKindClause(kind string) string {
+	switch kind {
+	case "social":
+		return "kind = 'social'"
+	case "broadcast":
+		return "kind = 'broadcast'"
+	default:
+		return "kind in ('social','broadcast')"
+	}
+}
+
 func (a *API) handleFeedNotifications(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	ctx := r.Context()
+	kc := notifKindClause(r.URL.Query().Get("kind"))
 	var unread int
 	_ = a.pool.QueryRow(ctx, `
 		select count(*) from notifications
-		where user_id = $1::uuid and kind in ('social','broadcast') and read_at is null`, p.ID).Scan(&unread)
+		where user_id = $1::uuid and `+kc+` and read_at is null`, p.ID).Scan(&unread)
 	rows, err := a.pool.Query(ctx, `
 		select n.id, n.kind, n.title, n.body, n.ref_post_id, n.actor_id, n.read_at, n.created_at,
 		       coalesce(pr.avatar_url, '')
 		from notifications n
 		left join profiles pr on pr.id = n.actor_id
-		where n.user_id = $1::uuid and n.kind in ('social','broadcast')
+		where n.user_id = $1::uuid and n.`+kc+`
 		order by n.created_at desc limit 50`, p.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "kesalahan server")
@@ -944,9 +960,16 @@ func (a *API) handleFeedNotifications(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) handleFeedNotificationsRead(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
+	// Body opsional {"kind":"broadcast"|"social"}: tandai dibaca
+	// hanya jenis itu; tanpa body = semua (perilaku lama).
+	var req struct {
+		Kind string `json:"kind"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	kc := notifKindClause(req.Kind)
 	_, err := a.pool.Exec(r.Context(), `
 		update notifications set read_at = now()
-		where user_id = $1::uuid and kind in ('social','broadcast') and read_at is null`, p.ID)
+		where user_id = $1::uuid and `+kc+` and read_at is null`, p.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "kesalahan server")
 		return

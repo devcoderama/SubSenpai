@@ -283,6 +283,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenLogin = { nav.navigate("login") },
                                 onOpenHistory = { nav.navigate("history") },
                                 onOpenNotifications = { nav.navigate("feednotif") },
+                                onOpenNotices = { nav.navigate("notices") },
                                 onOpenWatchlist = { nav.navigate("watchlist") },
                                 onOpenPremium = { nav.navigate("premium") },
                                 onOpenFriends = { nav.navigate("friends") },
@@ -358,6 +359,17 @@ class MainActivity : ComponentActivity() {
                                 repo,
                                 onBack = { nav.popBackStack() },
                                 onOpenPost = { postId -> nav.navigate("comments/$postId") },
+                                kind = "social",
+                                title = "Notifikasi",
+                            )
+                        }
+                        composable("notices") {
+                            FeedNotificationsScreen(
+                                repo,
+                                onBack = { nav.popBackStack() },
+                                onOpenPost = { postId -> nav.navigate("comments/$postId") },
+                                kind = "broadcast",
+                                title = "Pengumuman",
                             )
                         }
                         composable(
