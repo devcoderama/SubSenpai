@@ -274,7 +274,13 @@ class MainActivity : ComponentActivity() {
                                 onOpenTitle = { nav.navigate("detail/$it") },
                                 onOpenEpisode = { nav.navigate("player/$it") },
                                 onLogin = { nav.navigate("login") },
-                                onOpenMore = { nav.navigate("more") },
+                                onOpenMore = {
+                                    nav.navigate("more") {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
                                 onOpenNotices = { nav.navigate("notices") },
                                 onFatalChange = { homeFatal = it },
                             )
@@ -282,9 +288,21 @@ class MainActivity : ComponentActivity() {
                         composable("more") {
                             com.subsenpai.ui.MoreScreen(
                                 onOpenLogin = { nav.navigate("login") },
-                                onOpenHistory = { nav.navigate("history") },
+                                onOpenHistory = {
+                                    nav.navigate("history") {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
                                 onOpenWatchlist = { nav.navigate("watchlist") },
-                                onOpenPremium = { nav.navigate("premium") },
+                                onOpenPremium = {
+                                    nav.navigate("premium") {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
                                 onOpenFriends = { nav.navigate("friends") },
                                 onOpenGroups = { nav.navigate("groups") },
                                 onOpenSettings = { nav.navigate("settings") },
@@ -427,7 +445,13 @@ class MainActivity : ComponentActivity() {
                                 onNeedLogin = { nav.navigate("login") },
                                 onOpenTitle = { nav.navigate("detail/$it") },
                                 onShareToPost = shareToPost,
-                                onOpenPremium = { nav.navigate("premium") },
+                                onOpenPremium = {
+                                    nav.navigate("premium") {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
                             )
                         }
                         composable(
@@ -441,7 +465,13 @@ class MainActivity : ComponentActivity() {
                                 onNeedLogin = { nav.navigate("login") },
                                 onOpenTitle = { nav.navigate("detail/$it") },
                                 onShareToPost = shareToPost,
-                                onOpenPremium = { nav.navigate("premium") },
+                                onOpenPremium = {
+                                    nav.navigate("premium") {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
                             )
                         }
                     }
