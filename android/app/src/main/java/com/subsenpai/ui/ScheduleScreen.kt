@@ -34,12 +34,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.subsenpai.R
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.ScheduleGroup
@@ -198,10 +196,15 @@ fun ScheduleScreen(
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                AsyncImage(
-                                    model = item.poster,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
+                                // PosterImage (bukan AsyncImage mentah):
+                                // ia mengirim UA peramban + Referer asal
+                                // gambar — wajib untuk anichin.moe yang
+                                // menolak hotlink (403 tanpa Referer,
+                                // terbukti 2026-11-23: poster jadwal
+                                // donghua sebagian kosong).
+                                PosterImage(
+                                    url = item.poster,
+                                    title = item.title,
                                     modifier = Modifier.size(width = 54.dp, height = 76.dp)
                                         .clip(RoundedCornerShape(6.dp))
                                         .background(Color(0xFF2A2A2A)),
