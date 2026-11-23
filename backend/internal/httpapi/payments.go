@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"math/big"
@@ -85,6 +86,15 @@ type checkoutReq struct {
 // handleCheckout membuat sesi pembayaran. GoPay: nominal unik
 // (harga + kode 1–999) untuk pencocokan polling; Midtrans/Xendit:
 // transaksi dibuat ke gateway dan URL bayar dikembalikan.
+// expireSession menandai sesi pembayaran yang gagal dibuat di
+// gateway sebagai kedaluwarsa, agar tidak tertinggal yatim dalam
+// status pending (riwayat bersih + tidak menghalangi apa pun).
+func (a *API) expireSession(ctx context.Context, sessionID string) {
+	_, _ = a.pool.Exec(ctx, `
+		update payment_sessions set status = 'expired'
+		where id = $1::uuid and status = 'pending'`, sessionID)
+}
+
 func (a *API) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	var req checkoutReq
@@ -211,6 +221,7 @@ func (a *API) handleCheckout(w http.ResponseWriter, r *http.Request) {
 				insert into vouchers (code, source, duration_days, created_by, assigned_to, payment_ref)
 				values ($1, 'purchase', $2, $3::uuid, $4::uuid, $5)`,
 				code, plan.Days, p.ID, recipientID, sessionID); err != nil {
+				a.expireSession(ctx, sessionID)
 				writeErr(w, http.StatusInternalServerError, "gagal membuat voucher")
 				return
 			}
@@ -234,6 +245,7 @@ func (a *API) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		// menyimpan nomor HP — dipakai penanda sampai profil punya HP.
 		order, err := a.tokopay.CreateOrder(ctx, req.Channel, reffID, amount, name, p.Email, "080000000000", expires.Unix())
 		if err != nil {
+			a.expireSession(ctx, sessionID)
 			writeErr(w, http.StatusBadGateway, "gateway Tokopay gagal: "+err.Error())
 			return
 		}
@@ -270,6 +282,7 @@ func (a *API) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	case "midtrans":
 		redirect, token, err := a.midtransSnap(ctx, sessionID, amount, p.Email)
 		if err != nil {
+			a.expireSession(ctx, sessionID)
 			writeErr(w, http.StatusBadGateway, "gateway Midtrans gagal: "+err.Error())
 			return
 		}
@@ -278,6 +291,7 @@ func (a *API) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	case "xendit":
 		invoiceURL, err := a.xenditInvoice(ctx, sessionID, amount, p.Email)
 		if err != nil {
+			a.expireSession(ctx, sessionID)
 			writeErr(w, http.StatusBadGateway, "gateway Xendit gagal: "+err.Error())
 			return
 		}
