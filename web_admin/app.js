@@ -324,7 +324,7 @@ function enterApp() {
 }
 
 const GROUP_LABELS = { va: 'Virtual Account', ewallet: 'E-Wallet', qris: 'QRIS', retail: 'Retail', pulsa: 'Pulsa' };
-const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', pengumuman: 'Pengumuman Banner', notifikasi: 'Notifikasi', log: 'Log Admin', sistem: 'Info Sistem' };
+const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', pengumuman: 'Pengumuman Banner', notifikasi: 'Notifikasi', laporan: 'Laporan User', log: 'Log Admin', sistem: 'Info Sistem' };
 
 function route() {
   if (window.__pageTimer) { clearInterval(window.__pageTimer); window.__pageTimer = null; }
