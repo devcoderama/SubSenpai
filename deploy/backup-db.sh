@@ -19,6 +19,11 @@
 #   gunzip -c /root/backups/<berkas>.sql.gz | su postgres -c "psql -q subsenpai"
 set -euo pipefail
 
+# Berapa backup terbaru yang disimpan (yang lebih tua dihapus
+# otomatis): di VPS sendiri dan di salinan luar VPS.
+SIMPAN_LOKAL=14
+SIMPAN_ONLINE=5
+
 DIR=/root/backups
 mkdir -p "$DIR"
 STAMP=$(date +%Y%m%d-%H%M%S)
@@ -27,8 +32,9 @@ OUT="$DIR/subsenpai-$STAMP.sql.gz"
 (cd /tmp && su postgres -c "pg_dump subsenpai") | gzip -9 > "$OUT"
 echo "backup selesai: $OUT ($(du -h "$OUT" | cut -f1))"
 
-# Rotasi: berkas ke-15 dan seterusnya (yang tertua) dihapus.
-ls -1t "$DIR"/subsenpai-*.sql.gz | tail -n +15 | xargs -r rm -f
+# Rotasi lokal: berkas sesudah urutan terbaru ke-SIMPAN_LOKAL
+# (yang tertua) dihapus.
+ls -1t "$DIR"/subsenpai-*.sql.gz | tail -n +$((SIMPAN_LOKAL + 1)) | xargs -r rm -f
 
 # Salinan luar VPS (opsional, aktif sendiri bila rclone remote
 # "r2" atau "gdrive" ada).
@@ -41,5 +47,24 @@ if command -v rclone >/dev/null 2>&1; then
   fi
 fi
 if [ -n "$REMOTE" ]; then
-  rclone copy "$OUT" "$REMOTE" --quiet && echo "tersalin ke luar VPS: $REMOTE"
+  if rclone copy "$OUT" "$REMOTE" --quiet; then
+    echo "tersalin ke luar VPS: $REMOTE"
+    # Rotasi salinan luar VPS: simpan SIMPAN_ONLINE berkas
+    # terbaru (nama berkas berpola tanggal, urutan nama = urutan
+    # waktu), sisanya dihapus. Google Drive: hapus permanen,
+    # jangan masuk tong sampah dulu.
+    DELFLAGS=()
+    case "$REMOTE" in
+      gdrive:*) DELFLAGS=(--drive-use-trash=false) ;;
+    esac
+    mapfile -t BERKAS_REMOTE < <(rclone lsf "$REMOTE" --files-only 2>/dev/null | grep '^subsenpai-.*\.sql\.gz$' | sort || true)
+    JUMLAH=${#BERKAS_REMOTE[@]}
+    if [ "$JUMLAH" -gt "$SIMPAN_ONLINE" ]; then
+      for ((i = 0; i < JUMLAH - SIMPAN_ONLINE; i++)); do
+        if rclone deletefile "${DELFLAGS[@]}" "$REMOTE${BERKAS_REMOTE[i]}" 2>/dev/null; then
+          echo "rotasi: salinan lama terhapus: ${BERKAS_REMOTE[i]}"
+        fi
+      done
+    fi
+  fi
 fi
