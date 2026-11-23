@@ -98,7 +98,13 @@ async function fetchTimeout(url, opts = {}, ms = 20000) {
   }
 }
 
+/* Pelapor langkah login (diagnostik): diisi onGoogleCredential agar
+ * halaman menunjukkan persis proses berhenti di langkah mana. */
+let stepFn = null;
+const step = (t) => { if (stepFn) stepFn(t); };
+
 async function handshake() {
+  step('Langkah 1/4: handshake enkripsi ke server…');
   const priv = crypto.getRandomValues(new Uint8Array(32));
   const pub = x25519(priv, X25519_BASE);
   const res = await fetchTimeout(API_BASE + '/api/v1/session', {
@@ -114,6 +120,7 @@ async function handshake() {
     { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: new TextEncoder().encode('subsenpai-xdata-v1') },
     hkdfKey, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
   sessionId = hs.session_id;
+  step('Langkah 2/4: handshake beres, mengirim permintaan…');
 }
 
 async function openEnvelope(env) {
@@ -134,6 +141,7 @@ async function api(path, opts = {}) {
       method: opts.method || 'GET', headers,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
+    step('Langkah 3/4: respons server diterima, membuka enkripsi…');
     const data = await res.json().catch(() => ({}));
     if (data && data.xdata) return { status: res.status, body: await openEnvelope(data) };
     return { status: res.status, body: data };
@@ -166,7 +174,7 @@ function toast(msg) {
 
 /* ================= Login ================= */
 function showLogin(msg) {
-  jwt = null; me = null;
+  jwt = null; me = null; stepFn = null;
   sessionStorage.removeItem(JWT_KEY);
   $('appView').hidden = true;
   $('loginView').hidden = false;
@@ -177,9 +185,11 @@ function showLogin(msg) {
 
 async function onGoogleCredential(resp) {
   $('loginError').hidden = true;
-  $('loginHint').textContent = 'Memeriksa akun…';
+  stepFn = (t) => { $('loginHint').textContent = t; };
+  step('Memeriksa akun…');
   try {
     const r = await api('/api/v1/auth/google', { method: 'POST', body: { id_token: resp.credential } });
+    step('Langkah 4/4: memeriksa role akun…');
     if (r.status !== 200 || !r.body.token) {
       showLogin('Login gagal: ' + ((r.body && r.body.error) || 'respons tidak dikenal'));
       return;
@@ -217,6 +227,7 @@ function initGoogleButton() {
 
 /* ================= Aplikasi ================= */
 function enterApp() {
+  stepFn = null;
   $('loginView').hidden = true;
   $('appView').hidden = false;
   $('meName').textContent = (me && (me.display_name || me.email)) || 'Admin';
