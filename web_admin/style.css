@@ -173,9 +173,18 @@ input:focus, select:focus { outline: none; border-color: var(--red); box-shadow:
 .slider::before { content: ""; position: absolute; width: 19px; height: 19px; border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: 0.2s; }
 .switch input:checked + .slider { background: var(--green); }
 .switch input:checked + .slider::before { transform: translateX(21px); }
-/* Tabel laporan: bisa digeser ke samping; aksi sebaris rata tengah */
+/* Tabel data: bisa digeser ke samping; sel SATU baris (tidak
+   menumpuk ke bawah); teks panjang dipotong ellipsis dan versi
+   utuhnya hidup di halaman detail. */
 .tscroll { overflow-x: auto; border-radius: 8px; }
+.tscroll > table { min-width: 720px; }
+.tscroll td, .tscroll th { white-space: nowrap; }
+.tscroll td.ellipsis { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .ltable { min-width: 820px; }
+/* Halaman detail (pasangan kunci-nilai) */
+.kv { display: grid; grid-template-columns: 128px 1fr; gap: 9px 14px; margin: 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; word-break: break-word; }
 .lp-actions { display: flex; align-items: center; justify-content: safe center; gap: 10px; overflow-x: auto; padding: 2px; }
 .lp-actions .btn { white-space: nowrap; flex: 0 0 auto; }
 .lp-vis { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 0.85rem; color: var(--muted); flex: 0 0 auto; }

@@ -170,6 +170,33 @@ func (a *API) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleAdminReportGet: satu laporan lengkap untuk halaman
+// detail dashboard (catatan utuh, keadaan sembunyi, dsb).
+func (a *API) handleAdminReportGet(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	var rp adminReport
+	err := a.pool.QueryRow(r.Context(), `
+		select ur.id, ur.title_id, coalesce(t.title, '(judul terhapus)'),
+		       coalesce(t.is_hidden, false),
+		       ur.episode_id, e.episode_no, coalesce(e.is_hidden, false),
+		       ur.reason, ur.note, ur.status,
+		       coalesce(p.email, 'Tamu'), ur.created_at
+		from user_reports ur
+		left join titles t on t.id = ur.title_id
+		left join episodes e on e.id = ur.episode_id
+		left join profiles p on p.id = ur.user_id
+		where ur.id = $1::uuid`, chi.URLParam(r, "id")).Scan(
+		&rp.ID, &rp.TitleID, &rp.Title, &rp.TitleHidden, &rp.EpisodeID, &rp.EpisodeNo,
+		&rp.EpisodeHidden, &rp.Reason, &rp.Note, &rp.Status, &rp.Reporter, &rp.CreatedAt)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "laporan tidak ditemukan")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"report": rp})
+}
+
 // loadReport memuat target satu laporan untuk aksi admin.
 func (a *API) loadReport(ctx context.Context, id string) (titleID, episodeID *string, err error) {
 	err = a.pool.QueryRow(ctx,

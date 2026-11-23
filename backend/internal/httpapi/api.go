@@ -140,6 +140,7 @@ func (a *API) Router() http.Handler {
 			r.Get("/api/v1/admin/titles", a.handleAdminTitles)
 			r.Get("/api/v1/admin/worker", a.handleAdminWorker)
 			r.Get("/api/v1/admin/reports", a.handleAdminReports)
+			r.Get("/api/v1/admin/reports/{id}", a.handleAdminReportGet)
 			r.Patch("/api/v1/admin/reports/{id}", a.handleAdminReportUpdate)
 			r.Post("/api/v1/admin/reports/{id}/fix-links", a.handleAdminReportFixLinks)
 			r.Post("/api/v1/admin/reports/{id}/hide-title", a.handleAdminReportHideTitle)

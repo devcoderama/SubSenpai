@@ -324,7 +324,7 @@ function enterApp() {
 }
 
 const GROUP_LABELS = { va: 'Virtual Account', ewallet: 'E-Wallet', qris: 'QRIS', retail: 'Retail', pulsa: 'Pulsa' };
-const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', pengumuman: 'Pengumuman Banner', notifikasi: 'Notifikasi', laporan: 'Laporan User', log: 'Log Admin', sistem: 'Info Sistem' };
+const TITLES = { ringkasan: 'Ringkasan', metode: 'Metode Pembayaran', paket: 'Paket Premium', pengguna: 'Pengguna', transaksi: 'Transaksi', voucher: 'Voucher', judul: 'Kelola Judul', crash: 'Laporan Crash', pengaturan: 'Pengaturan Aplikasi', pengumuman: 'Pengumuman Banner', notifikasi: 'Notifikasi', laporan: 'Laporan User', 'laporan-detail': 'Detail Laporan', log: 'Log Admin', 'log-detail': 'Detail Log', sistem: 'Info Sistem' };
 
 function route() {
   if (window.__pageTimer) { clearInterval(window.__pageTimer); window.__pageTimer = null; }
@@ -337,7 +337,7 @@ function route() {
     if (g.querySelector('a.active')) g.classList.add('open');
   });
   $('pageTitle').textContent = TITLES[page];
-  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, pengumuman: pagePengumuman, notifikasi: pageNotifikasi, laporan: pageLaporan, log: pageLog, sistem: pageSistem })[page]();
+  ({ ringkasan: pageRingkasan, metode: pageMetode, paket: pagePaket, pengguna: pagePengguna, transaksi: pageTransaksi, voucher: pageVoucher, judul: pageJudul, crash: pageCrash, pengaturan: pagePengaturan, pengumuman: pagePengumuman, notifikasi: pageNotifikasi, laporan: pageLaporan, 'laporan-detail': pageLaporanDetail, log: pageLog, 'log-detail': pageLogDetail, sistem: pageSistem })[page]();
 }
 
 // Poster katalog lewat proxy server: CDN sumber menolak hotlink
@@ -385,14 +385,14 @@ async function pageMetode() {
   for (const g of Object.keys(GROUP_LABELS)) {
     const items = methods.filter((m) => m.group === g);
     if (!items.length) continue;
-    html += '<h2 class="group-title">' + GROUP_LABELS[g] + '</h2><table><tr><th>Metode</th><th>Kode</th><th>Aktif</th></tr>';
+    html += '<h2 class="group-title">' + GROUP_LABELS[g] + '</h2><div class="tscroll"><table><tr><th>Metode</th><th>Kode</th><th>Aktif</th></tr>';
     for (const m of items) {
       html += '<tr><td>' + (m.icon_url ? '<img class="method-icon" src="' + esc(m.icon_url) + '" alt="">' : '') + esc(m.name) + '</td>' +
         '<td>' + esc(m.code) + '</td>' +
         '<td><label class="switch"><input type="checkbox" data-method="' + esc(m.code) + '"' + (m.is_active ? ' checked' : '') +
         '><span class="slider"></span></label></td></tr>';
     }
-    html += '</table>';
+    html += '</table></div>';
   }
   $('pageBody').innerHTML = html;
   document.querySelectorAll('input[data-method]').forEach((el) => {
@@ -412,7 +412,7 @@ async function pagePaket() {
   const r = await api('/api/v1/admin/plans');
   if (r.status !== 200) return bodyError(r);
   let html = '<p class="muted">Harga & status paket dibaca aplikasi dari tabel ini — perubahan langsung berlaku tanpa rilis ulang.</p>' +
-    '<table><tr><th>Paket</th><th>Durasi</th><th>Harga (Rp)</th><th>Aktif</th><th></th></tr>';
+    '<div class="tscroll"><table><tr><th>Paket</th><th>Durasi</th><th>Harga (Rp)</th><th>Aktif</th><th></th></tr>';
   for (const p of r.body.plans || []) {
     html += '<tr><td>' + esc(p.label) + '<div class="muted small">' + esc(p.id) + '</div></td>' +
       '<td>' + p.days + ' hari</td>' +
@@ -420,7 +420,7 @@ async function pagePaket() {
       '<td><label class="switch"><input type="checkbox" id="active-' + esc(p.id) + '"' + (p.is_active ? ' checked' : '') + '><span class="slider"></span></label></td>' +
       '<td><button class="btn small" data-save-plan="' + esc(p.id) + '">Simpan</button></td></tr>';
   }
-  $('pageBody').innerHTML = html + '</table>';
+  $('pageBody').innerHTML = html + '</table></div>';
   document.querySelectorAll('button[data-save-plan]').forEach((el) => {
     el.addEventListener('click', async () => {
       const id = el.dataset.savePlan;
@@ -442,7 +442,7 @@ async function pagePengguna() {
     const q = encodeURIComponent($('userQ').value.trim());
     const r = await api('/api/v1/admin/users?limit=100&q=' + q);
     if (r.status !== 200) { $('userList').innerHTML = '<p class="error">Gagal memuat pengguna.</p>'; return; }
-    let html = '<table><tr><th>Pengguna</th><th>Role</th><th>Premium</th><th>Aksi</th></tr>';
+    let html = '<div class="tscroll"><table><tr><th>Pengguna</th><th>Role</th><th>Premium</th><th>Aksi</th></tr>';
     for (const u of r.body.users || []) {
       const isMe = me && u.id === me.id;
       html += '<tr><td>' + (u.avatar_url ? '<img class="avatar" src="' + esc(u.avatar_url) + '" referrerpolicy="no-referrer" alt="">' : '') +
@@ -454,7 +454,7 @@ async function pagePengguna() {
             ? '<button class="btn ghost small" data-role="' + esc(u.id) + '|user">Turunkan jadi User</button>'
             : '<button class="btn purple small" data-role="' + esc(u.id) + '|admin">Jadikan Admin</button>')) + '</td></tr>';
     }
-    $('userList').innerHTML = html + '</table>';
+    $('userList').innerHTML = html + '</table></div>';
     document.querySelectorAll('button[data-role]').forEach((el) => {
       el.addEventListener('click', async () => {
         const [id, role] = el.dataset.role.split('|');
@@ -476,7 +476,7 @@ async function pagePengguna() {
 /* ----- Transaksi ----- */
 function trxTable(list) {
   if (!list.length) return '<p class="muted">Belum ada transaksi.</p>';
-  let html = '<table><tr><th>Waktu</th><th>Pengguna</th><th>Keperluan</th><th>Provider</th><th>Jumlah</th><th>Status</th></tr>';
+  let html = '<div class="tscroll"><table><tr><th>Waktu</th><th>Pengguna</th><th>Keperluan</th><th>Provider</th><th>Jumlah</th><th>Status</th></tr>';
   for (const t of list) {
     html += '<tr><td>' + esc(fmtDate(t.created_at)) + '</td>' +
       '<td>' + esc(t.display_name || '(tanpa nama)') + '<div class="muted small">' + esc(t.email) + '</div></td>' +
@@ -484,7 +484,7 @@ function trxTable(list) {
       '<td>' + esc(t.provider) + '</td><td>' + rp(t.amount) + '</td>' +
       '<td><span class="badge ' + esc(t.status) + '">' + esc(t.status) + '</span></td></tr>';
   }
-  return html + '</table>';
+  return html + '</table></div>';
 }
 /* ----- Transaksi (dengan edit & hapus) ----- */
 let trxCache = [];
@@ -505,7 +505,7 @@ function renderTrx(editId) {
   let html = '<p class="muted">Mengubah status menjadi <b>paid</b> mengaktifkan hak pengguna ' +
     '(premium diperpanjang / voucher bisa ditukar), sama seperti callback gateway. ' +
     'Menghapus transaksi tidak mencabut premium yang sudah terlanjur aktif.</p>' +
-    '<table><tr><th>Waktu</th><th>Pengguna</th><th>Keperluan</th><th>Provider</th><th>Jumlah</th><th>Status</th><th>Aksi</th></tr>';
+    '<div class="tscroll"><table><tr><th>Waktu</th><th>Pengguna</th><th>Keperluan</th><th>Provider</th><th>Jumlah</th><th>Status</th><th>Aksi</th></tr>';
   for (const t of trxCache) {
     if (t.id === editId) {
       const planOpts = [''].concat(planCache.map((p) => p.id)).map((id) =>
@@ -530,7 +530,7 @@ function renderTrx(editId) {
         '<button class="btn small" data-trx-del="' + esc(t.id) + '">Hapus</button></div></td></tr>';
     }
   }
-  $('pageBody').innerHTML = html + '</table>';
+  $('pageBody').innerHTML = html + '</table></div>';
   document.querySelectorAll('button[data-trx-edit]').forEach((el) =>
     el.addEventListener('click', () => renderTrx(el.dataset.trxEdit)));
   document.querySelectorAll('button[data-trx-cancel]').forEach((el) =>
@@ -636,7 +636,7 @@ async function loadVoucherList() {
   if (r.status !== 200) { $('vc-list').innerHTML = '<p class="error">Gagal memuat voucher.</p>'; return; }
   const list = r.body.vouchers || [];
   if (!list.length) { $('vc-list').innerHTML = '<p class="muted">Belum ada voucher.</p>'; return; }
-  let html = '<table><tr><th>Kode</th><th>Durasi</th><th>Sumber</th><th>Untuk</th><th>Status</th><th>Ditukar oleh</th><th>Dibuat</th><th>Aksi</th></tr>';
+  let html = '<div class="tscroll"><table><tr><th>Kode</th><th>Durasi</th><th>Sumber</th><th>Untuk</th><th>Status</th><th>Ditukar oleh</th><th>Dibuat</th><th>Aksi</th></tr>';
   for (const v of list) {
     html += '<tr><td><code>' + esc(v.code) + '</code></td>' +
       '<td>' + v.duration_days + ' hari</td><td>' + esc(v.source) + '</td>' +
@@ -649,7 +649,7 @@ async function loadVoucherList() {
       (v.status !== 'redeemed' ? '<button class="btn small" data-vc-del="' + esc(v.id) + '|' + esc(v.code) + '">Hapus</button>' : '') +
       '</div></td></tr>';
   }
-  $('vc-list').innerHTML = html + '</table>';
+  $('vc-list').innerHTML = html + '</table></div>';
   document.querySelectorAll('button[data-vc-copy]').forEach((el) =>
     el.addEventListener('click', () => copyText(el.dataset.vcCopy, 'Kode disalin.')));
   document.querySelectorAll('button[data-vc-del]').forEach((el) =>
@@ -730,7 +730,7 @@ async function loadJudul(reset) {
   if (reset) renderJudulFilters(r.body.counts);
   const list = r.body.titles || [];
   judulOffset += list.length;
-  let html = reset ? '<p class="muted">' + (r.body.total || 0) + ' judul</p><table><tr><th>Poster</th><th>Judul</th><th>Jenis</th><th>Tahun</th><th>Episode</th><th>Kelengkapan</th><th>Visibilitas</th><th>Aksi</th></tr>' : '';
+  let html = reset ? '<p class="muted">' + (r.body.total || 0) + ' judul</p><div class="tscroll"><table><tr><th>Poster</th><th>Judul</th><th>Jenis</th><th>Tahun</th><th>Episode</th><th>Kelengkapan</th><th>Visibilitas</th><th>Aksi</th></tr>' : '';
   for (const x of list) {
     html += '<tr><td>' + (x.poster_url ? '<img src="' + esc(posterSrc(x.poster_url)) + '" alt="" style="width:38px;height:54px;object-fit:cover;border-radius:6px" loading="lazy">' : '—') + '</td>' +
       '<td>' + esc(x.title) + '<div class="muted small">' + esc(x.slug) + '</div></td>' +
@@ -741,7 +741,7 @@ async function loadJudul(reset) {
       '<td><button class="btn ' + (x.is_hidden ? '' : 'ghost') + ' small" data-jd-toggle="' + esc(x.id) + '|' + (x.is_hidden ? 'show' : 'hide') + '">' +
       (x.is_hidden ? 'Tampilkan' : 'Sembunyikan') + '</button></td></tr>';
   }
-  if (reset) { $('jd-list').innerHTML = html + '</table>'; }
+  if (reset) { $('jd-list').innerHTML = html + '</table></div>'; }
   else { $('jd-list').querySelector('table').insertAdjacentHTML('beforeend', html); }
   document.querySelectorAll('button[data-jd-toggle]').forEach((el) => {
     if (el.dataset.wired) return;
@@ -786,12 +786,11 @@ async function loadLaporan() {
   }));
   const list = r.body.reports || [];
   if (!list.length) { $('lp-list').innerHTML = '<p class="muted">Tidak ada laporan.</p>'; return; }
-  let html = '<div class="tscroll"><table class="ltable"><tr><th>Waktu</th><th>Judul / Episode</th><th>Alasan</th><th>Catatan</th><th>Pelapor</th><th>Status</th><th>Aksi</th></tr>';
+  let html = '<div class="tscroll"><table class="ltable"><tr><th>Waktu</th><th>Judul / Episode</th><th>Alasan</th><th>Pelapor</th><th>Status</th><th>Aksi</th></tr>';
   for (const x of list) {
     html += '<tr><td class="small">' + esc(fmtDate(x.created_at)) + '</td>' +
-      '<td>' + esc(x.title) + (x.episode_no ? '<div class="muted small">Episode ' + x.episode_no + '</div>' : '') + '</td>' +
+      '<td class="ellipsis">' + esc(x.title) + (x.episode_no ? ' — Ep. ' + x.episode_no : '') + '</td>' +
       '<td>' + esc(LAPORAN_ALASAN[x.reason] || x.reason) + '</td>' +
-      '<td class="small">' + esc(x.note || '—') + '</td>' +
       '<td class="small">' + esc(x.reporter) + '</td>' +
       '<td><span class="badge ' + (x.status === 'baru' ? 'premium' : 'expired') + '">' + esc(LAPORAN_STATUS[x.status] || x.status) + '</span></td>' +
       '<td><div class="lp-actions">' +
@@ -801,11 +800,55 @@ async function loadLaporan() {
       (x.status !== 'selesai' ? '<button class="btn ghost small" data-lp-act="done" data-lp-id="' + esc(x.id) + '">Selesai</button>' : '') +
       (x.status !== 'diabaikan' ? '<button class="btn ghost small" data-lp-act="ignore" data-lp-id="' + esc(x.id) + '">Abaikan</button>' : '') +
       '<button class="btn ghost small" data-lp-act="del" data-lp-id="' + esc(x.id) + '">Hapus</button>' +
+      '<a class="btn ghost small" href="#/laporan-detail?id=' + esc(x.id) + '">Detail</a>' +
       '</div></td></tr>';
   }
   $('lp-list').innerHTML = html + '</table></div>';
-  $('lp-list').querySelectorAll('[data-lp-act]').forEach((b) => b.addEventListener('click', () => laporanAksi(b.dataset.lpAct, b.dataset.lpId)));
-  $('lp-list').querySelectorAll('[data-lp-vis]').forEach((el) => el.addEventListener('change', () => laporanVis(el)));
+  pasangAksiLaporan();
+}
+// Pasang pendengar tombol/sakelar laporan — dipakai daftar &
+// halaman detail.
+function pasangAksiLaporan() {
+  document.querySelectorAll('#pageBody [data-lp-act]').forEach((b) => b.addEventListener('click', () => laporanAksi(b.dataset.lpAct, b.dataset.lpId)));
+  document.querySelectorAll('#pageBody [data-lp-vis]').forEach((el) => el.addEventListener('change', () => laporanVis(el)));
+}
+function refreshLaporan() {
+  if ($('lp-detail')) pageLaporanDetail();
+  else if ($('lp-list')) loadLaporan();
+}
+// Halaman detail satu laporan: judul & catatan UTUH tampil di
+// sini (di tabel hanya ringkasannya), lengkap dengan sakelar
+// tampil/sembunyi dan semua tombol tindakannya.
+async function pageLaporanDetail() {
+  const id = new URLSearchParams((location.hash.split('?')[1] || '')).get('id') || '';
+  $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
+  const r = await api('/api/v1/admin/reports/' + encodeURIComponent(id));
+  if (r.status !== 200 || !r.body.report) {
+    $('pageBody').innerHTML = '<p class="error">Laporan tidak ditemukan.</p>' +
+      '<p><a class="btn ghost" href="#/laporan">← Kembali ke Laporan User</a></p>';
+    return;
+  }
+  const x = r.body.report;
+  $('pageBody').innerHTML =
+    '<p><a class="btn ghost small" href="#/laporan">← Kembali ke Laporan User</a></p>' +
+    '<div class="card" id="lp-detail"><h2 style="margin-top:0">' + esc(x.title) + '</h2>' +
+    '<dl class="kv">' +
+    '<dt>Episode</dt><dd>' + (x.episode_no ? 'Episode ' + x.episode_no : '—') + '</dd>' +
+    '<dt>Alasan</dt><dd>' + esc(LAPORAN_ALASAN[x.reason] || x.reason) + '</dd>' +
+    '<dt>Catatan user</dt><dd>' + esc(x.note || '—') + '</dd>' +
+    '<dt>Pelapor</dt><dd>' + esc(x.reporter) + '</dd>' +
+    '<dt>Status</dt><dd><span class="badge ' + (x.status === 'baru' ? 'premium' : 'expired') + '">' + esc(LAPORAN_STATUS[x.status] || x.status) + '</span></dd>' +
+    '<dt>Waktu lapor</dt><dd>' + esc(fmtDate(x.created_at)) + '</dd>' +
+    (x.title_id ? '<dt>Judul tampil</dt><dd><label class="switch"><input type="checkbox" data-lp-vis="title" data-lp-id="' + esc(x.id) + '"' + (x.title_hidden ? '' : ' checked') + '><span class="slider"></span></label> <span class="muted small">' + (x.title_hidden ? 'sedang tersembunyi' : 'tampil di aplikasi') + '</span></dd>' : '') +
+    (x.episode_id ? '<dt>Episode tampil</dt><dd><label class="switch"><input type="checkbox" data-lp-vis="episode" data-lp-id="' + esc(x.id) + '"' + (x.episode_hidden ? '' : ' checked') + '><span class="slider"></span></label> <span class="muted small">' + (x.episode_hidden ? 'sedang tersembunyi' : 'tampil di aplikasi') + '</span></dd>' : '') +
+    '</dl>' +
+    '<div class="lp-actions" style="justify-content:flex-start;margin-top:18px">' +
+    (x.episode_id ? '<button class="btn small" data-lp-act="fix" data-lp-id="' + esc(x.id) + '">Perbaiki Link</button>' : '') +
+    (x.status !== 'selesai' ? '<button class="btn ghost small" data-lp-act="done" data-lp-id="' + esc(x.id) + '">Selesai</button>' : '') +
+    (x.status !== 'diabaikan' ? '<button class="btn ghost small" data-lp-act="ignore" data-lp-id="' + esc(x.id) + '">Abaikan</button>' : '') +
+    '<button class="btn ghost small" data-lp-act="del" data-lp-id="' + esc(x.id) + '">Hapus</button>' +
+    '</div></div>';
+  pasangAksiLaporan();
 }
 // Sakelar geser tampil/sembunyi episode & judul (seperti sakelar
 // metode pembayaran Tokopay): ON = tampil di aplikasi, OFF =
@@ -822,7 +865,7 @@ async function laporanVis(el) {
   const rr = await api('/api/v1/admin/reports/' + encodeURIComponent(id) + path, { method: 'POST' });
   if (rr.status === 200) toast(show ? 'Ditampilkan lagi di aplikasi.' : 'Disembunyikan dari aplikasi.');
   else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
-  loadLaporan();
+  refreshLaporan();
 }
 async function laporanAksi(act, id) {
   const base = '/api/v1/admin/reports/' + encodeURIComponent(id);
@@ -842,7 +885,8 @@ async function laporanAksi(act, id) {
     if (rr.status === 200) toast('Laporan dihapus.');
   }
   if (rr && rr.status !== 200) toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
-  loadLaporan();
+  if (act === 'del' && rr && rr.status === 200 && $('lp-detail')) { location.hash = '#/laporan'; return; }
+  refreshLaporan();
 }
 
 /* ----- Laporan Crash ----- */
@@ -1035,7 +1079,7 @@ async function loadBroadcasts() {
   const list = r.body.broadcasts || [];
   if (!list.length) { $('nt-list').innerHTML = '<p class="muted">Belum ada notifikasi terkirim.</p>'; return; }
   const audLbl = { all: 'Semua', premium: 'Premium', free: 'Gratis' };
-  let html = '<table><tr><th>Waktu</th><th>Judul</th><th>Penerima</th><th>Terkirim</th><th>Dibaca</th><th></th></tr>';
+  let html = '<div class="tscroll"><table><tr><th>Waktu</th><th>Judul</th><th>Penerima</th><th>Terkirim</th><th>Dibaca</th><th></th></tr>';
   for (const b of list) {
     html += '<tr><td>' + esc(fmtDate(b.created_at)) + '</td>' +
       '<td><b>' + esc(b.title) + '</b>' + (b.body ? '<br><span class="small muted">' + esc(b.body) + '</span>' : '') + '</td>' +
@@ -1043,7 +1087,7 @@ async function loadBroadcasts() {
       '<td>' + b.sent_count + '</td><td>' + b.read_count + '</td>' +
       '<td><button class="btn ghost small" data-del="' + esc(b.id) + '"><i class="fa-solid fa-trash"></i> Hapus</button></td></tr>';
   }
-  $('nt-list').innerHTML = html + '</table>';
+  $('nt-list').innerHTML = html + '</table></div>';
   document.querySelectorAll('[data-del]').forEach((btn) =>
     btn.addEventListener('click', async () => {
       if (!confirm('Hapus siaran ini? Salinannya di aplikasi pengguna ikut terhapus.')) return;
@@ -1060,16 +1104,42 @@ async function pageLog() {
   if (r.status !== 200) return bodyError(r);
   const list = r.body.logs || [];
   if (!list.length) { $('pageBody').innerHTML = '<p class="muted">Belum ada aktivitas admin tercatat.</p>'; return; }
-  let html = '<table><tr><th>Waktu</th><th>Admin</th><th>Aksi</th><th>Target</th><th>Rincian</th></tr>';
+  let html = '<div class="tscroll"><table><tr><th>Waktu</th><th>Admin</th><th>Aksi</th><th>Target</th><th>Rincian</th><th></th></tr>';
   for (const l of list) {
     let detail = '';
     try { detail = JSON.stringify(l.detail); } catch (e) { detail = ''; }
     if (detail.length > 90) detail = detail.slice(0, 90) + '…';
     html += '<tr><td>' + esc(fmtDate(l.created_at)) + '</td><td>' + esc(l.admin_email) + '</td>' +
       '<td><span class="badge info">' + esc(l.action) + '</span></td><td class="small">' + esc(l.target || '—') + '</td>' +
-      '<td class="small muted">' + esc(detail) + '</td></tr>';
+      '<td class="small muted">' + esc(detail) + '</td>' +
+      '<td><a class="btn ghost small" href="#/log-detail?id=' + esc(l.id) + '">Detail</a></td></tr>';
   }
-  $('pageBody').innerHTML = html + '</table>';
+  $('pageBody').innerHTML = html + '</table></div>';
+}
+// Halaman detail satu catatan log: rincian utuh tampil di sini,
+// bukan dipotong di tabel.
+async function pageLogDetail() {
+  const id = new URLSearchParams((location.hash.split('?')[1] || '')).get('id') || '';
+  $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
+  const r = await api('/api/v1/admin/logs?limit=100');
+  if (r.status !== 200) return bodyError(r);
+  const l = (r.body.logs || []).find((x) => x.id === id);
+  if (!l) {
+    $('pageBody').innerHTML = '<p class="error">Catatan log tidak ditemukan (mungkin sudah lewat 100 catatan terakhir).</p>' +
+      '<p><a class="btn ghost" href="#/log">← Kembali ke Log Admin</a></p>';
+    return;
+  }
+  let detail = '';
+  try { detail = JSON.stringify(l.detail, null, 2); } catch (e) { detail = String(l.detail || ''); }
+  $('pageBody').innerHTML =
+    '<p><a class="btn ghost small" href="#/log">← Kembali ke Log Admin</a></p>' +
+    '<div class="card"><dl class="kv">' +
+    '<dt>Waktu</dt><dd>' + esc(fmtDate(l.created_at)) + '</dd>' +
+    '<dt>Admin</dt><dd>' + esc(l.admin_email) + '</dd>' +
+    '<dt>Aksi</dt><dd><span class="badge info">' + esc(l.action) + '</span></dd>' +
+    '<dt>Target</dt><dd>' + esc(l.target || '—') + '</dd>' +
+    '</dl><h3 style="margin-bottom:8px">Rincian</h3>' +
+    '<pre style="white-space:pre-wrap;word-break:break-word;font-size:0.82rem;background:var(--panel-2);padding:12px;border-radius:9px;max-height:420px;overflow:auto;margin:0">' + esc(detail) + '</pre></div>';
 }
 
 /* ----- Info Sistem ----- */

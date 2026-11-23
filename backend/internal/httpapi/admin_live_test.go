@@ -1064,6 +1064,14 @@ func TestAdminLive(t *testing.T) {
 	if st != 200 || repAda(lstAkhir, rep2ID) {
 		t.Fatalf("laporan terhapus masih tampil: status=%d", st)
 	}
+	// Halaman detail: ambil satu laporan; id asing -> 404.
+	st, satu := call("GET", "/api/v1/admin/reports/"+rep1ID, adminJWT, nil)
+	if st != 200 || satu["report"].(map[string]any)["id"] != rep1ID {
+		t.Fatalf("ambil satu laporan: status=%d body=%v", st, satu)
+	}
+	if st, _ := call("GET", "/api/v1/admin/reports/00000000-0000-0000-0000-000000000000", adminJWT, nil); st != 404 {
+		t.Fatalf("laporan asing harus 404, dapat %d", st)
+	}
 
 	// CORS: preflight dari origin Netlify dijawab dengan echo origin;
 	// origin asing tidak mendapat izin.
