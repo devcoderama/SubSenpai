@@ -92,6 +92,7 @@ fun HomeScreen(
     onLogin: () -> Unit,
     onOpenMore: () -> Unit,
     onOpenNotices: () -> Unit = {},
+    onOpenPremium: () -> Unit = {},
     onFatalChange: (Boolean) -> Unit = {},
 ) {
     val homeContext = LocalContext.current
@@ -482,6 +483,46 @@ fun HomeScreen(
                             onInfo = { onOpenTitle(hero.id) },
                             onNeedLogin = onLogin,
                         )
+                    }
+                }
+                // Pintu Premium di tengah Beranda (permintaan Rams
+                // 2026-11-23): tombol Premium pindah dari bilah bawah
+                // ke sini; bilah bawah tengah kini Jadwal.
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFF3B2A5D), Color(0xFF7C3AED)),
+                                ),
+                            )
+                            .clickable { onOpenPremium() }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_star),
+                                contentDescription = null,
+                                tint = Color(0xFFFFC107),
+                                modifier = Modifier.size(26.dp),
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "SubSenpai Premium",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                                Text(
+                                    "Buka semua episode anime, donghua & film — tanpa kunci",
+                                    color = Color(0xFFE9E4F5),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            Text("›", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                        }
                     }
                 }
                 if (lanjut.isNotEmpty()) {

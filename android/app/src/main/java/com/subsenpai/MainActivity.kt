@@ -176,11 +176,11 @@ class MainActivity : ComponentActivity() {
                 val backEntry by nav.currentBackStackEntryAsState()
                 val route = backEntry?.destination?.route
                 // Bilah bawah ala Netflix: hanya di layar-layar utama.
-                val mainRoutes = setOf("home", "chat", "premium", "history", "more")
+                val mainRoutes = setOf("home", "chat", "schedule", "premium", "history", "more")
                 val bottomItems = listOf(
                     Triple("home", "Beranda", R.drawable.ic_home),
                     Triple("chat", "Post", R.drawable.ic_chat),
-                    Triple("premium", "Premium", R.drawable.ic_star),
+                    Triple("schedule", "Jadwal", R.drawable.ic_calendar),
                     Triple("history", "Riwayat", R.drawable.ic_history),
                     Triple("more", "Lainnya", R.drawable.ic_menu),
                 )
@@ -282,6 +282,13 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onOpenNotices = { nav.navigate("notices") },
+                                onOpenPremium = {
+                                    nav.navigate("premium") {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
                                 onFatalChange = { homeFatal = it },
                             )
                         }
@@ -308,7 +315,13 @@ class MainActivity : ComponentActivity() {
                                 onOpenSettings = { nav.navigate("settings") },
                                 onOpenTransactions = { nav.navigate("transactions") },
                                 onOpenMyVouchers = { nav.navigate("myvouchers") },
-                                onOpenSchedule = { nav.navigate("schedule") },
+                                onOpenSchedule = {
+                                    nav.navigate("schedule") {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
                             )
                         }
                         composable("schedule") {
