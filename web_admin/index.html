@@ -7,6 +7,7 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <link rel="stylesheet" href="style.css">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -15,8 +16,9 @@
 <!-- ===== Login (hanya akun Google dengan role admin) ===== -->
 <main id="loginView" class="login-wrap" style="display:none">
   <div class="login-card">
+    <img class="mascot-login" src="mascot.png" alt="Maskot SubSenpai">
     <div class="logo">Sub<span>Senpai</span></div>
-    <h1>Dashboard Admin</h1>
+    <div class="logo-sub">管理者パネル • DASHBOARD ADMIN</div>
     <p class="muted">Masuk dengan akun Google yang role-nya <b>admin</b>.
     Akun biasa tidak bisa membuka dashboard ini dan tidak ada pendaftaran
     di sini — admin diangkat oleh admin lain dari halaman Pengguna,
@@ -29,37 +31,49 @@
 
 <!-- ===== Aplikasi ===== -->
 <div id="appView" class="layout" style="display:none">
-  <aside class="sidebar">
-    <div class="logo">Sub<span>Senpai</span> <small>Admin</small></div>
+  <div id="sideBackdrop" class="backdrop"></div>
+  <aside id="sidebar" class="sidebar">
+    <div class="side-head">
+      <div>
+        <div class="logo">Sub<span>Senpai</span></div>
+        <div class="logo-sub">管理者パネル</div>
+      </div>
+      <button id="sideClose" class="icon-btn" aria-label="Tutup menu"><i class="fa-solid fa-xmark"></i></button>
+    </div>
     <nav id="mainNav">
-      <a href="#/ringkasan" data-route="ringkasan">Ringkasan</a>
-      <a href="#/metode" data-route="metode">Metode Pembayaran</a>
-      <a href="#/paket" data-route="paket">Paket Premium</a>
-      <a href="#/pengguna" data-route="pengguna">Pengguna</a>
-      <a href="#/transaksi" data-route="transaksi">Transaksi</a>
-      <a href="#/voucher" data-route="voucher">Voucher</a>
-      <a href="#/judul" data-route="judul">Judul</a>
-      <a href="#/crash" data-route="crash">Laporan Crash</a>
-      <a href="#/pengaturan" data-route="pengaturan">Pengaturan</a>
-      <a href="#/log" data-route="log">Log Admin</a>
-      <a href="#/sistem" data-route="sistem">Sistem</a>
+      <a href="#/ringkasan" data-route="ringkasan"><i class="fa-solid fa-gauge-high"></i>Ringkasan</a>
+      <a href="#/metode" data-route="metode"><i class="fa-solid fa-credit-card"></i>Metode Pembayaran</a>
+      <a href="#/paket" data-route="paket"><i class="fa-solid fa-crown"></i>Paket Premium</a>
+      <a href="#/pengguna" data-route="pengguna"><i class="fa-solid fa-users"></i>Pengguna</a>
+      <a href="#/transaksi" data-route="transaksi"><i class="fa-solid fa-receipt"></i>Transaksi</a>
+      <a href="#/voucher" data-route="voucher"><i class="fa-solid fa-ticket"></i>Voucher</a>
+      <a href="#/judul" data-route="judul"><i class="fa-solid fa-clapperboard"></i>Judul</a>
+      <a href="#/crash" data-route="crash"><i class="fa-solid fa-bug"></i>Laporan Crash</a>
+      <a href="#/pengaturan" data-route="pengaturan"><i class="fa-solid fa-gears"></i>Pengaturan</a>
+      <a href="#/log" data-route="log"><i class="fa-solid fa-scroll"></i>Log Admin</a>
+      <a href="#/sistem" data-route="sistem"><i class="fa-solid fa-server"></i>Sistem</a>
     </nav>
+    <img class="mascot-side" src="mascot.png" alt="">
     <div class="side-user">
       <img id="meAvatar" alt="" referrerpolicy="no-referrer">
       <div class="side-user-info">
         <div id="meName">—</div>
         <div id="meEmail" class="muted small">—</div>
       </div>
-      <button id="logoutBtn" class="btn ghost">Keluar</button>
+      <button id="logoutBtn" class="btn ghost"><i class="fa-solid fa-right-from-bracket"></i> Keluar</button>
     </div>
   </aside>
   <main class="content">
-    <h1 id="pageTitle">Ringkasan</h1>
+    <div class="topbar">
+      <button id="burger" class="icon-btn" aria-label="Buka menu"><i class="fa-solid fa-bars"></i></button>
+      <h1 id="pageTitle">Ringkasan</h1>
+      <span class="topbar-sparkle"><i class="fa-solid fa-star"></i></span>
+    </div>
     <div id="pageBody"><p class="muted">Memuat…</p></div>
   </main>
 </div>
 
 <div id="toast" class="toast" hidden></div>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

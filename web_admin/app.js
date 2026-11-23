@@ -758,7 +758,25 @@ async function pageSistem() {
   $('pageBody').innerHTML = html;
 }
 
+/* ----- Sidebar geser (drawer) ----- */
+function openSidebar() {
+  $('sidebar').classList.add('open');
+  $('sideBackdrop').classList.add('show');
+}
+function closeSidebar() {
+  $('sidebar').classList.remove('open');
+  $('sideBackdrop').classList.remove('show');
+}
+function wireDrawer() {
+  $('burger').addEventListener('click', openSidebar);
+  $('sideClose').addEventListener('click', closeSidebar);
+  $('sideBackdrop').addEventListener('click', closeSidebar);
+  document.querySelectorAll('#mainNav a').forEach((a) =>
+    a.addEventListener('click', closeSidebar));
+}
+
 /* ================= Boot ================= */
+wireDrawer();
 $('logoutBtn').addEventListener('click', () => {
   if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
   showLogin();
