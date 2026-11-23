@@ -193,13 +193,30 @@ function showLogin(msg) {
   if (msg) { err.textContent = msg; err.hidden = false; } else { err.hidden = true; }
 }
 
+/* Jaring pengaman diagnostik: kesalahan JS apa pun (termasuk di
+ * fungsi async) ditampilkan di kartu login, bukan hilang diam-diam. */
+function surfaceError(label, e) {
+  try {
+    const err = $('loginError');
+    if (err) {
+      err.textContent = label + ': ' + (e && e.message ? e.message : String(e));
+      err.hidden = false;
+    }
+    const hint = $('loginHint');
+    if (hint) hint.textContent = 'Terjadi kesalahan — lihat pesan merah di atas.';
+  } catch (_) { /* abaikan */ }
+}
+window.addEventListener('error', (ev) => surfaceError('Kesalahan JS', ev.error || ev.message));
+window.addEventListener('unhandledrejection', (ev) => surfaceError('Proses gagal', ev.reason));
+
 async function onGoogleCredential(resp) {
   $('loginError').hidden = true;
   stepFn = (t) => { $('loginHint').textContent = t; };
   step('Memeriksa akun…');
   try {
     const r = await api('/api/v1/auth/google', { method: 'POST', body: { id_token: resp.credential } });
-    step('Langkah 4/4: memeriksa role akun…');
+    const prof0 = (r.body && r.body.profile) || {};
+    step('Langkah 4/4: respons HTTP ' + r.status + ', role="' + (prof0.role || '?') + '" — memeriksa…');
     if (r.status !== 200 || !r.body.token) {
       showLogin('Login gagal: ' + ((r.body && r.body.error) || 'respons tidak dikenal'));
       return;
@@ -213,6 +230,7 @@ async function onGoogleCredential(resp) {
     jwt = r.body.token;
     storeSet(JWT_KEY, jwt);
     me = prof;
+    step('Langkah 5/5: role admin terkonfirmasi, membuka dashboard…');
     enterApp();
   } catch (e) {
     showLogin('Tidak dapat terhubung ke server: ' + e.message);
