@@ -158,7 +158,9 @@ func PostUpdateToDiscordIfNew(ctx context.Context, pool *pgxpool.Pool, cfg confi
 		}
 	}
 	if telegramOK && due(telegramUpdateNotifiedKey) {
-		if err := telegram.New(cfg.TelegramBotToken).Send(ctx, cfg.TelegramGroupID,
+		// Pratinjau menyala: pesan ini berisi satu tautan (situs
+		// resmi), jadi kartu gambar hero situs tampil di Telegram.
+		if err := telegram.New(cfg.TelegramBotToken).SendPreview(ctx, cfg.TelegramGroupID,
 			cfg.TelegramTopicUpdateAPK, telegram.ToHTML(msg)); err != nil {
 			log.Printf("telegram update: kirim gagal: %v", err)
 		} else {

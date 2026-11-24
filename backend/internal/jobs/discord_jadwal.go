@@ -144,16 +144,45 @@ func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg con
 		}
 	}
 	if telegramDue {
+		// Telegram menerima bentuk berbeda dari Discord (permintaan
+		// Rams 2026-11-24): bukan kemasan ringkasan, melainkan 1
+		// pesan per judul dengan pratinjau tautan menyala, agar
+		// poster tiap judul tampil sebagai kartu WebPage.
 		tc := telegram.New(cfg.TelegramBotToken)
-		if err := sendAll(func(m string) error {
-			return tc.Send(ctx, cfg.TelegramGroupID, cfg.TelegramTopicJadwal, telegram.ToHTML(m))
-		}); err != nil {
+		if err := kirimJadwalTelegram(ctx, tc, cfg.TelegramGroupID,
+			cfg.TelegramTopicJadwal, header, blocks, footer); err != nil {
 			log.Printf("telegram jadwal: kirim gagal: %v", err)
 		} else {
 			markDay(telegramJadwalLastDateKey)
-			log.Printf("telegram jadwal: jadwal %s terposting (%d pesan)", today, len(msgs))
+			log.Printf("telegram jadwal: jadwal %s terposting (%d pesan)", today, len(blocks)+2)
 		}
 	}
+}
+
+// kirimJadwalTelegram mengirim jadwal ke topik Telegram sebagai
+// rangkaian pesan: header, lalu 1 pesan per judul dengan pratinjau
+// menyala (halaman /nonton/ membawa og:image poster, jadi tiap
+// judul tampil bergambar), lalu footer. Satu kegagalan membatalkan
+// sisanya dan mengembalikan error — pemanggil tidak menandai hari
+// itu, jadi siklus worker berikutnya mengulang dari awal (judul
+// awal mungkin terkirim dua kali; diterima, sama seperti kemasan
+// lama).
+func kirimJadwalTelegram(ctx context.Context, tc *telegram.Client,
+	groupID, topicID, header string, blocks []string, footer string) error {
+	if err := tc.Send(ctx, groupID, topicID, telegram.ToHTML(header)); err != nil {
+		return err
+	}
+	for _, b := range blocks {
+		if err := tc.SendPreview(ctx, groupID, topicID, telegram.ToHTML(b)); err != nil {
+			return err
+		}
+	}
+	if footer != "" {
+		if err := tc.SendPreview(ctx, groupID, topicID, telegram.ToHTML(footer)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // jadwalMeta adalah metadata katalog untuk satu judul jadwal.

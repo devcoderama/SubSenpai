@@ -1,10 +1,16 @@
 package jobs
 
 import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"subsenpai/backend/internal/sources"
+	"subsenpai/backend/internal/telegram"
 )
 
 func TestJadwalBlockKaya(t *testing.T) {
@@ -67,5 +73,62 @@ func TestPackJadwal(t *testing.T) {
 	satu := packJadwal("HEADER", nil, "FOOTER", 1700)
 	if len(satu) != 1 || !strings.Contains(satu[0], "HEADER") || !strings.Contains(satu[0], "FOOTER") {
 		t.Errorf("kasus kosong janggal: %v", satu)
+	}
+}
+
+// TestKirimJadwalTelegram: jadwal Telegram terkirim sebagai
+// header + 1 pesan per judul + footer, semuanya ke topik jadwal;
+// hanya pesan judul & footer yang pratinjaunya menyala (header
+// dikirim dengan Send biasa).
+func TestKirimJadwalTelegram(t *testing.T) {
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var p map[string]any
+		if err := json.Unmarshal(raw, &p); err != nil {
+			t.Errorf("payload bukan JSON: %v", err)
+		}
+		bodies = append(bodies, p)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":1}}`))
+	}))
+	defer srv.Close()
+	old := telegram.BaseURL
+	telegram.BaseURL = srv.URL
+	defer func() { telegram.BaseURL = old }()
+
+	blocks := []string{
+		"• **Judul A** — Ep 1\n▶️ Nonton Ep 1: https://www.subsenpai.web.id/nonton/ep-a",
+		"• **Judul B** — Ep 2\n▶️ Nonton Ep 2: https://www.subsenpai.web.id/nonton/ep-b",
+	}
+	err := kirimJadwalTelegram(context.Background(), telegram.New("token-uji"),
+		"-100123", "20730", "🗓️ **Jadwal Rilis — Selasa, 24 November 2026**",
+		blocks, "Selamat menonton di SubSenpai! 🍿 https://www.subsenpai.web.id")
+	if err != nil {
+		t.Fatalf("kirimJadwalTelegram: %v", err)
+	}
+	if len(bodies) != 4 {
+		t.Fatalf("harus 4 pesan (header + 2 judul + footer), dapat %d", len(bodies))
+	}
+	wants := []struct {
+		muat    string
+		preview bool
+	}{
+		{"Jadwal Rilis — Selasa, 24 November 2026", false},
+		{"Judul A", true},
+		{"Judul B", true},
+		{"Selamat menonton", true},
+	}
+	for i, w := range wants {
+		p := bodies[i]
+		if p["message_thread_id"] != float64(20730) {
+			t.Errorf("pesan %d: thread id janggal: %v", i, p)
+		}
+		if !strings.Contains(p["text"].(string), w.muat) {
+			t.Errorf("pesan %d: teks tidak memuat %q: %v", i, w.muat, p["text"])
+		}
+		if got := p["disable_web_page_preview"] == false; got != w.preview {
+			t.Errorf("pesan %d: pratinjau menyala = %v, mau %v", i, got, w.preview)
+		}
 	}
 }

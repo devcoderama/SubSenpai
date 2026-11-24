@@ -46,6 +46,19 @@ func (c *Client) Enabled() bool { return c != nil && c.token != "" }
 // 4096). Pemanggil meneruskan teks yang SUDAH diformat HTML
 // (lihat ToHTML).
 func (c *Client) Send(ctx context.Context, chatID, threadID, text string) error {
+	return c.send(ctx, chatID, threadID, text, false)
+}
+
+// SendPreview sama seperti Send, tetapi pratinjau tautan (WebPage)
+// diizinkan: Telegram menampilkan kartu berisi og:image dari
+// tautan PERTAMA di pesan. Hanya cocok untuk pesan berisi satu
+// tautan — jadwal per judul, update APK, pengumuman (permintaan
+// Rams 2026-11-24: 1 pesan 1 judul agar poster tiap judul muncul).
+func (c *Client) SendPreview(ctx context.Context, chatID, threadID, text string) error {
+	return c.send(ctx, chatID, threadID, text, true)
+}
+
+func (c *Client) send(ctx context.Context, chatID, threadID, text string, preview bool) error {
 	if !c.Enabled() {
 		return fmt.Errorf("telegram: token kosong")
 	}
@@ -59,7 +72,7 @@ func (c *Client) Send(ctx context.Context, chatID, threadID, text string) error 
 		"chat_id":                  chatID,
 		"text":                     text,
 		"parse_mode":               "HTML",
-		"disable_web_page_preview": true,
+		"disable_web_page_preview": !preview,
 	}
 	if n, err := strconv.ParseInt(strings.TrimSpace(threadID), 10, 64); err == nil && n > 0 {
 		payload["message_thread_id"] = n

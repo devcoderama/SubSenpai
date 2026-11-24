@@ -52,6 +52,21 @@ func TestSendKeTopik(t *testing.T) {
 		payload["text"] != "<b>halo</b>" || payload["parse_mode"] != "HTML" {
 		t.Fatalf("payload janggal: %v", payload)
 	}
+	// Send biasa: pratinjau tautan MATI.
+	if payload["disable_web_page_preview"] != true {
+		t.Fatalf("Send harus mematikan pratinjau: %v", payload)
+	}
+	// SendPreview: pratinjau tautan MENYALA (kartu og:image tampil).
+	body = nil
+	if err := c.SendPreview(context.Background(), "-100123", "20729", "satu tautan"); err != nil {
+		t.Fatalf("SendPreview: %v", err)
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("payload SendPreview bukan JSON: %v", err)
+	}
+	if payload["disable_web_page_preview"] != false {
+		t.Fatalf("SendPreview harus menyalakan pratinjau: %v", payload)
+	}
 	// Topik kosong -> tanpa message_thread_id.
 	body = nil
 	if err := c.Send(context.Background(), "-100123", "", "halo"); err != nil {

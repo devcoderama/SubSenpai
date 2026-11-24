@@ -20,7 +20,9 @@ func (a *API) telegramNotify(topicID, content string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		if err := telegram.New(a.cfg.TelegramBotToken).Send(ctx,
+		// Pratinjau menyala: pengumuman biasanya berisi satu tautan
+		// (atau tidak sama sekali), jadi kartu gambarnya tampil.
+		if err := telegram.New(a.cfg.TelegramBotToken).SendPreview(ctx,
 			a.cfg.TelegramGroupID, topicID, telegram.ToHTML(content)); err != nil {
 			log.Printf("telegram: kirim ke topik %s gagal: %v", topicID, err)
 		}
