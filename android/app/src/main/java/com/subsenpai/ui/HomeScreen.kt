@@ -72,6 +72,7 @@ import com.subsenpai.data.SettingsStore
 import com.subsenpai.data.TitleCard
 import com.subsenpai.data.TitleFacets
 import com.subsenpai.data.WatchHistoryItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -394,7 +395,6 @@ fun HomeScreen(
             network ?: "", query,
         ).joinToString("|")
         if (tab.hasilSignature == sig) return@LaunchedEffect
-        tab.hasilSignature = sig
         // Filter benar-benar berubah: mulai dari atas lagi.
         tab.scroll.scrollToItem(0)
         try {
@@ -403,6 +403,15 @@ fun HomeScreen(
             hasilCursor = next
             hasilHasMore = next != null
             error = null
+            // Tanda tangan dicatat HANYA sesudah muat berhasil:
+            // muat yang gagal/terbatalkan harus dicoba lagi saat
+            // pengguna kembali, bukan dianggap sudah termuat.
+            tab.hasilSignature = sig
+        } catch (e: CancellationException) {
+            // Efek tergantikan (filter berubah lagi / halaman
+            // ditinggalkan): BUKAN kegagalan muat — jangan tampilkan
+            // "Gagal memuat" untuk pembatalan (bug v0.24.19).
+            throw e
         } catch (e: Exception) {
             error = friendlyInlineError(e)
         }
@@ -433,7 +442,12 @@ fun HomeScreen(
     // Beranda, mode telusur memakai scroll sesi tab aktif — posisi
     // masing-masing pulih persis saat kembali (lihat HomeSession).
     val listState = if (browsing) tab.scroll else session.homeScroll
-    val nearEnd by remember {
+    // WAJIB remember(listState): listState kini berganti objek per
+    // mode/tab (lihat HomeSession) — remember polos akan menangkap
+    // objek komposisi PERTAMA selamanya, sehingga pemicu muat-
+    // lanjutan membaca daftar yang salah dan paginasi Hasil mati
+    // (bug v0.24.19: hasil berhenti di halaman pertama).
+    val nearEnd by remember(listState) {
         derivedStateOf {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
