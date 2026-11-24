@@ -402,6 +402,14 @@ func TestAdminLive(t *testing.T) {
 		returning id`).Scan(&titleID); err != nil {
 		t.Fatal(err)
 	}
+	// Sejak 2026-11-25 katalog publik hanya menampilkan judul yang
+	// sudah punya episode — beri judul uji satu episode agar sah
+	// tampil.
+	if _, err := pool.Exec(ctx, `
+		insert into episodes (title_id, episode_no, video_url)
+		values ($1::uuid, 1, 'https://uji.invalid/video.mp4')`, titleID); err != nil {
+		t.Fatal(err)
+	}
 	if st, lst := call("GET", "/api/v1/titles?type=anime", userJWT, nil); st != 200 ||
 		!strings.Contains(fmt.Sprint(lst), "Judul Uji Admin") {
 		t.Fatalf("judul harus tampil di katalog: status=%d", st)

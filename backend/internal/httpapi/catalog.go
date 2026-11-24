@@ -34,6 +34,17 @@ type titleCard struct {
 
 const titleCardCols = `id, slug, type, title, title_alt, poster_url, year, status, genres, rating::float8, is_adult`
 
+// hasVisibleEpisode: judul hanya tampil di daftar katalog telusur
+// bila sudah punya minimal satu episode yang tidak disembunyikan
+// (permintaan Rams 2026-11-25 — katalog hanya menampilkan judul yang
+// episodenya sudah ada). Judul tanpa episode tetap diisi worker di
+// latar dan muncul sendiri begitu episodenya masuk; detailnya tetap
+// bisa dibuka lewat tautan langsung / impor / jadwal. Pencarian kata
+// kunci DIKECUALIKAN (lihat titlesPage): judul yang dicari user
+// harus tetap bisa ditemukan & dibuka — episodenya diisi on-demand
+// saat detail dibuka, dan pencarian live bergantung pada ini.
+const hasVisibleEpisode = `exists (select 1 from episodes e where e.title_id = t.id and not e.is_hidden)`
+
 func scanTitleCard(row pgx.Row) (titleCard, error) {
 	var c titleCard
 	err := row.Scan(&c.ID, &c.Slug, &c.Type, &c.Title, &c.TitleAlt, &c.Poster,
@@ -70,6 +81,7 @@ func (a *API) handleHome(w http.ResponseWriter, r *http.Request) {
 			join trending_cache tc on tc.title_id = t.id
 			where tc."window" = 'day' and not t.is_adult and not t.is_hidden
 			and t.type not in ('manga', 'manhua', 'manhwa')
+			and `+hasVisibleEpisode+`
 			order by tc.score desc limit 10`)
 		if err != nil {
 			return nil, err
@@ -77,19 +89,21 @@ func (a *API) handleHome(w http.ResponseWriter, r *http.Request) {
 		if len(trending) == 0 {
 			// Cache tren belum terisi worker — cadangan: rating tertinggi.
 			trending, err = a.queryCards(ctx, `
-				select `+titleCardCols+` from titles
-				where not is_adult and not is_hidden
-				and type not in ('manga', 'manhua', 'manhwa')
-				order by rating desc nulls last, created_at desc limit 10`)
+				select `+titleCardCols+` from titles t
+				where not t.is_adult and not t.is_hidden
+				and t.type not in ('manga', 'manhua', 'manhwa')
+				and `+hasVisibleEpisode+`
+				order by t.rating desc nulls last, t.created_at desc limit 10`)
 			if err != nil {
 				return nil, err
 			}
 		}
 		terbaru, err := a.queryCards(ctx, `
-			select `+titleCardCols+` from titles
-			where not is_adult and not is_hidden
-			and type not in ('manga', 'manhua', 'manhwa')
-			order by created_at desc, id desc limit 10`)
+			select `+titleCardCols+` from titles t
+			where not t.is_adult and not t.is_hidden
+			and t.type not in ('manga', 'manhua', 'manhwa')
+			and `+hasVisibleEpisode+`
+			order by t.created_at desc, t.id desc limit 10`)
 		if err != nil {
 			return nil, err
 		}
@@ -142,6 +156,11 @@ func (a *API) titlesPage(ctx context.Context, typ string, flt titleFilter, searc
 	// manga/manhua/manhwa tidak pernah ditampilkan, apa pun
 	// parameter jenis yang diminta klien.
 	where := "where not t.is_adult and not t.is_hidden and t.type not in ('manga', 'manhua', 'manhwa')"
+	if search == "" {
+		// Telusur katalog (tab / genre / filter) hanya menampilkan
+		// judul berepisode; pencarian kata kunci dikecualikan.
+		where += " and " + hasVisibleEpisode
+	}
 	if typ != "" {
 		args = append(args, typ)
 		where += " and t.type = $" + strconv.Itoa(len(args))
@@ -294,6 +313,7 @@ func (a *API) handleGenres(w http.ResponseWriter, r *http.Request) {
 	}
 	a.serveCached(w, "genres?"+r.URL.RawQuery, func() (any, error) {
 		where := "where not t.is_adult and not t.is_hidden and t.type not in ('manga', 'manhua', 'manhwa')"
+		where += " and " + hasVisibleEpisode
 		args := []any{}
 		if typ != "" {
 			args = append(args, typ)
@@ -363,7 +383,7 @@ func (a *API) handleFilters(w http.ResponseWriter, r *http.Request) {
 	}
 	a.serveCached(w, "filters?"+r.URL.RawQuery, func() (any, error) {
 		ctx := r.Context()
-		base := "from titles t where not t.is_adult and not t.is_hidden and t.type = $1"
+		base := "from titles t where not t.is_adult and not t.is_hidden and t.type = $1 and " + hasVisibleEpisode
 		facet := func(query string, display func(string) string) ([]facetOut, error) {
 			rows, err := a.pool.Query(ctx, query, typ)
 			if err != nil {
@@ -385,7 +405,7 @@ func (a *API) handleFilters(w http.ResponseWriter, r *http.Request) {
 			return out, rows.Err()
 		}
 		genres, err := facet(`select g, count(*) as c from titles t, unnest(t.genres) g
-			where not t.is_adult and t.type = $1 group by g order by c desc, g asc`, nil)
+			where not t.is_adult and not t.is_hidden and t.type = $1 and `+hasVisibleEpisode+` group by g order by c desc, g asc`, nil)
 		if err != nil {
 			return nil, err
 		}
