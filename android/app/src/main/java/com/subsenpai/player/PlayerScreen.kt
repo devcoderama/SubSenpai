@@ -688,10 +688,18 @@ private fun WatchHeader(title: String?, partyCode: String?, onBack: () -> Unit) 
 }
 
 /**
- * Halaman pembungkus embed khusus layar penuh: viewport terkunci
- * (tidak bisa zoom/geser) dan iframe tepat 100% wadah, sehingga
- * video pas layar seperti di YouTube — tidak terpotong dan
- * halaman luarnya tidak bisa di-scroll.
+ * Halaman pembungkus embed: viewport terkunci (tidak bisa
+ * zoom/geser) dan iframe tepat 100% wadah, sehingga video pas
+ * mengisi wadah seperti di YouTube — tidak terpotong dan halaman
+ * luarnya tidak bisa di-scroll. Dipakai di SEMUA mode (potret &
+ * layar penuh): sejak v0.24.22 WebView hanya boleh memuat SATU
+ * halaman yang sama persis — dulu mode potret memuat URL langsung
+ * dan layar penuh memuat pembungkus ini, ditambah key() komposisi
+ * yang ikut berubah oleh status layar penuh, sehingga setiap
+ * membesarkan/mengecilkan layar MEMBUANG WebView dan memuat ulang
+ * dari nol (video terjeda / tertutup sendiri — keluhan Rams).
+ * Kini beralih ukuran hanya mengubah ukuran wadah; halaman &
+ * putaran video tidak disentuh sama sekali.
  */
 private fun embedFullscreenHtml(url: String): String {
     val safe = url.replace("&", "&amp;").replace("\"", "&quot;")
@@ -782,7 +790,11 @@ private fun VideoPlayerContainer(
                 ) { Text("Tonton Iklan untuk Membuka") }
             }
         } else if (curSrc != null && isEmbedUrl(curSrc.url)) {
-            key(curSrc.url, fullscreen) {
+            // key HANYA pada URL sumber: status layar penuh TIDAK
+            // boleh masuk key — mengubah key membuang AndroidView
+            // dan membuat WebView baru dari nol (muat ulang =
+            // video terjeda/tertutup saat layar dibesarkan).
+            key(curSrc.url) {
                 AndroidView(
                     factory = {
                         WebView(it).apply {
@@ -826,27 +838,21 @@ private fun VideoPlayerContainer(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                             )
-                            if (fullscreen) {
-                                // Layar penuh ala YouTube: embed
-                                // dibungkus halaman bervieport
-                                // terkunci — video tepat sebesar
-                                // layar, tidak bisa digeser dan
-                                // tidak terpotong. Mode potret tetap
-                                // memuat URL embed langsung.
-                                val origin = runCatching {
-                                    val u = java.net.URL(curSrc.url)
-                                    u.protocol + "://" + u.host
-                                }.getOrDefault(curSrc.url)
-                                loadDataWithBaseURL(
-                                    origin,
-                                    embedFullscreenHtml(curSrc.url),
-                                    "text/html",
-                                    "UTF-8",
-                                    null,
-                                )
-                            } else {
-                                loadUrl(curSrc.url)
-                            }
+                            // SATU muatan yang sama untuk potret &
+                            // layar penuh (lihat embedFullscreenHtml):
+                            // beralih ukuran tidak memuat ulang,
+                            // video terus berputar tanpa jeda.
+                            val origin = runCatching {
+                                val u = java.net.URL(curSrc.url)
+                                u.protocol + "://" + u.host
+                            }.getOrDefault(curSrc.url)
+                            loadDataWithBaseURL(
+                                origin,
+                                embedFullscreenHtml(curSrc.url),
+                                "text/html",
+                                "UTF-8",
+                                null,
+                            )
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
