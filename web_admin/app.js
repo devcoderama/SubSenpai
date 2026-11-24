@@ -78,14 +78,38 @@ function b64urlDecode(str) {
 let sessionId = null;
 let aesKey = null;
 
-/* sessionStorage bisa MELEMPAR error di sebagian peramban (Brave
+/* localStorage bisa MELEMPAR error di sebagian peramban (Brave
  * Shields / mode blokir cookie): setItem/removeItem gagal sementara
  * getItem jalan — login membeku diam bila tidak dibungkus. Semua
- * akses storage lewat pembungkus aman ini dengan cadangan memori. */
+ * akses storage lewat pembungkus aman ini dengan cadangan memori.
+ *
+ * Sejak v29 (permintaan Rams 2026-11-24): JWT disimpan di
+ * localStorage, BUKAN sessionStorage, agar sesi login tetap ada
+ * setelah peramban ditutup — tidak perlu login ulang tiap membuka
+ * dashboard (JWT backend sendiri berlaku 30 hari). Token lama yang
+ * masih tersimpan di sessionStorage dipindahkan sekali saat
+ * ditemukan, jadi sesi yang sedang berjalan tidak terputus. */
 const memStore = {};
-const storeGet = (k) => { try { return sessionStorage.getItem(k); } catch (e) { return memStore[k] || null; } };
-const storeSet = (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { memStore[k] = v; } };
-const storeDel = (k) => { try { sessionStorage.removeItem(k); } catch (e) { delete memStore[k]; } };
+const storeGet = (k) => {
+  try {
+    const v = localStorage.getItem(k);
+    if (v != null) return v;
+  } catch (e) { return memStore[k] || null; }
+  try {
+    const lama = sessionStorage.getItem(k);
+    if (lama != null) {
+      try { localStorage.setItem(k, lama); sessionStorage.removeItem(k); } catch (e) { /* abaikan */ }
+      return lama;
+    }
+  } catch (e) { /* abaikan */ }
+  return memStore[k] || null;
+};
+const storeSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { memStore[k] = v; } };
+const storeDel = (k) => {
+  try { localStorage.removeItem(k); } catch (e) { /* abaikan */ }
+  try { sessionStorage.removeItem(k); } catch (e) { /* abaikan */ }
+  delete memStore[k];
+};
 
 let jwt = storeGet(JWT_KEY) || null;
 let me = null;
