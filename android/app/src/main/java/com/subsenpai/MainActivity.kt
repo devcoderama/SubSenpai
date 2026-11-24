@@ -54,6 +54,7 @@ import com.subsenpai.ui.DetailScreen
 import com.subsenpai.ui.FriendsScreen
 import com.subsenpai.ui.GroupsScreen
 import com.subsenpai.ui.HomeScreen
+import com.subsenpai.ui.HomeSession
 import com.subsenpai.ui.LoginScreen
 import com.subsenpai.ui.PremiumScreen
 import com.subsenpai.ui.WatchlistScreen
@@ -141,6 +142,11 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
                 val nav = rememberNavController()
                 val repo = remember { CatalogRepository(auth = AuthStore(context)) }
+                // Sesi Beranda hidup di sini (di luar NavHost) agar
+                // tab kategori + posisi scroll Beranda selamat dari
+                // navigasi ke Detail/Pemutar (permintaan Rams
+                // 2026-11-24) — lihat HomeSession di HomeScreen.kt.
+                val homeSession = remember { HomeSession() }
                 // Bagikan judul ke tab Post: isi prefill composer lalu
                 // pindah ke tab Post (FeedScreen menerapkannya).
                 val shareToPost: (com.subsenpai.data.TitleDetail) -> Unit = { d ->
@@ -380,6 +386,7 @@ class MainActivity : ComponentActivity() {
                         composable("home") {
                             HomeScreen(
                                 repo,
+                                session = homeSession,
                                 authVersion = authVersion,
                                 onOpenTitle = { nav.navigate("detail/$it") },
                                 onOpenEpisode = { nav.navigate("player/$it") },

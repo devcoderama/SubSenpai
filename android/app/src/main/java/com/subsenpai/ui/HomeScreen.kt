@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -70,6 +71,7 @@ import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.SettingsStore
 import com.subsenpai.data.TitleCard
 import com.subsenpai.data.TitleFacets
+import com.subsenpai.data.WatchHistoryItem
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -80,6 +82,72 @@ private val typeFilters = listOf(
 private val rowTypes = listOf(
     "anime" to "Anime Pilihan", "donghua" to "Donghua Pilihan", "film" to "Film Pilihan",
 )
+
+/**
+ * Sesi telusur Beranda (permintaan Rams 2026-11-24): keadaan
+ * halaman Beranda — tab kategori aktif, genre/filter, hasil yang
+ * sudah dimuat, posisi scroll — disimpan di pemegang ini yang
+ * hidup di MainActivity, DI LUAR NavHost. Dulu semuanya `remember`
+ * di dalam HomeScreen: membuka Detail membuang komposisi Beranda,
+ * jadi tombol kembali selalu mendarat di tab "Semua" posisi atas
+ * dan memuat ulang dari nol. Kini kembali dari Detail/Pemutar
+ * mengembalikan tab + posisi scroll persis seperti ditinggalkan
+ * (di awal tetap di awal, di tengah tetap di tengah), tanpa muat
+ * ulang. Sesi hanya di memori: aplikasi ditutup = mulai segar.
+ */
+class HomeSession {
+    val trending = mutableStateOf<List<TitleCard>>(emptyList())
+    val homeLoaded = mutableStateOf(false)
+    val terbaru = mutableStateOf<List<TitleCard>>(emptyList())
+    val perType = mutableStateOf<Map<String, List<TitleCard>>>(emptyMap())
+    val homeLive = mutableStateOf<Map<String, List<CatalogRepository.LiveBrowseItem>>>(emptyMap())
+    val lanjut = mutableStateOf<List<WatchHistoryItem>>(emptyList())
+    val reloadKey = mutableStateOf(0)
+    val type = mutableStateOf<String?>(null)
+    val query = mutableStateOf("")
+
+    /** Posisi scroll Beranda mode rel (tab Semua, tanpa telusur). */
+    val homeScroll = LazyListState()
+
+    /** reloadKey terakhir yang rel Berandanya sudah dimuat. */
+    var homeReloadSeen = Int.MIN_VALUE
+
+    private val tabs = mutableMapOf<String, HomeTabSession>()
+    fun tabFor(type: String?): HomeTabSession =
+        tabs.getOrPut(type ?: "semua") { HomeTabSession() }
+}
+
+/** Keadaan satu tab kategori Beranda (Semua/Anime/Donghua/Film). */
+class HomeTabSession {
+    val genre = mutableStateOf<String?>(null)
+    val genreList = mutableStateOf<List<String>>(emptyList())
+    val year = mutableStateOf<Int?>(null)
+    val country = mutableStateOf<String?>(null)
+    val network = mutableStateOf<String?>(null)
+    val facets = mutableStateOf<TitleFacets?>(null)
+    val hasil = mutableStateOf<List<TitleCard>>(emptyList())
+    val hasilCursor = mutableStateOf<String?>(null)
+    val hasilHasMore = mutableStateOf(false)
+    val liveItems = mutableStateOf<List<CatalogRepository.LiveBrowseItem>>(emptyList())
+    val liveSource = mutableStateOf("")
+    val liveHasMore = mutableStateOf(false)
+    val livePage = mutableStateOf(1)
+
+    /** Posisi scroll daftar Hasil tab ini. */
+    val scroll = LazyListState()
+
+    /** Tanda tangan filter (genre|tahun|negara|jaringan|query) yang
+     *  hasil saat ini mencerminkan; null = belum pernah dimuat.
+     *  Dipakai agar kembali dari Detail TIDAK memuat ulang hasil
+     *  dari halaman pertama (yang akan merusak posisi scroll). */
+    var hasilSignature: String? = null
+
+    /** Genre terakhir yang bagian live-nya sudah diproses, dan
+     *  apakah muatannya berhasil — pasangan penanda untuk efek
+     *  telusur langsung agar tidak mengulang saat kembali. */
+    var liveGenre: String? = null
+    var liveLoaded: Boolean = false
+}
 
 /**
  * Beranda ala Netflix (redesain 2026-11-22 atas contoh UI Netflix
@@ -93,6 +161,7 @@ private val rowTypes = listOf(
 @Composable
 fun HomeScreen(
     repo: CatalogRepository,
+    session: HomeSession,
     authVersion: Int,
     onOpenTitle: (String) -> Unit,
     onOpenEpisode: (String) -> Unit,
@@ -104,28 +173,32 @@ fun HomeScreen(
 ) {
     val homeContext = LocalContext.current
     val settings = remember { SettingsStore(homeContext) }
-    var trending by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
-    var homeLoaded by remember { mutableStateOf(false) }
-    var terbaru by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
-    var perType by remember { mutableStateOf<Map<String, List<TitleCard>>>(emptyMap()) }
+    // Keadaan telusur hidup di HomeSession (di luar NavHost) agar
+    // selamat dari navigasi ke Detail/Pemutar — lihat kelasnya di
+    // atas. Yang murni sesaat (dialog, penanda muat) tetap lokal.
+    var type by session.type
+    val tab = session.tabFor(type)
+    var trending by session.trending
+    var homeLoaded by session.homeLoaded
+    var terbaru by session.terbaru
+    var perType by session.perType
     // Baris Beranda dari BERANDA situs sumber (terbaru/populer versi
     // situs resminya — sama seperti halaman download; permintaan
     // Rams 2026-11-23). Bila sumber kosong/gagal, baris katalog
     // (perType) yang tampil seperti sebelumnya.
-    var homeLive by remember { mutableStateOf<Map<String, List<CatalogRepository.LiveBrowseItem>>>(emptyMap()) }
-    var hasil by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
-    var lanjut by remember { mutableStateOf<List<com.subsenpai.data.WatchHistoryItem>>(emptyList()) }
+    var homeLive by session.homeLive
+    var hasil by tab.hasil
+    var lanjut by session.lanjut
     var error by remember { mutableStateOf<String?>(null) }
     var fatalKind by remember { mutableStateOf<AppErrorKind?>(null) }
-    var reloadKey by remember { mutableStateOf(0) }
-    var type by remember { mutableStateOf<String?>(null) }
-    var query by remember { mutableStateOf("") }
-    var genre by remember { mutableStateOf<String?>(null) }
-    var genreList by remember { mutableStateOf<List<String>>(emptyList()) }
-    var year by remember { mutableStateOf<Int?>(null) }
-    var country by remember { mutableStateOf<String?>(null) }
-    var network by remember { mutableStateOf<String?>(null) }
-    var facets by remember { mutableStateOf<TitleFacets?>(null) }
+    var reloadKey by session.reloadKey
+    var query by session.query
+    var genre by tab.genre
+    var genreList by tab.genreList
+    var year by tab.year
+    var country by tab.country
+    var network by tab.network
+    var facets by tab.facets
     var filterOpen by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
     val browsing = type != null || query.isNotBlank()
@@ -135,13 +208,20 @@ fun HomeScreen(
     // pilihan mengikuti halaman genre web sumbernya, bukan hanya
     // katalog lokal. Judul yang belum ada di katalog diimpor saat
     // diketuk.
-    var liveItems by remember { mutableStateOf<List<CatalogRepository.LiveBrowseItem>>(emptyList()) }
-    var liveSource by remember { mutableStateOf("") }
+    var liveItems by tab.liveItems
+    var liveSource by tab.liveSource
     var liveLoading by remember { mutableStateOf(false) }
-    var liveHasMore by remember { mutableStateOf(false) }
-    var livePage by remember { mutableStateOf(1) }
+    var liveHasMore by tab.liveHasMore
+    var livePage by tab.livePage
     var importingSlug by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(type, genre) {
+        // Kembali dari Detail dengan genre sama yang sudah termuat:
+        // jangan kosongkan / muat ulang bagian live.
+        if (tab.liveGenre == genre && (genre == null || tab.liveLoaded)) {
+            return@LaunchedEffect
+        }
+        tab.liveGenre = genre
+        tab.liveLoaded = false
         liveItems = emptyList()
         liveSource = ""
         liveHasMore = false
@@ -155,6 +235,7 @@ fun HomeScreen(
                 liveSource = src
                 liveHasMore = more
                 liveItems = items
+                tab.liveLoaded = true
             } catch (e: Exception) {
                 // Sumber tak terjangkau: bagian katalog tetap tampil.
             } finally {
@@ -228,6 +309,12 @@ fun HomeScreen(
     }
 
     LaunchedEffect(reloadKey) {
+        // Rel Beranda untuk reloadKey ini sudah termuat di sesi:
+        // kembali dari halaman lain tidak perlu memuat ulang.
+        if (session.homeReloadSeen == reloadKey && homeLoaded) {
+            return@LaunchedEffect
+        }
+        session.homeReloadSeen = reloadKey
         try {
             val (tr, te) = repo.home()
             trending = tr
@@ -293,11 +380,23 @@ fun HomeScreen(
     // Pagination Hasil: halaman pertama dimuat saat filter berubah;
     // halaman berikutnya dimuat bertahap saat pengguna menggulir
     // mendekati bawah (ala Netflix/YouTube) agar ringan & mulus.
-    var hasilCursor by remember { mutableStateOf<String?>(null) }
-    var hasilHasMore by remember { mutableStateOf(false) }
+    var hasilCursor by tab.hasilCursor
+    var hasilHasMore by tab.hasilHasMore
     var hasilLoadingMore by remember { mutableStateOf(false) }
     LaunchedEffect(type, query, genre, year, country, network) {
         if (!browsing) return@LaunchedEffect
+        // Hasil untuk kombinasi filter ini sudah termuat di sesi
+        // (kembali dari Detail/Pemutar): pertahankan daftar yang
+        // sudah terpaginasi + posisi scroll-nya, jangan muat ulang
+        // dari halaman pertama.
+        val sig = listOf(
+            genre ?: "", year?.toString() ?: "", country ?: "",
+            network ?: "", query,
+        ).joinToString("|")
+        if (tab.hasilSignature == sig) return@LaunchedEffect
+        tab.hasilSignature = sig
+        // Filter benar-benar berubah: mulai dari atas lagi.
+        tab.scroll.scrollToItem(0)
         try {
             val (page, next) = repo.titlesPaged(type, query.ifBlank { null }, genre, year, country, network, null)
             hasil = page
@@ -330,7 +429,10 @@ fun HomeScreen(
             }
         }
     }
-    val listState = rememberLazyListState()
+    // Satu LazyColumn untuk dua mode: mode rel memakai scroll sesi
+    // Beranda, mode telusur memakai scroll sesi tab aktif — posisi
+    // masing-masing pulih persis saat kembali (lihat HomeSession).
+    val listState = if (browsing) tab.scroll else session.homeScroll
     val nearEnd by remember {
         derivedStateOf {
             val info = listState.layoutInfo
