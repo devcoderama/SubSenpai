@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,18 +67,55 @@ private fun todayLabel(): String = when (Calendar.getInstance().get(Calendar.DAY
     else -> "Minggu"
 }
 
+/**
+ * Sesi halaman Jadwal Rilis (permintaan Rams 2026-11-24, menyusul
+ * sesi Beranda v0.24.19): kategori aktif, hari pilihan per
+ * kategori, data jadwal yang sudah dimuat, dan posisi scroll
+ * disimpan di pemegang ini yang hidup di MainActivity, DI LUAR
+ * NavHost. Dulu semuanya `remember` di dalam ScheduleScreen:
+ * membuka judul dari tab Film lalu kembali selalu mendarat di
+ * Anime dari atas. Kini kembali mengembalikan kategori + hari +
+ * posisi scroll persis seperti ditinggalkan.
+ */
+class ScheduleSession {
+    val selectedType = mutableStateOf("anime")
+    val cache = mutableStateOf<Map<String, List<ScheduleGroup>>>(emptyMap())
+
+    private val tabs = mutableMapOf<String, ScheduleTabSession>()
+    fun tabFor(type: String): ScheduleTabSession =
+        tabs.getOrPut(type) { ScheduleTabSession() }
+}
+
+/** Keadaan satu kategori Jadwal (Anime/Donghua/Film). */
+class ScheduleTabSession {
+    val selectedDay = mutableStateOf<String?>(null)
+
+    /** Posisi scroll daftar jadwal kategori ini. */
+    val scroll = LazyListState()
+
+    /** Hari efektif terakhir yang daftarnya ditampilkan — dipakai
+     *  untuk menggulir ke atas HANYA saat hari benar-benar berganti,
+     *  bukan saat kembali dari Detail/Pemutar. */
+    var daySeen: String? = null
+}
+
 @Composable
 fun ScheduleScreen(
     repo: CatalogRepository,
+    session: ScheduleSession,
     onOpenTitle: (String) -> Unit,
     onPlayEpisode: (String) -> Unit,
 ) {
     val types = listOf("anime" to "Anime", "donghua" to "Donghua", "film" to "Film")
-    var selectedType by remember { mutableStateOf("anime") }
-    var cache by remember { mutableStateOf<Map<String, List<ScheduleGroup>>>(emptyMap()) }
+    // Keadaan halaman hidup di ScheduleSession (di luar NavHost)
+    // agar selamat dari navigasi — lihat kelasnya di atas. Yang
+    // murni sesaat (penanda sibuk/muat) tetap lokal.
+    var selectedType by session.selectedType
+    val tab = session.tabFor(selectedType)
+    var cache by session.cache
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var selectedDay by remember { mutableStateOf<String?>(null) }
+    var selectedDay by tab.selectedDay
     var busyKey by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -158,6 +196,17 @@ fun ScheduleScreen(
         ?: groups.firstOrNull()?.day
     val dayItems = groups.firstOrNull { it.day == effectiveDay }?.items.orEmpty()
 
+    // Hari benar-benar berganti (ketuk chip hari / kategori lain
+    // termuat): daftar mulai dari atas. Kembali dari Detail/
+    // Pemutar TIDAK memicu ini (hari efektifnya sama) sehingga
+    // posisi scroll pulih persis.
+    LaunchedEffect(effectiveDay) {
+        if (effectiveDay != null && tab.daySeen != effectiveDay) {
+            tab.daySeen = effectiveDay
+            tab.scroll.scrollToItem(0)
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -175,8 +224,9 @@ fun ScheduleScreen(
             types.forEachIndexed { i, (key, label) ->
                 if (i > 0) Spacer(Modifier.width(8.dp))
                 val onClick = {
+                    // Hari pilihan kini diingat per kategori (sesi),
+                    // tidak lagi diatur ulang saat pindah kategori.
                     selectedType = key
-                    selectedDay = null
                 }
                 if (key == selectedType) {
                     Button(onClick = onClick, modifier = Modifier.weight(1f)) { Text(label) }
@@ -239,7 +289,7 @@ fun ScheduleScreen(
                         modifier = Modifier.padding(24.dp),
                     )
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(modifier = Modifier.fillMaxSize(), state = tab.scroll) {
                         items(dayItems) { item ->
                             Row(
                                 modifier = Modifier.fillMaxWidth()

@@ -55,6 +55,7 @@ import com.subsenpai.ui.FriendsScreen
 import com.subsenpai.ui.GroupsScreen
 import com.subsenpai.ui.HomeScreen
 import com.subsenpai.ui.HomeSession
+import com.subsenpai.ui.ScheduleSession
 import com.subsenpai.ui.LoginScreen
 import com.subsenpai.ui.PremiumScreen
 import com.subsenpai.ui.WatchlistScreen
@@ -147,6 +148,9 @@ class MainActivity : ComponentActivity() {
                 // navigasi ke Detail/Pemutar (permintaan Rams
                 // 2026-11-24) — lihat HomeSession di HomeScreen.kt.
                 val homeSession = remember { HomeSession() }
+                // Sesi Jadwal Rilis: pola yang sama (kategori + hari
+                // + posisi scroll selamat dari navigasi).
+                val scheduleSession = remember { ScheduleSession() }
                 // Bagikan judul ke tab Post: isi prefill composer lalu
                 // pindah ke tab Post (FeedScreen menerapkannya).
                 val shareToPost: (com.subsenpai.data.TitleDetail) -> Unit = { d ->
@@ -437,6 +441,7 @@ class MainActivity : ComponentActivity() {
                         composable("schedule") {
                             com.subsenpai.ui.ScheduleScreen(
                                 repo,
+                                session = scheduleSession,
                                 onOpenTitle = { nav.navigate("detail/$it") },
                                 onPlayEpisode = { nav.navigate("player/$it") },
                             )
