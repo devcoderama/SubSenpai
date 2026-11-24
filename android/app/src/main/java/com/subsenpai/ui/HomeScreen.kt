@@ -212,6 +212,10 @@ fun HomeScreen(
     var liveItems by tab.liveItems
     var liveSource by tab.liveSource
     var liveLoading by remember { mutableStateOf(false) }
+    // Gagal memuat halaman live berikutnya secara otomatis: muat
+    // otomatis berhenti (agar tidak mengulang tanpa henti) dan
+    // tombol manual tampil lagi sebagai jalan coba ulang.
+    var liveAutoFailed by remember { mutableStateOf(false) }
     var liveHasMore by tab.liveHasMore
     var livePage by tab.livePage
     var importingSlug by remember { mutableStateOf<String?>(null) }
@@ -227,6 +231,7 @@ fun HomeScreen(
         liveSource = ""
         liveHasMore = false
         livePage = 1
+        liveAutoFailed = false
         val t = type
         val g = genre
         if (t != null && g != null) {
@@ -438,6 +443,32 @@ fun HomeScreen(
             }
         }
     }
+    // Muat halaman berikutnya bagian live (sumber) — pola yang
+    // sama dengan loadMoreHasil: dipicu guliran mendekati ujung.
+    // Dulu bagian ini hanya punya tombol "Muat lebih banyak" yang
+    // harus diketuk (keluhan Rams 2026-11-24 di tab Film: tidak
+    // otomatis seperti Hasil); kini otomatis, tombol hanya tampil
+    // lagi bila muat otomatis gagal.
+    val loadMoreLive: () -> Unit = {
+        val t = type
+        val g = genre
+        if (t != null && g != null && liveHasMore && !liveLoading && !liveAutoFailed) {
+            val next = livePage + 1
+            liveLoading = true
+            scope.launch {
+                try {
+                    val (_, more, moreItems) = repo.liveBrowse(t, g, next)
+                    livePage = next
+                    liveHasMore = more
+                    liveItems = liveItems + moreItems
+                } catch (e: Exception) {
+                    liveAutoFailed = true
+                } finally {
+                    liveLoading = false
+                }
+            }
+        }
+    }
     // Satu LazyColumn untuk dua mode: mode rel memakai scroll sesi
     // Beranda, mode telusur memakai scroll sesi tab aktif — posisi
     // masing-masing pulih persis saat kembali (lihat HomeSession).
@@ -454,8 +485,11 @@ fun HomeScreen(
             info.totalItemsCount > 0 && last >= info.totalItemsCount - 5
         }
     }
-    LaunchedEffect(nearEnd, hasilHasMore, hasilLoadingMore) {
-        if (nearEnd && browsing) loadMoreHasil()
+    LaunchedEffect(nearEnd, hasilHasMore, hasilLoadingMore, liveHasMore, liveLoading, liveAutoFailed) {
+        if (nearEnd && browsing) {
+            loadMoreHasil()
+            loadMoreLive()
+        }
     }
 
     LaunchedEffect(fatalKind) { onFatalChange(fatalKind != null) }
@@ -594,29 +628,20 @@ fun HomeScreen(
                             ) {
                                 if (liveLoading) {
                                     CircularProgressIndicator(color = NetflixRed, modifier = Modifier.size(22.dp))
-                                } else {
+                                } else if (liveAutoFailed) {
+                                    // Muat otomatis gagal: tombol manual
+                                    // sebagai jalan coba ulang.
                                     TextButton(onClick = {
-                                        val t = type ?: return@TextButton
-                                        val g = genre ?: return@TextButton
-                                        val next = livePage + 1
-                                        liveLoading = true
-                                        scope.launch {
-                                            try {
-                                                val (_, more, moreItems) = repo.liveBrowse(t, g, next)
-                                                livePage = next
-                                                liveHasMore = more
-                                                liveItems = liveItems + moreItems
-                                            } catch (e: Exception) {
-                                                // Halaman berikutnya gagal: berhenti di sini.
-                                                liveHasMore = false
-                                            } finally {
-                                                liveLoading = false
-                                            }
-                                        }
+                                        liveAutoFailed = false
+                                        loadMoreLive()
                                     }) {
                                         Text("Muat lebih banyak dari $liveSource", color = Color.White)
                                     }
                                 }
+                                // Selain itu halaman berikutnya dimuat
+                                // OTOMATIS oleh pemicu nearEnd saat
+                                // pengguna menggulir mendekati ujung —
+                                // tanpa tombol, sama seperti Hasil.
                             }
                         }
                     }
