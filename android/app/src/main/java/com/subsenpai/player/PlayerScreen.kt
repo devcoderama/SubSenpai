@@ -16,11 +16,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -58,6 +60,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -74,6 +77,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.subsenpai.data.CatalogRepository
 import com.subsenpai.data.EpisodeItem
@@ -688,6 +692,52 @@ private fun WatchHeader(title: String?, partyCode: String?, onBack: () -> Unit) 
 }
 
 /**
+ * Pendengar sentuh pemutar: meneruskan ketukan (onTapDown untuk
+ * memunculkan tombol Layar Penuh) sambil membaca gestur cubit
+ * lewat ScaleGestureDetector. Cubit ke luar (onPinch(true)) =
+ * perbesar memenuhi layar; cubit ke dalam (onPinch(false)) =
+ * kembali ke ukuran pas seluruh gambar — ala YouTube (permintaan
+ * Rams 2026-11-24: subtitle hardsub terpotong di layar penuh
+ * karena video 16:9 dipaksa memenuhi layar 20:9). Selalu
+ * mengembalikan false: sentuhan tetap diteruskan ke pemutar
+ * embed/ExoPlayer seperti biasa.
+ */
+private fun pinchZoomListener(
+    context: android.content.Context,
+    onTapDown: () -> Unit,
+    onPinch: (Boolean) -> Unit,
+): android.view.View.OnTouchListener {
+    var product = 1f
+    val detector = android.view.ScaleGestureDetector(
+        context,
+        object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScaleBegin(d: android.view.ScaleGestureDetector): Boolean {
+                product = 1f
+                return true
+            }
+
+            override fun onScale(d: android.view.ScaleGestureDetector): Boolean {
+                product *= d.scaleFactor
+                return true
+            }
+
+            override fun onScaleEnd(d: android.view.ScaleGestureDetector) {
+                if (product > 1.3f) {
+                    onPinch(true)
+                } else if (product < 0.75f) {
+                    onPinch(false)
+                }
+            }
+        },
+    )
+    return android.view.View.OnTouchListener { _, e ->
+        if (e.action == MotionEvent.ACTION_DOWN) onTapDown()
+        detector.onTouchEvent(e)
+        false
+    }
+}
+
+/**
  * Halaman pembungkus embed: viewport terkunci (tidak bisa
  * zoom/geser) dan iframe tepat 100% wadah, sehingga video pas
  * mengisi wadah seperti di YouTube — tidak terpotong dan halaman
@@ -731,6 +781,34 @@ private fun VideoPlayerContainer(
     var webLoading by remember(curSrc?.url) {
         mutableStateOf(curSrc != null && isEmbedUrl(curSrc.url))
     }
+    // Mode skala video di layar penuh (ala YouTube): false = PAS
+    // (seluruh gambar tampil sebagai kotak 16:9 di tengah layar —
+    // subtitle aman), true = ZOOM (memenuhi layar, tepi
+    // terpotong). Berganti lewat gestur cubit pada video; diatur
+    // ulang tiap ganti sumber.
+    var zoomed by remember(curSrc?.url) { mutableStateOf(false) }
+    var zoomNote by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(zoomNote) {
+        if (zoomNote != null) {
+            kotlinx.coroutines.delay(1300)
+            zoomNote = null
+        }
+    }
+    // onPinch ditangkap oleh pendengar sentuh di dalam factory
+    // AndroidView (dibuat SATU kali) — status layar penuh harus
+    // dibaca lewat rememberUpdatedState agar selalu nilai terbaru,
+    // bukan nilai saat factory pertama berjalan (mode potret).
+    val fullscreenNow = rememberUpdatedState(fullscreen)
+    val onPinch: (Boolean) -> Unit = { out ->
+        if (fullscreenNow.value && zoomed != out) {
+            zoomed = out
+            zoomNote = if (out) {
+                "Memenuhi layar — cubit ke dalam untuk seluruh gambar"
+            } else {
+                "Seluruh gambar — cubit ke luar untuk memenuhi layar"
+            }
+        }
+    }
     // Tombol Layar Penuh ala YouTube: muncul sesaat saat sumber baru
     // dimuat dan setiap kali video disentuh, lalu sembunyi sendiri.
     // Sejak 2026-11-24 (keluhan Rams): ikon saja tanpa teks, di pojok
@@ -748,7 +826,17 @@ private fun VideoPlayerContainer(
             controlsVisible = false
         }
     }
-    Box(modifier = modifier.background(Color.Black)) {
+    BoxWithConstraints(modifier = modifier.background(Color.Black)) {
+        // Daerah tampil video: layar penuh mode PAS memakai kotak
+        // 16:9 terbesar yang muat di layar (di tengah, sisa hitam);
+        // mode ZOOM & mode potret memakai seluruh wadah.
+        val mediaModifier = if (fullscreen && !zoomed) {
+            val w = if (maxWidth < maxHeight * 16f / 9f) maxWidth else maxHeight * 16f / 9f
+            val h = if (maxHeight < maxWidth * 9f / 16f) maxHeight else maxWidth * 9f / 16f
+            Modifier.align(Alignment.Center).size(w, h)
+        } else {
+            Modifier.fillMaxSize()
+        }
         if (locked != null) {
             val premiumLock = locked.startsWith("premium_required")
             Column(
@@ -803,12 +891,16 @@ private fun VideoPlayerContainer(
                             // selesai dilukis (kedip putih).
                             setBackgroundColor(0xFF0D0D0F.toInt())
                             // Amati ketukan untuk memunculkan tombol
-                            // Layar Penuh; false = ketukan diteruskan
+                            // Layar Penuh + gestur cubit untuk mode
+                            // Pas/Zoom; sentuhan selalu diteruskan
                             // ke halaman embed seperti biasa.
-                            setOnTouchListener { _, e ->
-                                if (e.action == MotionEvent.ACTION_DOWN) pokeControls()
-                                false
-                            }
+                            setOnTouchListener(
+                                pinchZoomListener(
+                                    context = it,
+                                    onTapDown = { pokeControls() },
+                                    onPinch = onPinch,
+                                ),
+                            )
                             // Halaman embed tidak boleh bisa digeser
                             // dari sisi WebView.
                             isVerticalScrollBarEnabled = false
@@ -855,7 +947,7 @@ private fun VideoPlayerContainer(
                             )
                         }
                     },
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = mediaModifier,
                 )
             }
         } else {
@@ -863,17 +955,27 @@ private fun VideoPlayerContainer(
                 factory = {
                     PlayerView(it).apply {
                         this.player = player
-                        setOnTouchListener { _, e ->
-                            if (e.action == MotionEvent.ACTION_DOWN) pokeControls()
-                            false
-                        }
+                        setOnTouchListener(
+                            pinchZoomListener(
+                                context = it,
+                                onTapDown = { pokeControls() },
+                                onPinch = onPinch,
+                            ),
+                        )
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT,
                         )
                     }
                 },
-                modifier = Modifier.fillMaxSize(),
+                update = { view ->
+                    view.resizeMode = if (fullscreen && zoomed) {
+                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    } else {
+                        AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    }
+                },
+                modifier = mediaModifier,
             )
         }
         if (loading || (curSrc != null && isEmbedUrl(curSrc.url) && webLoading)) {
@@ -895,6 +997,18 @@ private fun VideoPlayerContainer(
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+            )
+        }
+        if (fullscreen && zoomNote != null) {
+            // Label mode skala sesaat sesudah gestur cubit (ala
+            // YouTube: "Zoomed to fill" / "Original").
+            Text(
+                zoomNote!!,
+                color = Color.White,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp)
+                    .background(Color(0xB3000000), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
         if (locked == null) {
