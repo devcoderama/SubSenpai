@@ -147,6 +147,7 @@
     </a>
     <a class="btn ghost" href="#katalog" style="margin-left:8px"><i class="fa-solid fa-play"></i>Lihat Katalog</a>
     <div class="verinfo" id="verInfo">Mengambil info versi terbaru…</div>
+    <div class="verinfo" id="dlTotal"></div>
     <div class="hint"><i class="fa-solid fa-circle-check"></i>Gratis · Ukuran ringan ±14 MB · Android 7.0 ke atas</div>
   </div>
 </div>
@@ -226,6 +227,7 @@
       <i class="fa-brands fa-android"></i><span>Download SubSenpai Sekarang</span>
     </a>
     <div class="verinfo" id="verInfo2"></div>
+    <div class="verinfo" id="dlTotal2"></div>
   </div>
 </main>
 
@@ -267,6 +269,39 @@
       throw new Error("no apk");
     })
     .catch(function () { apply(FALLBACK, "Versi terbaru · Android 7.0+"); });
+})();
+
+/* ================= Total unduhan semua versi =================
+ * Jumlahkan download_count aset .apk dari SELURUH rilis (paginasi
+ * per_page=100) — permintaan Rams 2026-11-24: tampilkan total
+ * unduhan dari versi pertama sampai terbaru di halaman download.
+ * Gagal ambil: elemen dibiarkan kosong, halaman tetap normal. */
+(function () {
+  var total = 0;
+  function render() {
+    var html = "<i class=\"fa-solid fa-download\"></i> Total <b>" +
+      total.toLocaleString("id-ID") + "</b> unduhan · semua versi";
+    ["dlTotal", "dlTotal2"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    });
+  }
+  function page(p) {
+    return fetch("https://api.github.com/repos/devcoderama/SubSenpai/releases?per_page=100&page=" + p,
+      { headers: { "Accept": "application/vnd.github+json" } })
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+      .then(function (rels) {
+        for (var i = 0; i < rels.length; i++) {
+          var assets = rels[i].assets || [];
+          for (var j = 0; j < assets.length; j++) {
+            if (/\.apk$/i.test(assets[j].name)) total += assets[j].download_count || 0;
+          }
+        }
+        if (rels.length === 100) return page(p + 1);
+        render();
+      });
+  }
+  page(1).catch(function () { /* biarkan kosong */ });
 })();
 
 /* ================= Katalog langsung dari API SubSenpai =================
