@@ -1,12 +1,17 @@
 package com.subsenpai.player
 
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import android.webkit.WebChromeClient
 import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -760,6 +765,58 @@ private fun embedFullscreenHtml(url: String): String {
         "<body><iframe src=\"" + safe + "\" allow=\"autoplay; fullscreen; encrypted-media; picture-in-picture\" allowfullscreen></iframe></body></html>"
 }
 
+/**
+ * Penampung fungsi keluar dari layar penuh bawaan pemutar embed,
+ * diisi oleh WebChromeClient di dalam factory WebView (yang berjalan
+ * satu kali) agar bisa dipanggil saat komposisi dibuang.
+ */
+private class NativeFsExitHolder {
+    var exit: (() -> Unit)? = null
+}
+
+private fun findActivity(ctx: Context): Activity? {
+    var c: Context? = ctx
+    while (c is ContextWrapper) {
+        if (c is Activity) return c
+        c = c.baseContext
+    }
+    return null
+}
+
+private fun embedHostOf(url: String): String =
+    runCatching { java.net.URL(url).host.lowercase() }.getOrDefault("")
+
+/**
+ * Potongan nama host pemutar embed yang DIKETAHUI punya tombol layar
+ * penuh bawaan yang berfungsi. Untuk server-server ini tombol layar
+ * penuh buatan sendiri disembunyikan — tombol bawaannya yang dipakai
+ * (permintaan Rams 2026-11-25). Host lain yang tombol bawaannya
+ * terbukti jalan ikut dicatat di perangkat (lihat loadNativeFsHosts)
+ * dan perlakuannya sama.
+ */
+private val NATIVE_FS_HOST_TOKENS = listOf(
+    "rumble", "youtube", "vk.com", "vkvideo", "ok.ru", "mp4upload",
+    "dailymotion", "vimeo", "filemoon", "streamtape", "dood",
+    "vidhide", "streamwish", "mixdrop", "voe.sx", "filelions",
+    "vidguard", "turbovid", "streamhide", "drive.google",
+)
+
+private fun embedHasNativeFs(url: String, learned: Set<String>): Boolean {
+    val host = embedHostOf(url)
+    if (host.isEmpty()) return false
+    return host in learned || NATIVE_FS_HOST_TOKENS.any { host.contains(it) }
+}
+
+private fun loadNativeFsHosts(ctx: Context): Set<String> =
+    ctx.getSharedPreferences("subsenpai-player", Context.MODE_PRIVATE)
+        .getStringSet("native_fs_hosts", emptySet())?.toSet() ?: emptySet()
+
+private fun saveNativeFsHost(ctx: Context, host: String) {
+    val prefs = ctx.getSharedPreferences("subsenpai-player", Context.MODE_PRIVATE)
+    val cur = prefs.getStringSet("native_fs_hosts", emptySet())?.toSet() ?: emptySet()
+    prefs.edit().putStringSet("native_fs_hosts", cur + host).apply()
+}
+
 @Composable
 private fun VideoPlayerContainer(
     player: ExoPlayer,
@@ -808,6 +865,37 @@ private fun VideoPlayerContainer(
                 "Seluruh gambar — cubit ke luar untuk memenuhi layar"
             }
         }
+    }
+    // Layar penuh BAWAAN pemutar embed (tombol layar penuh di dalam
+    // pemutar Rumble/VK/dll): WebChromeClient di factory WebView
+    // memasang tampilannya menutupi seluruh layar dan menyalakan
+    // status ini. Selama aktif, orientasi + bar sistem mengikuti
+    // mode ini dan tombol layar penuh buatan sendiri disembunyikan.
+    // State disimpan sebagai objek MutableState (bukan delegasi saja)
+    // karena factory AndroidView — yang berjalan satu kali — harus
+    // bisa menulisnya juga.
+    val appCtx = LocalContext.current
+    val nativeFsState = remember { mutableStateOf(false) }
+    var nativeFs by nativeFsState
+    val learnedFsState = remember { mutableStateOf(loadNativeFsHosts(appCtx)) }
+    var learnedFsHosts by learnedFsState
+    val nativeFsExit = remember { NativeFsExitHolder() }
+    LaunchedEffect(nativeFs) {
+        val act = findActivity(appCtx) ?: return@LaunchedEffect
+        val window = act.window
+        val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+        if (nativeFs || fullscreenNow.value) {
+            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { nativeFsExit.exit?.invoke() }
     }
     // Tombol Layar Penuh ala YouTube: muncul sesaat saat sumber baru
     // dimuat dan setiap kali video disentuh, lalu sembunyi sendiri.
@@ -886,6 +974,7 @@ private fun VideoPlayerContainer(
                 AndroidView(
                     factory = {
                         WebView(it).apply {
+                            val webCtx = it
                             // Latar gelap sejak awal: tanpa ini WebView
                             // berwarna putih sampai halaman embed
                             // selesai dilukis (kedip putih).
@@ -924,6 +1013,79 @@ private fun VideoPlayerContainer(
                                     failingUrl: String?,
                                 ) {
                                     webLoading = false
+                                }
+                            }
+                            // Tombol layar penuh BAWAAN pemutar embed:
+                            // tanpa WebChromeClient tombol itu mati —
+                            // permintaan layar penuh dari halaman tidak
+                            // pernah ditampilkan. Tampilan khususnya
+                            // dipasang menutupi seluruh layar (di dekor
+                            // jendela); keluar lewat tombol bawaan
+                            // pemutar yang sama atau tombol Kembali.
+                            webChromeClient = object : WebChromeClient() {
+                                private var cView: View? = null
+                                private var cCallback: CustomViewCallback? = null
+
+                                private fun exitFs() {
+                                    val v = cView ?: return
+                                    (v.parent as? ViewGroup)?.removeView(v)
+                                    cView = null
+                                    val cb = cCallback
+                                    cCallback = null
+                                    cb?.onCustomViewHidden()
+                                    nativeFsState.value = false
+                                }
+
+                                override fun onShowCustomView(
+                                    view: View,
+                                    callback: CustomViewCallback,
+                                ) {
+                                    if (cView != null) {
+                                        callback.onCustomViewHidden()
+                                        return
+                                    }
+                                    val decor = (findActivity(webCtx)?.window?.decorView) as? ViewGroup
+                                    if (decor == null) {
+                                        callback.onCustomViewHidden()
+                                        return
+                                    }
+                                    cView = view
+                                    cCallback = callback
+                                    view.setBackgroundColor(android.graphics.Color.BLACK)
+                                    decor.addView(
+                                        view,
+                                        ViewGroup.LayoutParams(
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                        ),
+                                    )
+                                    nativeFsExit.exit = { exitFs() }
+                                    view.isFocusableInTouchMode = true
+                                    view.requestFocus()
+                                    view.setOnKeyListener { _, keyCode, event ->
+                                        if (keyCode == KeyEvent.KEYCODE_BACK &&
+                                            event.action == KeyEvent.ACTION_UP
+                                        ) {
+                                            exitFs()
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                    // Host ini terbukti punya tombol layar
+                                    // penuh bawaan yang jalan: catat agar
+                                    // tombol buatan sendiri disembunyikan
+                                    // untuk server ini mulai sekarang.
+                                    val host = embedHostOf(curSrc.url)
+                                    if (host.isNotEmpty() && host !in learnedFsState.value) {
+                                        learnedFsState.value = learnedFsState.value + host
+                                        saveNativeFsHost(webCtx, host)
+                                    }
+                                    nativeFsState.value = true
+                                }
+
+                                override fun onHideCustomView() {
+                                    exitFs()
                                 }
                             }
                             layoutParams = ViewGroup.LayoutParams(
@@ -1011,7 +1173,15 @@ private fun VideoPlayerContainer(
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
-        if (locked == null) {
+        // Tombol layar penuh buatan sendiri disembunyikan bila pemutar
+        // embed sumber ini punya tombol bawaan yang berfungsi (host
+        // dikenal / tercatat di perangkat) — tombol bawaannya yang
+        // dipakai — dan selama mode bawaan itu aktif. Saat layar penuh
+        // buatan sendiri sedang aktif, tombol tetap tampil sebagai
+        // jalan keluar.
+        val embedNativeFs = curSrc != null && isEmbedUrl(curSrc.url) &&
+            embedHasNativeFs(curSrc.url, learnedFsHosts)
+        if (locked == null && !nativeFs && (!embedNativeFs || fullscreen)) {
             AnimatedVisibility(
                 visible = controlsVisible,
                 enter = fadeIn(),
