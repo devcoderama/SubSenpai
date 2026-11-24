@@ -81,7 +81,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val typeFilters = listOf(
-    null to "Semua", "anime" to "Anime", "donghua" to "Donghua", "film" to "Film",
+    null to "Semua", "film" to "Film", "anime" to "Anime", "donghua" to "Donghua",
 )
 
 private val rowTypes = listOf(
