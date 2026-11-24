@@ -42,6 +42,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.material3.Text
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -389,6 +393,9 @@ fun HomeScreen(
     var hasilCursor by tab.hasilCursor
     var hasilHasMore by tab.hasilHasMore
     var hasilLoadingMore by remember { mutableStateOf(false) }
+    // Muat awal Hasil (filter/pencarian berubah): selama berjalan
+    // dan Hasil masih kosong, grid menampilkan skeleton loading.
+    var hasilLoading by remember { mutableStateOf(false) }
     LaunchedEffect(type, query, genre, year, country, network) {
         if (!browsing) return@LaunchedEffect
         // Hasil untuk kombinasi filter ini sudah termuat di sesi
@@ -402,6 +409,7 @@ fun HomeScreen(
         if (tab.hasilSignature == sig) return@LaunchedEffect
         // Filter benar-benar berubah: mulai dari atas lagi.
         tab.scroll.scrollToItem(0)
+        hasilLoading = true
         try {
             val (page, next) = repo.titlesPaged(type, query.ifBlank { null }, genre, year, country, network, null)
             hasil = page
@@ -419,6 +427,8 @@ fun HomeScreen(
             throw e
         } catch (e: Exception) {
             error = friendlyInlineError(e)
+        } finally {
+            hasilLoading = false
         }
     }
     val loadMoreHasil: () -> Unit = {
@@ -557,7 +567,12 @@ fun HomeScreen(
                     }
                 }
                 item { SectionTitle("Hasil") }
-                if (hasil.isEmpty() && error == null) {
+                if (hasil.isEmpty() && hasilLoading && error == null) {
+                    // Skeleton loading (ala YouTube/Netflix): bayangan
+                    // kartu poster selama hasil pertama dimuat.
+                    items(3) { SkeletonPosterRow() }
+                }
+                if (hasil.isEmpty() && !hasilLoading && error == null) {
                     item { Text("Belum ada judul yang cocok.", modifier = Modifier.padding(horizontal = 16.dp)) }
                 }
                 items(hasil.chunked(3)) { rowTitles ->
@@ -572,14 +587,9 @@ fun HomeScreen(
                     }
                 }
                 if (hasilLoadingMore) {
-                    item {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator(color = NetflixRed, modifier = Modifier.size(24.dp))
-                        }
-                    }
+                    // Halaman berikutnya: satu baris skeleton, bukan
+                    // spinner — bentuknya sama dengan yang akan tiba.
+                    item { SkeletonPosterRow() }
                 }
                 // Bagian langsung dari situs sumber (genre terpilih):
                 // judul di luar katalog lokal, diketuk = diimpor.
@@ -596,6 +606,7 @@ fun HomeScreen(
                             Text("Mencari langsung di sumber…", color = Color(0xFFB3B3B3))
                         }
                     }
+                    items(2) { SkeletonPosterRow() }
                 }
                 if (liveShown.isNotEmpty()) {
                     item { SectionTitle("Langsung dari $liveSource") }
@@ -1331,6 +1342,59 @@ fun PosterImage(url: String?, title: String, modifier: Modifier = Modifier, wide
             onError = { gagal = true },
             modifier = modifier,
         )
+    }
+}
+
+/**
+ * Kartu poster kerangka — SKELETON LOADING ala YouTube/Netflix
+ * (permintaan Rams 2026-11-24): bayangan poster + dua garis judul
+ * yang berdenyut (shimmer) selama data asli belum tiba; begitu
+ * termuat, konten asli menggantikannya. Bentuknya meniru persis
+ * PosterCard (poster 2:3 sudut 8dp + judul di bawah) agar tata
+ * letak tidak meloncat saat berganti.
+ */
+@Composable
+private fun SkeletonPosterCard(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "skeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "skeletonAlpha",
+    )
+    val base = Color(0xFF2B2B30)
+    Column(modifier = modifier) {
+        Box(
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
+                .clip(RoundedCornerShape(8.dp)).background(base.copy(alpha = alpha)),
+        )
+        Spacer(Modifier.height(10.dp))
+        Box(
+            modifier = Modifier.fillMaxWidth(0.85f).height(12.dp)
+                .clip(RoundedCornerShape(6.dp)).background(base.copy(alpha = alpha)),
+        )
+        Spacer(Modifier.height(5.dp))
+        Box(
+            modifier = Modifier.fillMaxWidth(0.55f).height(12.dp)
+                .clip(RoundedCornerShape(6.dp)).background(base.copy(alpha = alpha)),
+        )
+    }
+}
+
+/** Satu baris grid skeleton: 3 kartu, tata letak sama dengan
+ *  baris Hasil/bagian live. */
+@Composable
+private fun SkeletonPosterRow() {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        repeat(3) {
+            Box(Modifier.weight(1f)) { SkeletonPosterCard(Modifier.fillMaxWidth()) }
+        }
     }
 }
 
