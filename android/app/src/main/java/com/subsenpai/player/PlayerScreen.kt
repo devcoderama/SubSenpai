@@ -23,10 +23,15 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -60,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -718,11 +724,12 @@ private fun VideoPlayerContainer(
         mutableStateOf(curSrc != null && isEmbedUrl(curSrc.url))
     }
     // Tombol Layar Penuh ala YouTube: muncul sesaat saat sumber baru
-    // dimuat dan setiap kali video disentuh, lalu sembunyi sendiri —
-    // dulu tombolnya diam permanen di pojok kanan bawah menutupi
-    // jam/progres embed dan teksnya tidak pernah hilang (keluhan
-    // Rams 2026-11-22). Sentuhan diamati lewat OnTouchListener yang
-    // mengembalikan false, jadi ketukan tetap diteruskan ke video.
+    // dimuat dan setiap kali video disentuh, lalu sembunyi sendiri.
+    // Sejak 2026-11-24 (keluhan Rams): ikon saja tanpa teks, di pojok
+    // KANAN ATAS — posisi lama di kanan bawah menimpa tombol bawaan
+    // pemutar embed (volume/pengaturan). Sentuhan diamati lewat
+    // OnTouchListener yang mengembalikan false, jadi ketukan tetap
+    // diteruskan ke video.
     var controlsTick by remember { mutableStateOf(0) }
     var controlsVisible by remember { mutableStateOf(true) }
     val pokeControls = remember { { controlsTick++ } }
@@ -889,20 +896,20 @@ private fun VideoPlayerContainer(
                 visible = controlsVisible,
                 enter = fadeIn(),
                 exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomEnd),
+                modifier = Modifier.align(Alignment.TopEnd),
             ) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = Color(0x99000000),
                     modifier = Modifier
-                        .padding(end = 10.dp, bottom = 30.dp)
+                        .padding(end = 10.dp, top = 10.dp)
                         .clickable { onToggleFullscreen() },
                 ) {
                     Text(
-                        if (fullscreen) "⤢ Keluar Layar Penuh" else "⤢ Layar Penuh",
+                        "⤢",
                         color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
                     )
                 }
             }
@@ -1071,14 +1078,28 @@ private fun EpisodeSelector(
                 Text("Next ›", color = if (onNext != null) WatchText else WatchMuted)
             }
         }
-        Row(
+        // Grid membungkus 5 per baris (1–5, 6–10, …) dengan scroll
+        // vertikal sendiri — permintaan Rams 2026-11-24: deretan geser
+        // menyamping menyiksa untuk judul berepisode puluhan sampai
+        // ratusan. Episode aktif ditandai warna aksen + huruf tebal
+        // (awalan ▶ dibuang agar nomor 3 digit muat di sel sempit),
+        // dan grid langsung melompat ke episode yang sedang diputar.
+        val gridState = rememberLazyGridState()
+        LaunchedEffect(currentId, episodes.size) {
+            val idx = episodes.indexOfFirst { it.id == currentId }
+            if (idx >= 0) gridState.scrollToItem(idx)
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(5),
+            state = gridState,
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
+                .heightIn(max = 190.dp)
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            episodes.forEach { ep ->
+            itemsIndexed(episodes, key = { _, ep -> ep.id }) { _, ep ->
                 val active = ep.id == currentId
                 Surface(
                     shape = RoundedCornerShape(10.dp),
@@ -1090,11 +1111,15 @@ private fun EpisodeSelector(
                     },
                 ) {
                     Text(
-                        (if (active) "▶ " else "") + (if (ep.locked) "🔒 " else "") + "Ep ${ep.episodeNo}",
+                        (if (ep.locked) "🔒 " else "") + "Ep ${ep.episodeNo}",
                         color = Color.White,
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                         style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp, vertical = 8.dp),
                     )
                 }
             }
