@@ -90,7 +90,7 @@ func main() {
 	jobs.PollGoPay(ctx, pool, gopayClient)
 	trendTicker := time.NewTicker(time.Hour)
 	defer trendTicker.Stop()
-	sourceTicker := time.NewTicker(30 * time.Minute)
+	sourceTicker := time.NewTicker(10 * time.Minute)
 	defer sourceTicker.Stop()
 	payTicker := time.NewTicker(time.Minute)
 	defer payTicker.Stop()

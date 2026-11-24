@@ -144,11 +144,16 @@ func PurgePosterless(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
+// enrichPerRun membatasi judul yang berhasil diperkaya per putaran
+// worker (30 -> 60 pada paket percepatan 2026-11-24, kini paralel).
+const enrichPerRun = 60
+
 // EnrichTitles memperkaya metadata judul yang masih kosong
 // (sinopsis/judul alternatif/genre/tahun/season/network/studio/
 // durasi/negara) dari halaman seri sumbernya, agar halaman detail
 // aplikasi tampil lengkap ala Netflix. Hanya kolom yang masih
-// kosong yang diisi (coalesce), maksimal 30 judul per putaran;
+// kosong yang diisi (coalesce), maksimal 60 judul per putaran
+// dikerjakan paralel 5 bersamaan;
 // judul yang sudah bersinopsis keluar dari antrean dengan
 // sendirinya. Judul yang sinopsisnya boilerplate iklan unduhan
 // (data lama dari halaman salah alamat) ikut dipilih agar sembuh:
@@ -163,7 +168,7 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 		join content_sources cs on cs.id = ts.source_id
 		where (t.synopsis is null or lower(t.synopsis) like any ($1)) and cs.is_active
 		order by t.created_at
-		limit 90`, boilerplatePatterns())
+		limit 180`, boilerplatePatterns())
 	if err != nil {
 		return err
 	}
@@ -191,45 +196,63 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
+	// Kerjakan paralel, maksimal 5 fetch bersamaan (paket percepatan
+	// 2026-11-24): cara lama satu per satu membuat fase ini berjalan
+	// belasan menit sendiri karena tiap judul menunggu 1 fetch HTTP.
+	sem := make(chan struct{}, 5)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
 	done := 0
 	attempt := 0
 	for _, j := range jobs {
-		if done >= 30 {
+		mu.Lock()
+		penuh := done >= enrichPerRun
+		mu.Unlock()
+		if penuh {
 			break
 		}
 		attempt++
-		ReportProgress(ctx, pool, "Melengkapi metadata", attempt, min(len(jobs), 30), j.name)
-		resolver, ok := sources.ByKey(j.src.Resolver)
-		if !ok {
-			log.Printf("enrich %s: resolver %q sumber %s tidak ditemukan, dilewati", j.titleID, j.src.Resolver, j.src.Name)
-			continue
-		}
-		infoer, ok := resolver.(sources.SeriesInfoer)
-		if !ok {
-			log.Printf("enrich %s: resolver %q sumber %s tidak mendukung SeriesInfoer, dilewati", j.titleID, j.src.Resolver, j.src.Name)
-			continue
-		}
-		meta, err := infoer.SeriesInfo(ctx, j.src, j.url)
-		if err != nil {
-			// Dicatat (tidak ditelan diam-diam) agar kegagalan fetch
-			// per sumber terlihat di log worker.
-			log.Printf("enrich %s: %v", j.titleID, err)
-			continue
-		}
-		if meta == nil {
-			log.Printf("enrich %s dari %s (%s): SeriesInfo mengembalikan meta nil", j.titleID, j.src.Name, j.url)
-			continue
-		}
-		if meta.Synopsis == "" && meta.Studio == "" && len(meta.Genres) == 0 {
-			log.Printf("enrich %s dari %s (%s): meta ditolak penjaga kosong: %s", j.titleID, j.src.Name, j.url, metaSummary(meta))
-			continue
-		}
-		if err := applySeriesMeta(ctx, pool, j.titleID, meta); err != nil {
-			log.Printf("enrich %s: %v", j.titleID, err)
-			continue
-		}
-		done++
+		ReportProgress(ctx, pool, "Melengkapi metadata", attempt, min(len(jobs), enrichPerRun), j.name)
+		wg.Add(1)
+		go func(j job) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			resolver, ok := sources.ByKey(j.src.Resolver)
+			if !ok {
+				log.Printf("enrich %s: resolver %q sumber %s tidak ditemukan, dilewati", j.titleID, j.src.Resolver, j.src.Name)
+				return
+			}
+			infoer, ok := resolver.(sources.SeriesInfoer)
+			if !ok {
+				log.Printf("enrich %s: resolver %q sumber %s tidak mendukung SeriesInfoer, dilewati", j.titleID, j.src.Resolver, j.src.Name)
+				return
+			}
+			meta, err := infoer.SeriesInfo(ctx, j.src, j.url)
+			if err != nil {
+				// Dicatat (tidak ditelan diam-diam) agar kegagalan fetch
+				// per sumber terlihat di log worker.
+				log.Printf("enrich %s: %v", j.titleID, err)
+				return
+			}
+			if meta == nil {
+				log.Printf("enrich %s dari %s (%s): SeriesInfo mengembalikan meta nil", j.titleID, j.src.Name, j.url)
+				return
+			}
+			if meta.Synopsis == "" && meta.Studio == "" && len(meta.Genres) == 0 {
+				log.Printf("enrich %s dari %s (%s): meta ditolak penjaga kosong: %s", j.titleID, j.src.Name, j.url, metaSummary(meta))
+				return
+			}
+			if err := applySeriesMeta(ctx, pool, j.titleID, meta); err != nil {
+				log.Printf("enrich %s: %v", j.titleID, err)
+				return
+			}
+			mu.Lock()
+			done++
+			mu.Unlock()
+		}(j)
 	}
+	wg.Wait()
 	if done > 0 {
 		log.Printf("enrich: %d judul diperkaya metadata serinya", done)
 	}
@@ -506,8 +529,10 @@ func hostOf(raw string) string {
 }
 
 // maxResolvePerRun membatasi episode yang diselesaikan per putaran sinkron
-// agar satu putaran worker tidak berjalan tanpa batas.
-const maxResolvePerRun = 20
+// agar satu putaran worker tidak berjalan tanpa batas. 20 -> 100 pada
+// paket percepatan worker 2026-11-24 (permintaan Rams: antrean 592
+// judul belum komplit terlalu lambat bersihnya pada batas lama).
+const maxResolvePerRun = 100
 
 // SyncSources menjalankan resolver untuk judul-judul katalog: memetakan
 // judul ke halaman sumbernya (pencarian pertama yang cocok), mengambil
@@ -518,9 +543,25 @@ func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
 	trows, err := pool.Query(ctx, `
 		select id, type, title from titles
 		where type in ('anime','donghua','film')
+		  and (
+		    -- Judul tamat yang SEMUA episodenya sudah bersumber
+		    -- dilewati: tidak ada lagi yang bisa ditambah sinkron
+		    -- untuk mereka (paket percepatan 2026-11-24). Judul
+		    -- ongoing selalu disinkron — episode barunya dideteksi
+		    -- di sini; judul yang terlanjur tertanda tamat pun
+		    -- tetap terisi lewat jalur on-demand saat dibuka
+		    -- pengguna.
+		    titles.status = 'ongoing'
+		    or not exists (select 1 from episodes e where e.title_id = titles.id)
+		    or exists (
+		      select 1 from episodes e
+		      where e.title_id = titles.id
+		        and not exists (select 1 from episode_sources es
+		                        where es.episode_id = e.id))
+		  )
 		order by (select count(*) from episodes e where e.title_id = titles.id) asc,
 		         created_at
-		limit 50`)
+		limit 100`)
 	if err != nil {
 		return err
 	}

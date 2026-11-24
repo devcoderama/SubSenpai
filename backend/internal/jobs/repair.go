@@ -20,7 +20,9 @@ import (
 )
 
 // repairPerCycle membatasi judul yang diperbaiki per siklus worker.
-const repairPerCycle = 12
+// 12 -> 30 pada paket percepatan worker 2026-11-24 (permintaan Rams:
+// antrean kelengkapan ratusan judul terlalu lambat bersihnya).
+const repairPerCycle = 30
 
 type repairCandidate struct {
 	id        string

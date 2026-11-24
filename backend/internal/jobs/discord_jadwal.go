@@ -34,7 +34,7 @@ var hariIndo = map[time.Weekday]string{
 // (anime dari Kuronime + donghua dari Anichin) ke channel Discord
 // #jadwal-rilis, sekali sehari sesudah pukul 05:00 WIB. Penanda
 // tanggal terakhir disimpan di app_settings agar siklus worker
-// 30-menit tidak memposting berulang. Kegagalan ambil jadwal tidak
+// berkala tidak memposting berulang. Kegagalan ambil jadwal tidak
 // menandai hari itu — siklus berikutnya mencoba lagi.
 func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) {
 	discordOK := cfg.DiscordBotToken != "" && cfg.DiscordChannelJadwal != ""
