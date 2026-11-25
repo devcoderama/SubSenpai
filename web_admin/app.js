@@ -755,6 +755,11 @@ async function pageJudul() {
   judulOffset = 0;
   judulFilter = '';
   $('jd-search').addEventListener('click', () => { judulOffset = 0; loadJudul(true); });
+  // Memilih jenis di dropdown langsung memuat ulang daftar + chip
+  // (sebelumnya dropdown diam sampai tombol Cari ditekan — sumber
+  // kebingungan di screenshot Rams 2026-11-25: Donghua terpilih tapi
+  // angka & daftar masih global).
+  $('jd-type').addEventListener('change', () => { judulOffset = 0; loadJudul(true); });
   $('jd-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { judulOffset = 0; loadJudul(true); } });
   $('jd-more').addEventListener('click', () => loadJudul(false));
   loadWorkerStatus();
