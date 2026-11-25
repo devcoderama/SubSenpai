@@ -76,3 +76,55 @@ func TestSendKeTopik(t *testing.T) {
 		t.Fatalf("topik kosong tidak boleh membawa thread id: %s", body)
 	}
 }
+
+// SendID mengembalikan message_id dari respons; Pin/Unpin memanggil
+// metode Bot API yang tepat dengan muatan yang benar (dipakai pin
+// header jadwal harian, permintaan Rams 2026-11-25).
+func TestSendIDPinUnpin(t *testing.T) {
+	var calls []struct {
+		path string
+		body map[string]any
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var p map[string]any
+		_ = json.Unmarshal(raw, &p)
+		calls = append(calls, struct {
+			path string
+			body map[string]any
+		}{r.URL.Path, p})
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":42}}`))
+	}))
+	defer srv.Close()
+	old := BaseURL
+	BaseURL = srv.URL
+	defer func() { BaseURL = old }()
+
+	c := New("token-uji")
+	id, err := c.SendID(context.Background(), "-100123", "20730", "<b>halo</b>")
+	if err != nil || id != 42 {
+		t.Fatalf("SendID: id=%d err=%v", id, err)
+	}
+	if err := c.Pin(context.Background(), "-100123", 42); err != nil {
+		t.Fatalf("Pin: %v", err)
+	}
+	if err := c.Unpin(context.Background(), "-100123", 41); err != nil {
+		t.Fatalf("Unpin: %v", err)
+	}
+	if len(calls) != 3 {
+		t.Fatalf("harus 3 panggilan, dapat %d", len(calls))
+	}
+	if !strings.HasSuffix(calls[1].path, "/pinChatMessage") ||
+		calls[1].body["chat_id"] != "-100123" || calls[1].body["message_id"] != float64(42) ||
+		calls[1].body["disable_notification"] != true {
+		t.Errorf("Pin janggal: %+v", calls[1])
+	}
+	if !strings.HasSuffix(calls[2].path, "/unpinChatMessage") ||
+		calls[2].body["chat_id"] != "-100123" || calls[2].body["message_id"] != float64(41) {
+		t.Errorf("Unpin janggal: %+v", calls[2])
+	}
+	if err := c.Pin(context.Background(), "-100123", 0); err == nil {
+		t.Errorf("Pin id 0 harus ditolak")
+	}
+}

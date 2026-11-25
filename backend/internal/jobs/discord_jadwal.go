@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,12 @@ import (
 const discordJadwalLastDateKey = "discord_jadwal_last_date"
 const telegramJadwalLastDateKey = "telegram_jadwal_last_date"
 const telegramJadwalLastDateKey2 = "telegram_jadwal_last_date_2"
+
+// Kunci app_settings untuk id pesan header jadwal yang sedang
+// tersemat di tiap grup Telegram (permintaan Rams 2026-11-25:
+// header hari ini di-pin, header kemarin dilepas).
+const telegramJadwalPinKey = "telegram_jadwal_pin_id"
+const telegramJadwalPinKey2 = "telegram_jadwal_pin_id_2"
 
 // hariIndo memetakan time.Weekday ke nama hari kanonik yang dipakai
 // grup jadwal sumber ("Jum'at" sudah dinormalkan menjadi "Jumat").
@@ -152,11 +159,13 @@ func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg con
 		// pesan per judul dengan pratinjau tautan menyala, agar
 		// poster tiap judul tampil sebagai kartu WebPage.
 		tc := telegram.New(cfg.TelegramBotToken)
-		if err := kirimJadwalTelegram(ctx, tc, cfg.TelegramGroupID,
-			cfg.TelegramTopicJadwal, header, blocks, footer); err != nil {
+		headerID, err := kirimJadwalTelegram(ctx, tc, cfg.TelegramGroupID,
+			cfg.TelegramTopicJadwal, header, blocks, footer)
+		if err != nil {
 			log.Printf("telegram jadwal: kirim gagal: %v", err)
 		} else {
 			markDay(telegramJadwalLastDateKey)
+			pinJadwalHeader(ctx, pool, tc, cfg.TelegramGroupID, telegramJadwalPinKey, headerID)
 			log.Printf("telegram jadwal: jadwal %s terposting (%d pesan)", today, len(blocks)+2)
 		}
 	}
@@ -167,13 +176,48 @@ func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg con
 		// grup pertama, dan siklus berikutnya mengulang grup kedua
 		// saja sampai berhasil.
 		tc2 := telegram.New(cfg.TelegramBotToken)
-		if err := kirimJadwalTelegram(ctx, tc2, cfg.TelegramGroupID2,
-			cfg.TelegramTopicJadwal2, header, blocks, footer); err != nil {
+		headerID2, err := kirimJadwalTelegram(ctx, tc2, cfg.TelegramGroupID2,
+			cfg.TelegramTopicJadwal2, header, blocks, footer)
+		if err != nil {
 			log.Printf("telegram jadwal grup 2: kirim gagal: %v", err)
 		} else {
 			markDay(telegramJadwalLastDateKey2)
+			pinJadwalHeader(ctx, pool, tc2, cfg.TelegramGroupID2, telegramJadwalPinKey2, headerID2)
 			log.Printf("telegram jadwal grup 2: jadwal %s terposting (%d pesan)", today, len(blocks)+2)
 		}
+	}
+}
+
+// pinJadwalHeader menyematkan header jadwal hari ini di topik
+// Telegram dan melepas sematan header kemarin (id-nya tersimpan di
+// app_settings per grup). Pin hanya hiasan: gagal pin/unpin
+// dicatat di log, tidak menggagalkan penanda hari. Bot harus admin
+// grup dengan hak pin; bila haknya kurang, pinChatMessage ditolak
+// Bot API dan jadwal tetap terkirim seperti biasa.
+func pinJadwalHeader(ctx context.Context, pool *pgxpool.Pool, tc *telegram.Client,
+	chatID, pinKey string, headerID int64) {
+	if headerID <= 0 {
+		return
+	}
+	var prev string
+	_ = pool.QueryRow(ctx,
+		`select value from app_settings where key = $1`, pinKey).Scan(&prev)
+	if prev != "" && prev != strconv.FormatInt(headerID, 10) {
+		if id, err := strconv.ParseInt(strings.TrimSpace(prev), 10, 64); err == nil && id > 0 {
+			if err := tc.Unpin(ctx, chatID, id); err != nil {
+				log.Printf("telegram jadwal: lepas pin lama gagal: %v", err)
+			}
+		}
+	}
+	if err := tc.Pin(ctx, chatID, headerID); err != nil {
+		log.Printf("telegram jadwal: pin gagal: %v", err)
+		return
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into app_settings (key, value) values ($1, $2)
+		on conflict (key) do update set value = excluded.value, updated_at = now()`,
+		pinKey, strconv.FormatInt(headerID, 10)); err != nil {
+		log.Printf("telegram jadwal: simpan id pin %s: %v", pinKey, err)
 	}
 }
 
@@ -184,23 +228,25 @@ func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg con
 // sisanya dan mengembalikan error — pemanggil tidak menandai hari
 // itu, jadi siklus worker berikutnya mengulang dari awal (judul
 // awal mungkin terkirim dua kali; diterima, sama seperti kemasan
-// lama).
+// lama). Mengembalikan message_id pesan header agar pemanggil bisa
+// mem-pinnya.
 func kirimJadwalTelegram(ctx context.Context, tc *telegram.Client,
-	groupID, topicID, header string, blocks []string, footer string) error {
-	if err := tc.Send(ctx, groupID, topicID, telegram.ToHTML(header)); err != nil {
-		return err
+	groupID, topicID, header string, blocks []string, footer string) (int64, error) {
+	headerID, err := tc.SendID(ctx, groupID, topicID, telegram.ToHTML(header))
+	if err != nil {
+		return 0, err
 	}
 	for _, b := range blocks {
 		if err := tc.SendPreview(ctx, groupID, topicID, telegram.ToHTML(b)); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if footer != "" {
 		if err := tc.SendPreview(ctx, groupID, topicID, telegram.ToHTML(footer)); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	return nil
+	return headerID, nil
 }
 
 // jadwalMeta adalah metadata katalog untuk satu judul jadwal.

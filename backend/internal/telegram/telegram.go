@@ -46,6 +46,14 @@ func (c *Client) Enabled() bool { return c != nil && c.token != "" }
 // 4096). Pemanggil meneruskan teks yang SUDAH diformat HTML
 // (lihat ToHTML).
 func (c *Client) Send(ctx context.Context, chatID, threadID, text string) error {
+	_, err := c.send(ctx, chatID, threadID, text, false)
+	return err
+}
+
+// SendID sama seperti Send, tetapi mengembalikan message_id pesan
+// yang terkirim (0 bila respons tidak memuatnya) — dipakai jadwal
+// rilis untuk mem-pin pesan header hari itu.
+func (c *Client) SendID(ctx context.Context, chatID, threadID, text string) (int64, error) {
 	return c.send(ctx, chatID, threadID, text, false)
 }
 
@@ -55,15 +63,72 @@ func (c *Client) Send(ctx context.Context, chatID, threadID, text string) error 
 // tautan — jadwal per judul, update APK, pengumuman (permintaan
 // Rams 2026-11-24: 1 pesan 1 judul agar poster tiap judul muncul).
 func (c *Client) SendPreview(ctx context.Context, chatID, threadID, text string) error {
-	return c.send(ctx, chatID, threadID, text, true)
+	_, err := c.send(ctx, chatID, threadID, text, true)
+	return err
 }
 
-func (c *Client) send(ctx context.Context, chatID, threadID, text string, preview bool) error {
-	if !c.Enabled() {
-		return fmt.Errorf("telegram: token kosong")
+// Pin menyematkan satu pesan di grup (pinChatMessage) tanpa
+// pemberitahuan ke anggota. Bot harus admin grup dengan hak
+// can_pin_messages; bila haknya kurang, Bot API menolak (403).
+func (c *Client) Pin(ctx context.Context, chatID string, messageID int64) error {
+	if messageID <= 0 {
+		return fmt.Errorf("telegram: message_id pin tidak valid")
 	}
+	_, err := c.do(ctx, "pinChatMessage", map[string]any{
+		"chat_id":              chatID,
+		"message_id":           messageID,
+		"disable_notification": true,
+	})
+	return err
+}
+
+// Unpin melepas sematan satu pesan di grup. Gagal (pesan sudah
+// tidak tersemat / terhapus) dikembalikan sebagai error agar
+// pemanggil bisa mencatatnya dan tetap lanjut.
+func (c *Client) Unpin(ctx context.Context, chatID string, messageID int64) error {
+	if messageID <= 0 {
+		return fmt.Errorf("telegram: message_id unpin tidak valid")
+	}
+	_, err := c.do(ctx, "unpinChatMessage", map[string]any{
+		"chat_id":    chatID,
+		"message_id": messageID,
+	})
+	return err
+}
+
+// do memanggil satu metode Bot API dan mengembalikan badan respons
+// mentahnya. Sukses mensyaratkan HTTP 2xx DAN badan memuat
+// `"ok":true` (pola yang sama dipakai semua pengiriman selama ini).
+func (c *Client) do(ctx context.Context, method string, payload map[string]any) ([]byte, error) {
+	if !c.Enabled() {
+		return nil, fmt.Errorf("telegram: token kosong")
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		BaseURL+"/bot"+c.token+"/"+method, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 5000))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 ||
+		!strings.Contains(string(b), `"ok":true`) {
+		return nil, fmt.Errorf("telegram: status %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	return b, nil
+}
+
+func (c *Client) send(ctx context.Context, chatID, threadID, text string, preview bool) (int64, error) {
 	if strings.TrimSpace(chatID) == "" {
-		return fmt.Errorf("telegram: grup kosong")
+		return 0, fmt.Errorf("telegram: grup kosong")
 	}
 	if r := []rune(text); len(r) > 4000 {
 		text = string(r[:4000]) + "…"
@@ -77,27 +142,19 @@ func (c *Client) send(ctx context.Context, chatID, threadID, text string, previe
 	if n, err := strconv.ParseInt(strings.TrimSpace(threadID), 10, 64); err == nil && n > 0 {
 		payload["message_thread_id"] = n
 	}
-	body, err := json.Marshal(payload)
+	b, err := c.do(ctx, "sendMessage", payload)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		BaseURL+"/bot"+c.token+"/sendMessage", bytes.NewReader(body))
-	if err != nil {
-		return err
+	var out struct {
+		Result struct {
+			MessageID int64 `json:"message_id"`
+		} `json:"result"`
 	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
+	if err := json.Unmarshal(b, &out); err != nil {
+		return 0, nil // id tak terbaca — pengiriman sendiri sudah sukses
 	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 ||
-		!strings.Contains(string(b), `"ok":true`) {
-		return fmt.Errorf("telegram: status %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
-	}
-	return nil
+	return out.Result.MessageID, nil
 }
 
 // ToHTML mengubah teks gaya Discord (tebal **seperti ini**) ke

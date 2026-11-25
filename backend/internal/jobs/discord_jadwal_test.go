@@ -101,11 +101,14 @@ func TestKirimJadwalTelegram(t *testing.T) {
 		"• **Judul A** — Ep 1\n▶️ Nonton Ep 1: https://www.subsenpai.web.id/nonton/ep-a",
 		"• **Judul B** — Ep 2\n▶️ Nonton Ep 2: https://www.subsenpai.web.id/nonton/ep-b",
 	}
-	err := kirimJadwalTelegram(context.Background(), telegram.New("token-uji"),
+	headerID, err := kirimJadwalTelegram(context.Background(), telegram.New("token-uji"),
 		"-100123", "20730", "🗓️ **Jadwal Rilis — Selasa, 24 November 2026**",
 		blocks, "Selamat menonton di SubSenpai! 🍿 https://www.subsenpai.web.id")
 	if err != nil {
 		t.Fatalf("kirimJadwalTelegram: %v", err)
+	}
+	if headerID != 1 {
+		t.Fatalf("id header harus 1 (stub), dapat %d", headerID)
 	}
 	if len(bodies) != 4 {
 		t.Fatalf("harus 4 pesan (header + 2 judul + footer), dapat %d", len(bodies))
@@ -154,11 +157,14 @@ func TestKirimJadwalTelegramGrup2(t *testing.T) {
 	defer func() { telegram.BaseURL = old }()
 
 	blocks := []string{"• **Judul A** — Ep 1\n▶️ Nonton Ep 1: https://www.subsenpai.web.id/nonton/ep-a"}
-	err := kirimJadwalTelegram(context.Background(), telegram.New("token-uji"),
+	headerID, err := kirimJadwalTelegram(context.Background(), telegram.New("token-uji"),
 		"-1002084839985", "65332", "🗓️ **Jadwal Rilis — Kamis, 26 November 2026**",
 		blocks, "Selamat menonton di SubSenpai! 🍿 https://www.subsenpai.web.id")
 	if err != nil {
 		t.Fatalf("kirimJadwalTelegram grup 2: %v", err)
+	}
+	if headerID != 1 {
+		t.Fatalf("id header grup 2 harus 1 (stub), dapat %d", headerID)
 	}
 	if len(bodies) != 3 {
 		t.Fatalf("harus 3 pesan (header + 1 judul + footer), dapat %d", len(bodies))
