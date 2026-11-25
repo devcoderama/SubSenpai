@@ -67,13 +67,21 @@ var shareTpl = template.Must(template.New("share").Parse(`<!DOCTYPE html>
   main{padding:38px 0 60px}
   .detail{display:flex;gap:26px;align-items:flex-start}
   @media (max-width:640px){.detail{flex-direction:column;align-items:center;text-align:center}}
-  .poster{flex:0 0 auto;width:220px;max-width:62vw;aspect-ratio:2/3;border-radius:10px;overflow:hidden;background:#232323;box-shadow:0 18px 44px rgba(0,0,0,.55)}
+  .poster{flex:0 0 auto;width:220px;max-width:62vw;aspect-ratio:2/3;border-radius:10px;overflow:hidden;background:#232323;box-shadow:0 18px 44px rgba(0,0,0,.55);position:relative;cursor:pointer}
   .poster img{width:100%;height:100%;object-fit:cover;display:block}
+  .play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.22)}
+  .play span{width:64px;height:64px;border-radius:50%;background:rgba(229,9,20,.92);display:flex;align-items:center;justify-content:center;font-size:26px;padding-left:5px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
   .info{flex:1;min-width:0}
   .info h1{font-size:clamp(1.6rem,4.6vw,2.4rem);line-height:1.2;font-weight:900;margin:0}
   .meta{color:#b3b3b3;margin:10px 0 4px}
   .genres{color:#e5e5e5;font-size:.95rem}
-  .syn{color:#d7d7d7;margin:16px 0 26px}
+  .syn{color:#d7d7d7;margin:16px 0 26px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+  .stickybar{display:none}
+  @media (max-width:640px){
+    .stickybar{display:flex;gap:10px;position:fixed;left:0;right:0;bottom:0;padding:12px 4% calc(12px + env(safe-area-inset-bottom));background:rgba(11,11,11,.97);border-top:1px solid #2d2d2d;z-index:10}
+    .stickybar .btn{flex:1;text-align:center;padding:13px 8px;margin:0}
+    main{padding-bottom:110px}
+  }
   .btn{display:inline-block;background:#E50914;color:#fff;font-weight:700;padding:13px 28px;border-radius:6px;text-decoration:none}
   .btn.ghost{background:rgba(255,255,255,.14);margin-left:8px}
   .note{color:#b3b3b3;font-size:.88rem;margin-top:14px}
@@ -86,7 +94,7 @@ var shareTpl = template.Must(template.New("share").Parse(`<!DOCTYPE html>
 <main class="wrap">
 {{if .Found}}
   <div class="detail">
-    {{if .PosterURL}}<div class="poster"><img src="{{.PosterURL}}" alt="{{.Title}}"></div>{{end}}
+    {{if .PosterURL}}<div class="poster" id="playBtn" role="button" tabindex="0" title="Buka di aplikasi"><img src="{{.PosterURL}}" alt="{{.Title}}"><div class="play"><span>▶</span></div></div>{{end}}
     <div class="info">
       <h1>{{.Title}}</h1>
       {{if .MetaLine}}<div class="meta">{{.MetaLine}}</div>{{end}}
@@ -94,8 +102,12 @@ var shareTpl = template.Must(template.New("share").Parse(`<!DOCTYPE html>
       {{if .Synopsis}}<p class="syn">{{.Synopsis}}</p>{{end}}
       <a class="btn" id="openBtn" href="{{.IntentURL}}">▶ Buka di Aplikasi SubSenpai</a>
       <a class="btn ghost" href="https://www.subsenpai.web.id/">Download Aplikasi</a>
-      <div class="note">Kalau aplikasi tidak terbuka otomatis, ketuk tombol merah di atas. Belum punya aplikasinya? Download dulu — gratis.</div>
+      <div class="note">Kalau aplikasi tidak terbuka otomatis, ketuk tombol merah. Belum punya aplikasinya? Download dulu — gratis.</div>
     </div>
+  </div>
+  <div class="stickybar">
+    <a class="btn" id="openBtn2" href="{{.IntentURL}}">▶ Buka di Aplikasi</a>
+    <a class="btn ghost" href="https://www.subsenpai.web.id/">Unduh Aplikasi</a>
   </div>
   <script>
   // Buka aplikasi: coba intent:// (Chrome), lalu skema subsenpai://
@@ -108,12 +120,18 @@ var shareTpl = template.Must(template.New("share").Parse(`<!DOCTYPE html>
     function go(u) { try { location.href = u; } catch (e) {} }
     setTimeout(function () { go(intent); }, 600);
     setTimeout(function () { if (!document.hidden) go(scheme); }, 1700);
-    var btn = document.getElementById("openBtn");
-    if (btn) btn.addEventListener("click", function (ev) {
-      ev.preventDefault();
-      go(intent);
-      setTimeout(function () { if (!document.hidden) go(scheme); }, 500);
-    });
+    function bindOpen(id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        go(intent);
+        setTimeout(function () { if (!document.hidden) go(scheme); }, 500);
+      });
+    }
+    bindOpen("openBtn");
+    bindOpen("openBtn2");
+    bindOpen("playBtn");
   })();
   </script>
 {{else}}
