@@ -102,7 +102,7 @@ var shareTpl = template.Must(template.New("share").Parse(`<!DOCTYPE html>
       {{if .Synopsis}}<p class="syn">{{.Synopsis}}</p>{{end}}
       <a class="btn" id="openBtn" href="{{.IntentURL}}">▶ Buka di Aplikasi SubSenpai</a>
       <a class="btn ghost" href="https://www.subsenpai.web.id/">Download Aplikasi</a>
-      <div class="note">Kalau aplikasi tidak terbuka otomatis, ketuk tombol merah. Belum punya aplikasinya? Download dulu — gratis.</div>
+      <div class="note">Ketuk tombol merah atau poster untuk membuka episode ini di aplikasi. Belum punya aplikasinya? Download dulu — gratis.</div>
     </div>
   </div>
   <div class="stickybar">
@@ -110,16 +110,20 @@ var shareTpl = template.Must(template.New("share").Parse(`<!DOCTYPE html>
     <a class="btn ghost" href="https://www.subsenpai.web.id/">Unduh Aplikasi</a>
   </div>
   <script>
-  // Buka aplikasi: coba intent:// (Chrome), lalu skema subsenpai://
-  // sebagai cadangan — peramban di dalam aplikasi chat (Telegram/
-  // WhatsApp) sering menelan intent:// tapi meneruskan skema khusus
-  // ke sistem. Tombol merah memakai urutan yang sama saat diketuk.
+  // Buka aplikasi HANYA saat diketuk (tombol merah, bar bawah,
+  // atau poster) — TIDAK otomatis saat halaman dibuka. Auto-open
+  // dimatikan (permintaan Rams 2026-11-25): intent:// yang
+  // ditembak otomatis 0,6 detik setelah halaman dibuka tidak
+  // membuka aplikasi dari Chrome, melainkan mengikuti
+  // browser_fallback_url ke #download — preview-nya cuma numpang
+  // lewat sebelum sempat dibaca. Saat diketuk, urutannya sama:
+  // intent:// dulu (Chrome), lalu skema subsenpai:// sebagai
+  // cadangan; tanpa aplikasi terpasang, fallback mengarah ke
+  // halaman download — persis alur TikTok.
   (function () {
     var intent = "{{.IntentURL}}";
     var scheme = {{.SchemeURL}};
     function go(u) { try { location.href = u; } catch (e) {} }
-    setTimeout(function () { go(intent); }, 600);
-    setTimeout(function () { if (!document.hidden) go(scheme); }, 1700);
     function bindOpen(id) {
       var el = document.getElementById(id);
       if (!el) return;
