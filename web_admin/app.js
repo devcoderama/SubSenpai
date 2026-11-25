@@ -744,6 +744,7 @@ let judulFilter = '';
 async function pageJudul() {
   $('pageBody').innerHTML =
     '<div class="card" id="jd-worker" style="margin-bottom:16px"><p class="muted">Memuat status worker…</p></div>' +
+    '<div id="jd-bd"></div>' +
     '<p class="muted">Judul tersembunyi hilang dari aplikasi (beranda, katalog, pencarian, jadwal, detail, putar) tanpa menghapus datanya.</p>' +
     '<div class="toolbar"><input type="search" id="jd-q" placeholder="Cari judul…" style="flex:1">' +
     '<select id="jd-type"><option value="">Semua jenis</option><option value="anime">Anime</option><option value="donghua">Donghua</option><option value="film">Film</option></select>' +
@@ -798,12 +799,27 @@ function renderJudulFilters(counts) {
     loadJudul(true);
   }));
 }
+// Kartu rincian kelengkapan per jenis (Film / Anime / Donghua):
+// berapa judul, komplit, belum komplit, dan judul saja untuk tiap
+// jenis — dihitung backend dari seluruh katalog, tidak terpengaruh
+// pencarian/pilihan jenis/filter yang sedang aktif. Backend lama
+// belum mengirim counts_by_type: kartu tidak ditampilkan.
+function renderJudulBreakdown(bt) {
+  const el = $('jd-bd');
+  if (!el) return;
+  if (!bt) { el.innerHTML = ''; return; }
+  const row = (lbl, c) => '<p class="muted" style="margin:3px 0"><b style="color:var(--text)">' + lbl + '</b> — ' +
+    '<b>' + (c.total || 0) + '</b> judul · <b>' + (c.komplit || 0) + '</b> komplit · ' +
+    '<b>' + (c.belum || 0) + '</b> belum komplit · <b>' + (c.kosong || 0) + '</b> judul saja</p>';
+  el.innerHTML = '<div class="card" style="margin-bottom:16px"><h2 style="margin-top:0">Kelengkapan per Jenis</h2>' +
+    row('Film', bt.film || {}) + row('Anime', bt.anime || {}) + row('Donghua', bt.donghua || {}) + '</div>';
+}
 async function loadJudul(reset) {
   const q = encodeURIComponent($('jd-q').value.trim());
   const t = encodeURIComponent($('jd-type').value);
   const r = await api('/api/v1/admin/titles?q=' + q + '&type=' + t + '&filter=' + encodeURIComponent(judulFilter) + '&limit=50&offset=' + judulOffset);
   if (r.status !== 200) { if (reset) $('jd-list').innerHTML = '<p class="error">Gagal memuat judul.</p>'; return; }
-  if (reset) renderJudulFilters(r.body.counts);
+  if (reset) { renderJudulFilters(r.body.counts); renderJudulBreakdown(r.body.counts_by_type); }
   const list = r.body.titles || [];
   judulOffset += list.length;
   let html = reset ? '<p class="muted">' + (r.body.total || 0) + ' judul</p><div class="tscroll fit"><table><tr><th>Poster</th><th>Judul</th><th>Detail</th></tr>' : '';

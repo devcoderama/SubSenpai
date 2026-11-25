@@ -504,6 +504,22 @@ func TestAdminLive(t *testing.T) {
 	if st != 200 || cnt["komplit"].(float64) < 1 || cnt["kosong"].(float64) < 1 || cnt["belum"].(float64) < 2 {
 		t.Fatalf("hitungan kelengkapan: status=%d counts=%v", st, cnt)
 	}
+	// Rincian per jenis selalu memuat tiga jenis; jumlah ketiganya
+	// mencakup minimal tiga judul kelengkapan yang baru ditanam.
+	bt, _ := fSemua["counts_by_type"].(map[string]any)
+	var btTotal, btKomplit, btKosong float64
+	for _, typ := range []string{"anime", "donghua", "film"} {
+		m, ok := bt[typ].(map[string]any)
+		if !ok {
+			t.Fatalf("counts_by_type[%s] hilang: %v", typ, bt)
+		}
+		btTotal += m["total"].(float64)
+		btKomplit += m["komplit"].(float64)
+		btKosong += m["kosong"].(float64)
+	}
+	if btTotal < 3 || btKomplit < 1 || btKosong < 1 {
+		t.Fatalf("hitungan per jenis salah: %v", bt)
+	}
 	for _, it := range fSemua["titles"].([]any) {
 		m := it.(map[string]any)
 		if m["slug"] == "uji-kelengkapan-sebagian" &&

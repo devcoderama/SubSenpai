@@ -96,7 +96,8 @@ func (a *API) handleAdminTitles(w http.ResponseWriter, r *http.Request) {
 	// semua episode punya sumber putar; kosong ("judul saja") =
 	// belum ada sinopsis dan belum ada episode — umpan antrean
 	// penyelesaian worker.
-	base := `
+	baseSQL := func(w string) string {
+		return `
 		select t.id, t.slug, t.type, t.title, t.poster_url, t.year, t.status,
 		       t.is_hidden, t.updated_at,
 		       coalesce(t.poster_url,'') = '' as no_poster,
@@ -117,7 +118,10 @@ func (a *API) handleAdminTitles(w http.ResponseWriter, r *http.Request) {
 			       ) as unsourced
 			from episodes e where e.title_id = t.id
 		) ec on true
-		` + where
+		` + w
+	}
+	base := baseSQL(where)
+	baseTypes := baseSQL("where t.type in ('anime','donghua','film')")
 	var nTotal, nKomplit, nBelum, nKosong int
 	if err := a.pool.QueryRow(r.Context(), `
 		select count(*), count(*) filter (where complete),
@@ -125,6 +129,38 @@ func (a *API) handleAdminTitles(w http.ResponseWriter, r *http.Request) {
 		       count(*) filter (where bare)
 		from (`+base+`) b`, args...).Scan(&nTotal, &nKomplit, &nBelum, &nKosong); err != nil {
 		writeErr(w, http.StatusInternalServerError, "gagal menghitung judul")
+		return
+	}
+	// Rincian per jenis (permintaan Rams 2026-11-25): halaman Kelola
+	// Judul menampilkan berapa komplit / belum komplit / judul saja
+	// untuk tiap Film, Anime, Donghua. Dihitung dari SELURUH katalog
+	// tiga jenis itu — tidak terpengaruh kata cari / pilihan jenis /
+	// filter di atas — agar angkanya stabil sebagai gambaran antrean.
+	byType := map[string]map[string]int{}
+	for _, typ := range []string{"anime", "donghua", "film"} {
+		byType[typ] = map[string]int{"total": 0, "komplit": 0, "belum": 0, "kosong": 0}
+	}
+	trows, err := a.pool.Query(r.Context(), `
+		select type, count(*), count(*) filter (where complete),
+		       count(*) filter (where not complete),
+		       count(*) filter (where bare)
+		from (`+baseTypes+`) b group by type`)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal menghitung judul per jenis")
+		return
+	}
+	for trows.Next() {
+		var typ string
+		var nT, nK, nB, nKs int
+		if err := trows.Scan(&typ, &nT, &nK, &nB, &nKs); err == nil {
+			if m, ok := byType[typ]; ok {
+				m["total"], m["komplit"], m["belum"], m["kosong"] = nT, nK, nB, nKs
+			}
+		}
+	}
+	trows.Close()
+	if err := trows.Err(); err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal menghitung judul per jenis")
 		return
 	}
 	total := nTotal
@@ -168,6 +204,7 @@ func (a *API) handleAdminTitles(w http.ResponseWriter, r *http.Request) {
 		"counts": map[string]any{
 			"total": nTotal, "komplit": nKomplit, "belum": nBelum, "kosong": nKosong,
 		},
+		"counts_by_type": byType,
 	})
 }
 
