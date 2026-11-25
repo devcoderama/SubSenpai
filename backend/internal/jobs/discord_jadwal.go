@@ -17,6 +17,7 @@ import (
 
 const discordJadwalLastDateKey = "discord_jadwal_last_date"
 const telegramJadwalLastDateKey = "telegram_jadwal_last_date"
+const telegramJadwalLastDateKey2 = "telegram_jadwal_last_date_2"
 
 // hariIndo memetakan time.Weekday ke nama hari kanonik yang dipakai
 // grup jadwal sumber ("Jum'at" sudah dinormalkan menjadi "Jumat").
@@ -39,7 +40,8 @@ var hariIndo = map[time.Weekday]string{
 func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) {
 	discordOK := cfg.DiscordBotToken != "" && cfg.DiscordChannelJadwal != ""
 	telegramOK := cfg.TelegramBotToken != "" && cfg.TelegramGroupID != "" && cfg.TelegramTopicJadwal != ""
-	if !discordOK && !telegramOK {
+	telegram2OK := cfg.TelegramBotToken != "" && cfg.TelegramGroupID2 != "" && cfg.TelegramTopicJadwal2 != ""
+	if !discordOK && !telegramOK && !telegram2OK {
 		return
 	}
 	loc, err := time.LoadLocation("Asia/Jakarta")
@@ -63,7 +65,8 @@ func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg con
 	}
 	discordDue := discordOK && readDay(discordJadwalLastDateKey) != today
 	telegramDue := telegramOK && readDay(telegramJadwalLastDateKey) != today
-	if !discordDue && !telegramDue {
+	telegram2Due := telegram2OK && readDay(telegramJadwalLastDateKey2) != today
+	if !discordDue && !telegramDue && !telegram2Due {
 		return
 	}
 	day := hariIndo[now.Weekday()]
@@ -155,6 +158,21 @@ func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg con
 		} else {
 			markDay(telegramJadwalLastDateKey)
 			log.Printf("telegram jadwal: jadwal %s terposting (%d pesan)", today, len(blocks)+2)
+		}
+	}
+	if telegram2Due {
+		// Grup Telegram kedua (permintaan Rams 2026-11-25): bot
+		// yang sama, grup + topik berbeda, isi pesan sama persis.
+		// Penandanya sendiri — gagal di grup kedua tidak menahan
+		// grup pertama, dan siklus berikutnya mengulang grup kedua
+		// saja sampai berhasil.
+		tc2 := telegram.New(cfg.TelegramBotToken)
+		if err := kirimJadwalTelegram(ctx, tc2, cfg.TelegramGroupID2,
+			cfg.TelegramTopicJadwal2, header, blocks, footer); err != nil {
+			log.Printf("telegram jadwal grup 2: kirim gagal: %v", err)
+		} else {
+			markDay(telegramJadwalLastDateKey2)
+			log.Printf("telegram jadwal grup 2: jadwal %s terposting (%d pesan)", today, len(blocks)+2)
 		}
 	}
 }

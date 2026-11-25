@@ -132,3 +132,43 @@ func TestKirimJadwalTelegram(t *testing.T) {
 		}
 	}
 }
+
+// Grup jadwal kedua (permintaan Rams 2026-11-25): helper yang sama
+// mengirim ke grup + topik berbeda dengan isi pesan yang sama —
+// chat_id grup baru dan thread topik barunya harus tepat.
+func TestKirimJadwalTelegramGrup2(t *testing.T) {
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var p map[string]any
+		if err := json.Unmarshal(raw, &p); err != nil {
+			t.Errorf("payload bukan JSON: %v", err)
+		}
+		bodies = append(bodies, p)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":1}}`))
+	}))
+	defer srv.Close()
+	old := telegram.BaseURL
+	telegram.BaseURL = srv.URL
+	defer func() { telegram.BaseURL = old }()
+
+	blocks := []string{"• **Judul A** — Ep 1\n▶️ Nonton Ep 1: https://www.subsenpai.web.id/nonton/ep-a"}
+	err := kirimJadwalTelegram(context.Background(), telegram.New("token-uji"),
+		"-1002084839985", "65332", "🗓️ **Jadwal Rilis — Kamis, 26 November 2026**",
+		blocks, "Selamat menonton di SubSenpai! 🍿 https://www.subsenpai.web.id")
+	if err != nil {
+		t.Fatalf("kirimJadwalTelegram grup 2: %v", err)
+	}
+	if len(bodies) != 3 {
+		t.Fatalf("harus 3 pesan (header + 1 judul + footer), dapat %d", len(bodies))
+	}
+	for i, p := range bodies {
+		if p["chat_id"] != "-1002084839985" {
+			t.Errorf("pesan %d: chat_id janggal: %v", i, p["chat_id"])
+		}
+		if p["message_thread_id"] != float64(65332) {
+			t.Errorf("pesan %d: thread id janggal: %v", i, p["message_thread_id"])
+		}
+	}
+}

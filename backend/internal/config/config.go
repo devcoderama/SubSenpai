@@ -63,6 +63,11 @@ type Config struct {
 	TelegramTopicPengumuman string
 	TelegramTopicUpdateAPK  string
 	TelegramTopicJadwal     string
+	// Grup Telegram kedua KHUSUS jadwal rilis (permintaan Rams
+	// 2026-11-25): bot yang sama, grup + topik berbeda. Kosong =
+	// grup kedua tidak menerima jadwal.
+	TelegramGroupID2     string
+	TelegramTopicJadwal2 string
 }
 
 func Load() Config {
@@ -106,6 +111,8 @@ func Load() Config {
 		TelegramTopicPengumuman:  os.Getenv("TELEGRAM_TOPIC_PENGUMUMAN"),
 		TelegramTopicUpdateAPK:   os.Getenv("TELEGRAM_TOPIC_UPDATE_APK"),
 		TelegramTopicJadwal:      os.Getenv("TELEGRAM_TOPIC_JADWAL"),
+		TelegramGroupID2:        os.Getenv("TELEGRAM_GROUP_ID2"),
+		TelegramTopicJadwal2:    os.Getenv("TELEGRAM_TOPIC_JADWAL2"),
 	}
 }
 
