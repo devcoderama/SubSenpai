@@ -282,8 +282,34 @@ func TestSelectSyncTitlesLive(t *testing.T) {
 	idD := mkTitle(slugD)
 	_ = idA
 	_ = idD
+	// E1/E2: ongoing, episode sudah bersumber (kelompok G3) --
+	// E2 belum pernah dicoba (last_sync_at null) harus didahulukan
+	// atas E1 yang dicoba 2 jam lalu (round-robin).
+	slugE1 := "uji-sel-e1-" + suffix
+	slugE2 := "uji-sel-e2-" + suffix
+	idE1 := mkTitle(slugE1)
+	idE2 := mkTitle(slugE2)
+	mkSourcedEp := func(titleID string) {
+		var epID string
+		if err := pool.QueryRow(ctx, `
+			insert into episodes (title_id, episode_no, video_url)
+			values ($1::uuid, 1, 'https://uji.local/e1') returning id`,
+			titleID).Scan(&epID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `
+			insert into episode_sources (episode_id, url, label, lang)
+			values ($1::uuid, 'https://cdn.uji.local/e1.mp4', 'HD', 'id')`, epID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mkSourcedEp(idE1)
+	mkSourcedEp(idE2)
+	if _, err := pool.Exec(ctx, `update titles set last_sync_at = now() - interval '2 hours' where id = $1::uuid`, idE1); err != nil {
+		t.Fatal(err)
+	}
 	cleanup := func() {
-		for _, id := range []string{idA, idB, idC, idD} {
+		for _, id := range []string{idA, idB, idC, idD, idE1, idE2} {
 			_, _ = pool.Exec(ctx, `delete from episode_sources where episode_id in (select id from episodes where title_id = $1::uuid)`, id)
 			_, _ = pool.Exec(ctx, `delete from episodes where title_id = $1::uuid`, id)
 			_, _ = pool.Exec(ctx, `delete from titles where id = $1::uuid`, id)
@@ -334,6 +360,17 @@ func TestSelectSyncTitlesLive(t *testing.T) {
 	if pos[idC] > pos[idA] {
 		t.Fatal("judul dengan episode belum bersumber tidak didahulukan atas judul eps=0")
 	}
+	for _, id := range []string{idE1, idE2} {
+		if _, ok := pos[id]; !ok {
+			t.Fatalf("judul ongoing lengkap %s tidak terpilih (G3)", id)
+		}
+	}
+	if pos[idA] > pos[idE2] {
+		t.Fatal("kelompok tanpa-episode (G2) tidak didahulukan atas ongoing lengkap (G3)")
+	}
+	if pos[idE2] > pos[idE1] {
+		t.Fatal("round-robin G3 tidak mendahulukan judul yang belum pernah dicoba")
+	}
 }
 
 // TestLoadSourcesSkipsDownLive menguji perbaikan 2026-11-26: sumber
@@ -383,5 +420,69 @@ func TestLoadSourcesSkipsDownLive(t *testing.T) {
 	}
 	if !has() {
 		t.Fatal("sumber health=ok tidak dimuat kembali")
+	}
+}
+
+// TestSyncTitleZeroBudgetLive menguji semantik anggaran 0 (perbaikan
+// 2026-11-26 19:14 WIB): syncTitle dengan budget 0 tetap menjalankan
+// langkah pemetaan + daftar episode (baris episode tersimpan), hanya
+// resolve aliran yang 0. Ini yang memungkinkan judul tanpa episode
+// tetap dicoba meski jatah resolve siklus sudah habis.
+func TestSyncTitleZeroBudgetLive(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL kosong")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	const slug = "uji-sync-budget0"
+	cleanup := func() {
+		_, _ = pool.Exec(ctx, `delete from episode_sources where episode_id in (select id from episodes where title_id in (select id from titles where slug = $1))`, slug)
+		_, _ = pool.Exec(ctx, `delete from episodes where title_id in (select id from titles where slug = $1)`, slug)
+		_, _ = pool.Exec(ctx, `delete from title_sources where title_id in (select id from titles where slug = $1)`, slug)
+		_, _ = pool.Exec(ctx, `delete from titles where slug = $1`, slug)
+		_, _ = pool.Exec(ctx, `delete from content_sources where resolver = 'uji'`)
+	}
+	cleanup()
+	defer cleanup()
+
+	var titleID string
+	if err := pool.QueryRow(ctx, `
+		insert into titles (slug, type, title, poster_url, synopsis, year, genres)
+		values ($1, 'donghua', 'Judul uji-budget0', 'https://img.example/p.jpg', 'Sinopsis.', 2024, '{Action}')
+		returning id`, slug).Scan(&titleID); err != nil {
+		t.Fatal(err)
+	}
+	srcID := "00000000-0000-0000-0000-000000000001"
+	if _, err := pool.Exec(ctx, `
+		insert into content_sources (id, name, content_type, lang, base_url, resolver, fetch_mode, subtitle_kind, priority, is_active)
+		values ($1::uuid, 'Uji', 'donghua', 'id', 'https://uji.local', 'uji', 'server', 'hard', 10, true)
+		on conflict (resolver, content_type, lang) do nothing`, srcID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into title_sources (title_id, source_id, source_url, source_ref)
+		values ($1::uuid, $2::uuid, 'https://uji.local/series/x', 'x')`, titleID, srcID); err != nil {
+		t.Fatal(err)
+	}
+	src := sources.Source{ID: srcID, Name: "uji", Resolver: "uji"}
+	done, err := syncTitle(ctx, pool, stubResolver{}, src, titleID, "Judul uji-budget0", 0)
+	if err != nil {
+		t.Fatalf("syncTitle budget 0: %v", err)
+	}
+	if done != 0 {
+		t.Fatalf("syncTitle budget 0 menyelesaikan %d episode, harus 0", done)
+	}
+	var epCount int
+	if err := pool.QueryRow(ctx, `select count(*) from episodes where title_id = $1::uuid`, titleID).Scan(&epCount); err != nil {
+		t.Fatal(err)
+	}
+	if epCount != 5 {
+		t.Fatalf("episode tersimpan %d, harus 5 (langkah daftar episode tetap jalan)", epCount)
 	}
 }
