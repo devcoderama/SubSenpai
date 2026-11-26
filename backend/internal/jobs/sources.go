@@ -148,12 +148,19 @@ func PurgePosterless(ctx context.Context, pool *pgxpool.Pool) error {
 // worker (30 -> 60 pada paket percepatan 2026-11-24, kini paralel).
 const enrichPerRun = 60
 
+// fetchParallel membatasi fetch HTTP bersamaan di fase enrich dan
+// resolve episode (naik 5 → 8, paket percepatan 2026-11-26): tiap
+// fetch menunggu jaringan situs sumber, jadi menaikkan jumlah
+// bersamaan menaikkan throughput sampai situs sumber mulai
+// membatasi — 429/403 di log worker = tanda turunkan lagi.
+const fetchParallel = 8
+
 // EnrichTitles memperkaya metadata judul yang masih kosong
 // (sinopsis/judul alternatif/genre/tahun/season/network/studio/
 // durasi/negara) dari halaman seri sumbernya, agar halaman detail
 // aplikasi tampil lengkap ala Netflix. Hanya kolom yang masih
 // kosong yang diisi (coalesce), maksimal 60 judul per putaran
-// dikerjakan paralel 5 bersamaan;
+// dikerjakan paralel fetchParallel bersamaan;
 // judul yang sudah bersinopsis keluar dari antrean dengan
 // sendirinya. Judul yang sinopsisnya boilerplate iklan unduhan
 // (data lama dari halaman salah alamat) ikut dipilih agar sembuh:
@@ -196,10 +203,10 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	// Kerjakan paralel, maksimal 5 fetch bersamaan (paket percepatan
-	// 2026-11-24): cara lama satu per satu membuat fase ini berjalan
-	// belasan menit sendiri karena tiap judul menunggu 1 fetch HTTP.
-	sem := make(chan struct{}, 5)
+	// Kerjakan paralel, maksimal fetchParallel fetch bersamaan:
+	// cara lama satu per satu membuat fase ini berjalan belasan
+	// menit sendiri karena tiap judul menunggu 1 fetch HTTP.
+	sem := make(chan struct{}, fetchParallel)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	done := 0
@@ -534,50 +541,71 @@ func hostOf(raw string) string {
 // judul belum komplit terlalu lambat bersihnya pada batas lama).
 const maxResolvePerRun = 100
 
+// syncTitlesPerType / maxResolvePerType: jatah per jenis di tiap
+// siklus sinkronisasi (paket percepatan 2026-11-26). Sebelumnya
+// 100 judul + 100 resolve dipakai bersama semua jenis, dan
+// pemilihan "paling sedikit episode dulu" membuat judul pendek
+// (film/anime pendek) menghabiskan anggaran di awal siklus —
+// Donghua yang episodenya puluhan tidak pernah kebagian, komplitnya
+// mentok di 403 sementara antrean belum-komplit menumpuk. Dengan
+// jatah per jenis (34 judul + 34 resolve tiap jenis ≈ total lama),
+// tiap jenis dijamin mendapat giliran tiap siklus.
+const syncTitlesPerType = 34
+const maxResolvePerType = 34
+
 // SyncSources menjalankan resolver untuk judul-judul katalog: memetakan
 // judul ke halaman sumbernya (pencarian pertama yang cocok), mengambil
 // daftar episode, dan menyelesaikan aliran + trek subtitle episode yang
 // belum punya sumber putar. Kegagalan per judul/sumber dicatat, tidak
 // menghentikan putaran.
 func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
-	trows, err := pool.Query(ctx, `
-		select id, type, title from titles
-		where type in ('anime','donghua','film')
-		  and (
-		    -- Judul tamat yang SEMUA episodenya sudah bersumber
-		    -- dilewati: tidak ada lagi yang bisa ditambah sinkron
-		    -- untuk mereka (paket percepatan 2026-11-24). Judul
-		    -- ongoing selalu disinkron — episode barunya dideteksi
-		    -- di sini; judul yang terlanjur tertanda tamat pun
-		    -- tetap terisi lewat jalur on-demand saat dibuka
-		    -- pengguna.
-		    titles.status = 'ongoing'
-		    or not exists (select 1 from episodes e where e.title_id = titles.id)
-		    or exists (
-		      select 1 from episodes e
-		      where e.title_id = titles.id
-		        and not exists (select 1 from episode_sources es
-		                        where es.episode_id = e.id))
-		  )
-		order by (select count(*) from episodes e where e.title_id = titles.id) asc,
-		         created_at
-		limit 100`)
-	if err != nil {
-		return err
-	}
+	types := []string{"anime", "donghua", "film"}
 	type title struct{ id, typ, name string }
-	titles := []title{}
-	for trows.Next() {
-		var t title
-		if err := trows.Scan(&t.id, &t.typ, &t.name); err == nil {
-			titles = append(titles, t)
+	var titles []title
+	for _, typ := range types {
+		trows, err := pool.Query(ctx, `
+			select id, type, title from titles
+			where type = $1
+			  and (
+			    -- Judul tamat yang SEMUA episodenya sudah bersumber
+			    -- dilewati: tidak ada lagi yang bisa ditambah sinkron
+			    -- untuk mereka (paket percepatan 2026-11-24). Judul
+			    -- ongoing selalu disinkron — episode barunya dideteksi
+			    -- di sini; judul yang terlanjur tertanda tamat pun
+			    -- tetap terisi lewat jalur on-demand saat dibuka
+			    -- pengguna.
+			    titles.status = 'ongoing'
+			    or not exists (select 1 from episodes e where e.title_id = titles.id)
+			    or exists (
+			      select 1 from episodes e
+			      where e.title_id = titles.id
+			        and not exists (select 1 from episode_sources es
+			                        where es.episode_id = e.id))
+			  )
+			order by (select count(*) from episodes e where e.title_id = titles.id) asc,
+			         created_at
+			limit $2`, typ, syncTitlesPerType)
+		if err != nil {
+			return err
+		}
+		for trows.Next() {
+			var t title
+			if err := trows.Scan(&t.id, &t.typ, &t.name); err == nil {
+				titles = append(titles, t)
+			}
+		}
+		trows.Close()
+		if err := trows.Err(); err != nil {
+			return err
 		}
 	}
-	trows.Close()
 
-	resolved := 0
+	resolvedByType := map[string]int{}
 	for i, t := range titles {
 		ReportProgress(ctx, pool, "Mengisi episode", i+1, len(titles), t.name)
+		if resolvedByType[t.typ] >= maxResolvePerType {
+			continue // jatah resolve jenis ini habis di siklus ini
+		}
 		srcs, err := loadSources(ctx, pool, t.typ)
 		if err != nil {
 			return err
@@ -587,21 +615,30 @@ func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
 			if !ok {
 				continue // resolver belum diimplementasikan (menyusul per situs)
 			}
-			if err := syncTitle(ctx, pool, resolver, src, t.id, t.name, &resolved); err != nil {
+			done, err := syncTitle(ctx, pool, resolver, src, t.id, t.name, maxResolvePerType-resolvedByType[t.typ])
+			if err != nil {
 				log.Printf("sinkron %s dari %s: %v", t.name, src.Name, err)
 			}
-			if resolved >= maxResolvePerRun {
-				log.Printf("sinkron sumber: batas %d episode tercapai", maxResolvePerRun)
-				return nil
+			resolvedByType[t.typ] += done
+			if resolvedByType[t.typ] >= maxResolvePerType {
+				break
 			}
 		}
 	}
-	log.Printf("sinkron sumber selesai: %d episode diselesaikan", resolved)
+	total := 0
+	for _, n := range resolvedByType {
+		total += n
+	}
+	log.Printf("sinkron sumber selesai: %d episode diselesaikan %v", total, resolvedByType)
 	return nil
 }
 
+// syncTitle menyinkronkan SATU judul dari satu sumber: memetakan judul,
+// mengambil daftar episode, lalu menyelesaikan aliran episode yang
+// belum punya sumber (maksimal budget resolve). Mengembalikan jumlah
+// episode yang berhasil diselesaikan.
 func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolver,
-	src sources.Source, titleID, titleName string, resolved *int) error {
+	src sources.Source, titleID, titleName string, budget int) (int, error) {
 	// 1) Pemetaan judul → halaman sumber (buat lewat pencarian bila belum ada).
 	var titleURL string
 	err := pool.QueryRow(ctx, `
@@ -610,10 +647,10 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 	if err != nil {
 		cands, err := resolver.Search(ctx, src, titleName)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if len(cands) == 0 {
-			return nil // tidak ditemukan di sumber ini — bukan kegagalan
+			return 0, nil // tidak ditemukan di sumber ini — bukan kegagalan
 		}
 		titleURL = cands[0].URL
 		if _, err := pool.Exec(ctx, `
@@ -621,7 +658,7 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 			values ($1::uuid, $2::uuid, $3, $4)
 			on conflict (title_id, source_id) do nothing`,
 			titleID, src.ID, titleURL, nullIfEmpty(cands[0].Ref)); err != nil {
-			return err
+			return 0, err
 		}
 		log.Printf("pemetaan baru: %s → %s (%s)", titleName, src.Name, titleURL)
 	}
@@ -629,58 +666,77 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 	// 2) Daftar episode dari sumber → baris episodes katalog.
 	eps, err := resolver.Episodes(ctx, src, titleURL)
 	if err != nil {
-		return err
+		return 0, err
+	}
+	// Satu query agregat menggantikan 2 query per episode (cari baris
+	// episode + hitung sumbernya): judul 100 episode tadinya butuh
+	// 200+ query hanya untuk menyimpulkan "tidak ada yang perlu
+	// dikerjakan". Peta episode_no → (id, sudah punya sumber?).
+	type epState struct {
+		id         string
+		hasSources bool
+	}
+	existing := map[int]epState{}
+	erows, err := pool.Query(ctx, `
+		select e.episode_no, e.id,
+		       exists (select 1 from episode_sources es where es.episode_id = e.id)
+		from episodes e where e.title_id = $1::uuid`, titleID)
+	if err != nil {
+		return 0, err
+	}
+	for erows.Next() {
+		var no int
+		var st epState
+		if err := erows.Scan(&no, &st.id, &st.hasSources); err == nil {
+			existing[no] = st
+		}
+	}
+	erows.Close()
+	if err := erows.Err(); err != nil {
+		return 0, err
 	}
 	// Episode yang sudah ada SEBELUM sinkron ini: notifikasi rilis
 	// hanya untuk judul yang memang sudah punya episode (bukan
 	// pengisian awal katalog yang bisa ratusan episode sekaligus).
-	var hadEps int
-	_ = pool.QueryRow(ctx, `
-		select count(*) from episodes where title_id = $1::uuid`, titleID).Scan(&hadEps)
+	hadEps := len(existing)
 	var newEps []int
 	type resolveJob struct {
 		id string
 		ep sources.EpisodeRef
 	}
 	var jobList []resolveJob
-	budget := maxResolvePerRun - *resolved
 	for _, ep := range eps {
-		var epID string
-		err := pool.QueryRow(ctx, `
-			select id from episodes where title_id = $1::uuid and episode_no = $2`,
-			titleID, ep.Number).Scan(&epID)
-		if err != nil {
+		st, ok := existing[ep.Number]
+		if !ok {
+			var epID string
 			if err := pool.QueryRow(ctx, `
 				insert into episodes (title_id, episode_no, title, video_url)
 				values ($1::uuid, $2, $3, $4) returning id`,
 				titleID, ep.Number, nullIfEmpty(ep.Title), ep.URL).Scan(&epID); err != nil {
-				return err
+				return 0, err
 			}
 			newEps = append(newEps, ep.Number)
+			st = epState{id: epID}
+			existing[ep.Number] = st
 		}
 		// 3) Kumpulkan episode yang belum punya sumber untuk
-		// diselesaikan alirannya (dibatasi anggaran putaran ini).
-		var have int
-		if err := pool.QueryRow(ctx, `
-			select count(*) from episode_sources where episode_id = $1::uuid`,
-			epID).Scan(&have); err != nil {
-			return err
-		}
-		if have > 0 || len(jobList) >= budget {
+		// diselesaikan alirannya (dibatasi anggaran panggilan ini).
+		if st.hasSources || len(jobList) >= budget {
 			continue
 		}
-		jobList = append(jobList, resolveJob{epID, ep})
+		jobList = append(jobList, resolveJob{st.id, ep})
 	}
-	// Selesaikan aliran kandidat secara PARALEL (maks 5 bersamaan).
-	// Cara lama satu per satu membuat pengisian 20 episode bisa
-	// memakan semenit lebih — halaman detail yang menunggu terasa
-	// sangat lambat (keluhan Rams 2026-11-23). Kandidat berurutan
-	// menaik sehingga episode awal masuk antrean pekerja lebih dulu.
+	// Selesaikan aliran kandidat secara PARALEL (maks fetchParallel
+	// bersamaan). Cara lama satu per satu membuat pengisian 20
+	// episode bisa memakan semenit lebih — halaman detail yang
+	// menunggu terasa sangat lambat (keluhan Rams 2026-11-23).
+	// Kandidat berurutan menaik sehingga episode awal masuk antrean
+	// pekerja lebih dulu.
+	done := 0
 	if len(jobList) > 0 {
-		sem := make(chan struct{}, 5)
+		sem := make(chan struct{}, fetchParallel)
 		var wg sync.WaitGroup
 		var mu sync.Mutex
-		done := 0
 		for _, jb := range jobList {
 			wg.Add(1)
 			go func(jb resolveJob) {
@@ -702,7 +758,6 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 			}(jb)
 		}
 		wg.Wait()
-		*resolved += done
 	}
 	// Notifikasi rilis ke pemfavorit judul (Daftar Saya) — hanya
 	// bila judul sudah punya episode sebelumnya (bukan backfill).
@@ -711,7 +766,7 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 			log.Printf("notifikasi rilis %s: %v", titleName, err)
 		}
 	}
-	return nil
+	return done, nil
 }
 
 // storeResolved menyimpan hasil Resolve satu episode: aliran ke

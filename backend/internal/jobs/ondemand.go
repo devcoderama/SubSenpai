@@ -202,10 +202,12 @@ func SyncOneTitle(ctx context.Context, pool *pgxpool.Pool, titleID, titleName, t
 		if !ok {
 			continue
 		}
-		if err := syncTitle(ctx, pool, resolver, src, titleID, titleName, &resolved); err != nil {
+		done, err := syncTitle(ctx, pool, resolver, src, titleID, titleName, maxResolvePerRun-resolved)
+		if err != nil {
 			log.Printf("sinkron on-demand %s dari %s: %v", titleName, src.Name, err)
 			lastErr = err
 		}
+		resolved += done
 		if resolved >= maxResolvePerRun {
 			break
 		}
