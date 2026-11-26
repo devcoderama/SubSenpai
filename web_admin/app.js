@@ -778,15 +778,10 @@ async function loadWorkerStatus() {
     const lanes = st.lanes || null;
     html += '<p style="margin:4px 0"><b>' + esc(st.phase) + '</b>' +
       (!lanes && st.current ? ' — sedang memproses: <b>' + esc(st.current) + '</b>' : '') + '</p>';
-    if (st.total > 0) {
-      const pct = Math.min(100, Math.round(st.done / st.total * 100));
-      html += '<div class="bar"><div style="width:' + pct + '%"></div></div>' +
-        '<p class="muted small">' + st.done + ' dari ' + st.total + ' judul pada fase ini</p>';
-    }
-    // Fase paralel: 3 jalur (Film/Anime/Donghua) berjalan bersamaan —
-    // tiap jalur punya bar + judul yang sedang diproses sendiri.
-    // Backend lama tidak mengirim lanes: kartu tampil seperti dulu.
     if (lanes) {
+      // Fase paralel: garis hijau dipisah per jenis — tiap jalur
+      // punya bar penuh sendiri, tidak ada lagi satu bar gabungan.
+      // Backend lama tidak mengirim lanes: kartu tampil seperti dulu.
       const order = [['film', 'Film'], ['anime', 'Anime'], ['donghua', 'Donghua']];
       for (const [key, lbl] of order) {
         const ln = lanes[key];
@@ -795,8 +790,15 @@ async function loadWorkerStatus() {
         const cur = ln.current && ln.current.length > 48 ? ln.current.slice(0, 48) + '…' : (ln.current || '');
         html += '<p style="margin:8px 0 2px"><b>' + lbl + '</b> · ' + ln.done + ' dari ' + ln.total + ' judul' +
           (cur ? ' — ' + esc(cur) : '') + '</p>' +
-          '<div class="bar thin"><div style="width:' + pct + '%"></div></div>';
+          '<div class="bar"><div style="width:' + pct + '%"></div></div>';
       }
+      if (st.total > 0) {
+        html += '<p class="muted small">' + st.done + ' dari ' + st.total + ' judul pada fase ini (gabungan 3 jalur)</p>';
+      }
+    } else if (st.total > 0) {
+      const pct = Math.min(100, Math.round(st.done / st.total * 100));
+      html += '<div class="bar"><div style="width:' + pct + '%"></div></div>' +
+        '<p class="muted small">' + st.done + ' dari ' + st.total + ' judul pada fase ini</p>';
     }
     html += '<p class="muted small">Terakhir diperbarui ' + esc(fmtDate(st.updated_at)) + ' · kartu ini menyegar tiap 5 detik</p>';
   } else {
