@@ -64,6 +64,84 @@ func PollGoPay(ctx context.Context, pool *pgxpool.Pool, client *payments.GoPayCl
 	}
 }
 
+// activateIfPaid menanyakan status order ke Tokopay lalu mengaktifkan
+// sesi bila gateway menyatakan lunas. Mengembalikan true bila sesi
+// diaktifkan; false + err != nil bila pengecekan gagal (penelepon
+// yang memutuskan: lewati dulu, atau anggap belum lunas). Aktivasi
+// sendiri atomik (billing.ActivateSession) — dua penelepon yang
+// bersamaan tidak bisa memperpanjang premium dua kali.
+func activateIfPaid(ctx context.Context, pool *pgxpool.Pool, tokopay *payments.TokopayClient, id, trx string) (bool, error) {
+	st, err := tokopay.CheckOrderStatus(ctx, trx, strings.ReplaceAll(id, "-", ""))
+	if err != nil {
+		return false, err
+	}
+	if !payments.TokopayPaid(st) {
+		return false, nil
+	}
+	if err := billing.ActivateSession(ctx, pool, id, trx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ReconcileTokopayPayments adalah jaring pengaman webhook (permintaan
+// Rams 2026-11-26): tiap menit, sesi Tokopay yang masih pending tapi
+// dibuat <24 jam lalu ditanyakan ke gateway; yang ternyata sudah lunas
+// diaktifkan — mis. callback terlewat karena webhook masih menunjuk
+// domain lama, atau request callback gagal di tengah jalan. Sesi yang
+// lebih tua dari 24 jam ditangani ExpireStaleSessions, di sini tidak
+// disentuh. Anti-dobel: bila webhook sudah mengaktifkan lebih dulu,
+// sesi sudah 'paid' dan dilewati; bila job ini yang menang, webhook
+// yang datang belakangan jadi no-op (lihat ActivateSession).
+func ReconcileTokopayPayments(ctx context.Context, pool *pgxpool.Pool, tokopay *payments.TokopayClient) {
+	if tokopay == nil || !tokopay.Configured() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	const batch = 20
+	type sess struct {
+		id  string
+		trx string
+	}
+	rows, err := pool.Query(ctx, `
+		select id, matched_ref
+		from payment_sessions
+		where provider = 'tokopay' and status = 'pending'
+		  and matched_ref is not null
+		  and created_at >= now() - interval '24 hours'
+		order by created_at asc limit $1`, batch)
+	if err != nil {
+		log.Printf("rekonsiliasi Tokopay: %v", err)
+		return
+	}
+	var sessions []sess
+	for rows.Next() {
+		var s sess
+		if err := rows.Scan(&s.id, &s.trx); err == nil {
+			sessions = append(sessions, s)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil || len(sessions) == 0 {
+		return
+	}
+	activated := 0
+	for _, s := range sessions {
+		ok, err := activateIfPaid(ctx, pool, tokopay, s.id, s.trx)
+		if err != nil {
+			log.Printf("rekonsiliasi Tokopay: cek %s: %v", s.id, err)
+			continue
+		}
+		if ok {
+			activated++
+		}
+	}
+	if activated > 0 {
+		log.Printf("rekonsiliasi Tokopay: %d sesi lunas teraktivasi", activated)
+	}
+}
+
 // ExpireStaleSessions menandai sesi pembayaran yang sudah lebih dari
 // 24 jam masih pending sebagai 'expired' agar tidak menumpuk
 // selamanya di dashboard (permintaan Rams 2026-11-26).
@@ -128,18 +206,13 @@ func ExpireStaleSessions(ctx context.Context, pool *pgxpool.Pool, tokopay *payme
 				skipped++
 				continue
 			}
-			st, err := tokopay.CheckOrderStatus(ctx, s.trx, strings.ReplaceAll(s.id, "-", ""))
+			ok, err := activateIfPaid(ctx, pool, tokopay, s.id, s.trx)
 			if err != nil {
 				log.Printf("expire sesi basi: cek %s: %v", s.id, err)
 				skipped++
 				continue
 			}
-			if payments.TokopayPaid(st) {
-				if err := billing.ActivateSession(ctx, pool, s.id, s.trx); err != nil {
-					log.Printf("expire sesi basi: aktivasi %s: %v", s.id, err)
-					skipped++
-					continue
-				}
+			if ok {
 				activated++
 				continue
 			}

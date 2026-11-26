@@ -93,6 +93,7 @@ func main() {
 	}
 	jobs.PollGoPay(ctx, pool, gopayClient)
 	jobs.ExpireStaleSessions(ctx, pool, tokopayClient)
+	jobs.ReconcileTokopayPayments(ctx, pool, tokopayClient)
 	trendTicker := time.NewTicker(time.Hour)
 	defer trendTicker.Stop()
 	sourceTicker := time.NewTicker(10 * time.Minute)
@@ -113,6 +114,7 @@ func main() {
 		case <-payTicker.C:
 			jobs.PollGoPay(ctx, pool, gopayClient)
 			jobs.ExpireStaleSessions(ctx, pool, tokopayClient)
+			jobs.ReconcileTokopayPayments(ctx, pool, tokopayClient)
 		}
 	}
 }

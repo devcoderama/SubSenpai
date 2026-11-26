@@ -10,8 +10,21 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// dbTX adalah permukaan database minimal yang dipakai logika billing:
+// *pgxpool.Pool dan pgx.Tx sama-sama memenuhinya, sehingga aktivasi
+// bisa berjalan di dalam transaksi tanpa mengubah pemanggil — dan
+// tanpa mengambil koneksi kedua dari pool (yang akan deadlock saat
+// beberapa aktivasi berjalan bersamaan).
+type dbTX interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
 
 // Plan adalah paket premium yang dijual (harga rupiah).
 type Plan struct {
@@ -44,8 +57,8 @@ func PlanByID(id string) (Plan, bool) {
 // LoadPlans membaca katalog paket aktif dari tabel
 // subscription_plans; jatuh ke daftar bawaan bila tabel belum
 // ada atau masih kosong.
-func LoadPlans(ctx context.Context, pool *pgxpool.Pool) []Plan {
-	rows, err := pool.Query(ctx, `
+func LoadPlans(ctx context.Context, db dbTX) []Plan {
+	rows, err := db.Query(ctx, `
 		select id, days, price, label
 		from subscription_plans
 		where is_active
@@ -69,8 +82,8 @@ func LoadPlans(ctx context.Context, pool *pgxpool.Pool) []Plan {
 }
 
 // PlanByIDCtx mencari paket dari database (sumber kebenaran).
-func PlanByIDCtx(ctx context.Context, pool *pgxpool.Pool, id string) (Plan, bool) {
-	for _, p := range LoadPlans(ctx, pool) {
+func PlanByIDCtx(ctx context.Context, db dbTX, id string) (Plan, bool) {
+	for _, p := range LoadPlans(ctx, db) {
 		if p.ID == id {
 			return p, true
 		}
@@ -81,8 +94,17 @@ func PlanByIDCtx(ctx context.Context, pool *pgxpool.Pool, id string) (Plan, bool
 // ExtendPremium menambah masa premium (menumpuk dari premium_until yang
 // masih berlaku) dan mencatat baris subscriptions.
 func ExtendPremium(ctx context.Context, pool *pgxpool.Pool, userID string, days int, provider, ref string) (time.Time, error) {
+	return ExtendPremiumTx(ctx, pool, userID, days, provider, ref)
+}
+
+// ExtendPremiumTx sama seperti ExtendPremium, tapi di atas transaksi
+// pemanggil — dipakai ActivateSession agar klaim sesi + perpanjangan
+// premium berhasil atau gagal bersama-sama (bila perpanjangan gagal,
+// klaim dibatalkan sehingga webhook/scheduler berikutnya bisa mencoba
+// lagi; tanpa ini sesi bisa tertandai lunas tanpa premium).
+func ExtendPremiumTx(ctx context.Context, tx dbTX, userID string, days int, provider, ref string) (time.Time, error) {
 	var until time.Time
-	err := pool.QueryRow(ctx, `
+	err := tx.QueryRow(ctx, `
 		update profiles
 		set premium_until = greatest(coalesce(premium_until, now()), now()) + make_interval(days => $2),
 		    is_premium = true
@@ -95,7 +117,7 @@ func ExtendPremium(ctx context.Context, pool *pgxpool.Pool, userID string, days 
 	if provider == "trial" {
 		plan = "trial-3"
 	}
-	_, err = pool.Exec(ctx, `
+	_, err = tx.Exec(ctx, `
 		insert into subscriptions (user_id, plan, status, current_period_end, provider, provider_ref)
 		values ($1::uuid, $2, 'active', $3, $4, $5)`,
 		userID, plan, until, provider, nullStr(ref))
@@ -106,33 +128,49 @@ func ExtendPremium(ctx context.Context, pool *pgxpool.Pool, userID string, days 
 // efeknya: langganan diperpanjang untuk purpose 'subscription'; untuk
 // purpose 'voucher' tidak ada efek langsung (voucher yang payment_ref-nya
 // menunjuk sesi ini menjadi bisa ditukar). Aman dipanggil berulang.
+//
+// ANTI-DOBEL (permintaan Rams 2026-11-26): seluruh aktivasi berjalan
+// dalam SATU transaksi dengan baris sesi dikunci (SELECT ... FOR
+// UPDATE). Webhook callback dan job rekonsiliasi terjadwal yang tiba
+// bersamaan saling antre pada kunci itu; yang kedua melihat status
+// sudah 'paid' dan berhenti — premium tidak pernah diperpanjang dua
+// kali untuk satu pembayaran, dan voucher tidak pernah terhitung dua
+// kali. Bila perpanjangan gagal, transaksi dibatalkan sehingga sesi
+// tetap 'pending' dan percobaan berikutnya (webhook ulang / scheduler)
+// masih bisa mengaktifkannya.
 func ActivateSession(ctx context.Context, pool *pgxpool.Pool, sessionID, matchedRef string) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
 	var userID, purpose, planID, provider, status string
-	err := pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		select user_id, purpose, coalesce(plan,''), provider, status
-		from payment_sessions where id = $1::uuid`, sessionID,
+		from payment_sessions where id = $1::uuid for update`, sessionID,
 	).Scan(&userID, &purpose, &planID, &provider, &status)
 	if err != nil {
 		return fmt.Errorf("sesi tidak ditemukan: %w", err)
 	}
 	if status == "paid" {
-		return nil
+		return tx.Commit(ctx)
 	}
-	if _, err := pool.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		update payment_sessions
 		set status = 'paid', matched_ref = $2
 		where id = $1::uuid`, sessionID, nullStr(matchedRef)); err != nil {
 		return err
 	}
 	if purpose == "subscription" {
-		plan, ok := PlanByIDCtx(ctx, pool, planID)
+		plan, ok := PlanByIDCtx(ctx, tx, planID)
 		if !ok {
 			return fmt.Errorf("paket sesi tidak dikenal: %q", planID)
 		}
-		_, err := ExtendPremium(ctx, pool, userID, plan.Days, provider, sessionID)
-		return err
+		if _, err := ExtendPremiumTx(ctx, tx, userID, plan.Days, provider, sessionID); err != nil {
+			return err
+		}
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 func nullStr(s string) any {
