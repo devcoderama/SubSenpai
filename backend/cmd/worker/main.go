@@ -82,7 +82,13 @@ func main() {
 		jobs.PostUpdateToDiscordIfNew(ctx, pool, cfg)
 		jobs.ReportProgress(ctx, pool, "Selesai", 0, 0, "")
 	}
-	runSources()
+	// Klien pembayaran dibangun dulu: job pembayaran jalan SEBELUM
+	// siklus katalog. runSources() lambat (satu siklus penuh bisa
+	// puluhan menit — fetch ratusan judul) dan sebelumnya job
+	// pembayaran baru dipanggil sesudahnya, sehingga sesudah restart
+	// worker transaksi basi tetap pending lama padahal kode sweeper
+	// sudah live — dan journalctl pun kosong karena sweeper belum
+	// pernah dieksekusi sama sekali (kejadian 2026-11-26).
 	var gopayClient *payments.GoPayClient
 	if cfg.GoPayBaseURL != "" {
 		gopayClient = payments.NewGoPayClient(cfg.GoPayBaseURL, cfg.GoPayUsername, cfg.GoPayPassword)
@@ -91,15 +97,36 @@ func main() {
 	if cfg.TokopayMerchantID != "" && cfg.TokopaySecret != "" {
 		tokopayClient = payments.NewTokopayClient(cfg.TokopayAPIURL, cfg.TokopayMerchantID, cfg.TokopaySecret)
 	}
-	jobs.PollGoPay(ctx, pool, gopayClient)
-	jobs.ExpireStaleSessions(ctx, pool, tokopayClient)
-	jobs.ReconcileTokopayPayments(ctx, pool, tokopayClient)
+	runPayments := func() {
+		jobs.PollGoPay(ctx, pool, gopayClient)
+		jobs.ExpireStaleSessions(ctx, pool, tokopayClient)
+		jobs.ReconcileTokopayPayments(ctx, pool, tokopayClient)
+	}
+	runPayments()
+	// Ticker pembayaran di goroutine sendiri: siklus katalog memblokir
+	// loop utama selama berjalan, dan tick payTicker yang tiba saat
+	// itu hilang — sweeper "tiap 1 menit" nyatanya hanya jalan di
+	// sela-sela siklus. Goroutine ini menjaga jadwalnya apa pun yang
+	// dikerjakan loop utama. Job-jobnya independen dari katalog (hanya
+	// menyentuh payment_sessions + profiles/subscriptions) dan
+	// aktivasinya atomik, jadi aman jalan bersamaan.
+	go func() {
+		payTicker := time.NewTicker(time.Minute)
+		defer payTicker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-payTicker.C:
+				runPayments()
+			}
+		}
+	}()
+	runSources()
 	trendTicker := time.NewTicker(time.Hour)
 	defer trendTicker.Stop()
 	sourceTicker := time.NewTicker(10 * time.Minute)
 	defer sourceTicker.Stop()
-	payTicker := time.NewTicker(time.Minute)
-	defer payTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -111,10 +138,6 @@ func main() {
 			}
 		case <-sourceTicker.C:
 			runSources()
-		case <-payTicker.C:
-			jobs.PollGoPay(ctx, pool, gopayClient)
-			jobs.ExpireStaleSessions(ctx, pool, tokopayClient)
-			jobs.ReconcileTokopayPayments(ctx, pool, tokopayClient)
 		}
 	}
 }
