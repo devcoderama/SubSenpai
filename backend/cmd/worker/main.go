@@ -87,7 +87,12 @@ func main() {
 	if cfg.GoPayBaseURL != "" {
 		gopayClient = payments.NewGoPayClient(cfg.GoPayBaseURL, cfg.GoPayUsername, cfg.GoPayPassword)
 	}
+	var tokopayClient *payments.TokopayClient
+	if cfg.TokopayMerchantID != "" && cfg.TokopaySecret != "" {
+		tokopayClient = payments.NewTokopayClient(cfg.TokopayAPIURL, cfg.TokopayMerchantID, cfg.TokopaySecret)
+	}
 	jobs.PollGoPay(ctx, pool, gopayClient)
+	jobs.ExpireStaleSessions(ctx, pool, tokopayClient)
 	trendTicker := time.NewTicker(time.Hour)
 	defer trendTicker.Stop()
 	sourceTicker := time.NewTicker(10 * time.Minute)
@@ -107,6 +112,7 @@ func main() {
 			runSources()
 		case <-payTicker.C:
 			jobs.PollGoPay(ctx, pool, gopayClient)
+			jobs.ExpireStaleSessions(ctx, pool, tokopayClient)
 		}
 	}
 }
