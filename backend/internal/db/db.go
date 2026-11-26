@@ -27,11 +27,11 @@ func Connect(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Paralel worker 8 (naik dari 5, paket percepatan 2026-11-26)
-	// butuh koneksi lebih dari bawaan pgxpool (maks 4 atau sejumlah
-	// CPU) — kalau tidak, fetch yang sudah paralel antre lagi di
-	// pool koneksi saat menyimpan hasilnya.
-	cfg.MaxConns = 16
+	// Paralel worker 3 jalur × 8 fetch (pemecahan per jenis
+	// 2026-11-26) butuh koneksi lebih dari bawaan pgxpool (maks 4
+	// atau sejumlah CPU) — kalau tidak, fetch yang sudah paralel
+	// antre lagi di pool koneksi saat menyimpan hasilnya.
+	cfg.MaxConns = 32
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err

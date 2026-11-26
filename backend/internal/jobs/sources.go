@@ -146,7 +146,10 @@ func PurgePosterless(ctx context.Context, pool *pgxpool.Pool) error {
 
 // enrichPerRun membatasi judul yang berhasil diperkaya per putaran
 // worker (30 -> 60 pada paket percepatan 2026-11-24, kini paralel).
-const enrichPerRun = 60
+// enrichPerRun: maksimal judul yang diperkaya per jenis per putaran
+// (30 × 3 jenis = 90 total; dulu 60 untuk semua jenis sebelum
+// jalur dipecah 2026-11-26).
+const enrichPerRun = 30
 
 // fetchParallel membatasi fetch HTTP bersamaan di fase enrich dan
 // resolve episode (naik 5 → 8, paket percepatan 2026-11-26): tiap
@@ -159,111 +162,144 @@ const fetchParallel = 8
 // (sinopsis/judul alternatif/genre/tahun/season/network/studio/
 // durasi/negara) dari halaman seri sumbernya, agar halaman detail
 // aplikasi tampil lengkap ala Netflix. Hanya kolom yang masih
-// kosong yang diisi (coalesce), maksimal 60 judul per putaran
-// dikerjakan paralel fetchParallel bersamaan;
-// judul yang sudah bersinopsis keluar dari antrean dengan
-// sendirinya. Judul yang sinopsisnya boilerplate iklan unduhan
-// (data lama dari halaman salah alamat) ikut dipilih agar sembuh:
-// applySeriesMeta menimpa sinopsis boilerplate dengan yang sah.
+// kosong yang diisi (coalesce). Ketiga jenis berjalan sebagai 3
+// jalur BERSAMAAN (situs sumbernya berbeda per jenis); judul yang
+// sudah bersinopsis keluar dari antrean dengan sendirinya. Judul
+// yang sinopsisnya boilerplate iklan unduhan (data lama dari
+// halaman salah alamat) ikut dipilih agar sembuh: applySeriesMeta
+// menimpa sinopsis boilerplate dengan yang sah.
 func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
-	rows, err := pool.Query(ctx, `
-		select t.id, t.title, ts.source_url,
-		       cs.id, cs.name, cs.content_type, cs.lang, coalesce(cs.base_url,''),
-		       cs.resolver, cs.fetch_mode, cs.subtitle_kind, cs.priority
-		from titles t
-		join title_sources ts on ts.title_id = t.id
-		join content_sources cs on cs.id = ts.source_id
-		where (t.synopsis is null or lower(t.synopsis) like any ($1)) and cs.is_active
-		order by t.created_at
-		limit 180`, boilerplatePatterns())
-	if err != nil {
-		return err
-	}
 	type job struct {
 		titleID, name, url string
 		src                sources.Source
 	}
-	jobs := []job{}
-	seen := map[string]bool{}
-	for rows.Next() {
-		var j job
-		if err := rows.Scan(&j.titleID, &j.name, &j.url, &j.src.ID, &j.src.Name,
-			&j.src.ContentType, &j.src.Lang, &j.src.BaseURL, &j.src.Resolver,
-			&j.src.FetchMode, &j.src.SubtitleKind, &j.src.Priority); err != nil {
-			continue
+	loadJobs := func(typ string) ([]job, error) {
+		rows, err := pool.Query(ctx, `
+			select t.id, t.title, ts.source_url,
+			       cs.id, cs.name, cs.content_type, cs.lang, coalesce(cs.base_url,''),
+			       cs.resolver, cs.fetch_mode, cs.subtitle_kind, cs.priority
+			from titles t
+			join title_sources ts on ts.title_id = t.id
+			join content_sources cs on cs.id = ts.source_id
+			where t.type = $2 and (t.synopsis is null or lower(t.synopsis) like any ($1)) and cs.is_active
+			order by t.created_at
+			limit 60`, boilerplatePatterns(), typ)
+		if err != nil {
+			return nil, err
 		}
-		if seen[j.titleID] {
-			continue
+		defer rows.Close()
+		jobs := []job{}
+		seen := map[string]bool{}
+		for rows.Next() {
+			var j job
+			if err := rows.Scan(&j.titleID, &j.name, &j.url, &j.src.ID, &j.src.Name,
+				&j.src.ContentType, &j.src.Lang, &j.src.BaseURL, &j.src.Resolver,
+				&j.src.FetchMode, &j.src.SubtitleKind, &j.src.Priority); err != nil {
+				continue
+			}
+			if seen[j.titleID] {
+				continue
+			}
+			seen[j.titleID] = true
+			sources.ApplyBaseOverride(&j.src)
+			jobs = append(jobs, j)
 		}
-		seen[j.titleID] = true
-		sources.ApplyBaseOverride(&j.src)
-		jobs = append(jobs, j)
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return jobs, nil
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
+	enrichOne := func(j job) bool {
+		resolver, ok := sources.ByKey(j.src.Resolver)
+		if !ok {
+			log.Printf("enrich %s: resolver %q sumber %s tidak ditemukan, dilewati", j.titleID, j.src.Resolver, j.src.Name)
+			return false
+		}
+		infoer, ok := resolver.(sources.SeriesInfoer)
+		if !ok {
+			log.Printf("enrich %s: resolver %q sumber %s tidak mendukung SeriesInfoer, dilewati", j.titleID, j.src.Resolver, j.src.Name)
+			return false
+		}
+		meta, err := infoer.SeriesInfo(ctx, j.src, j.url)
+		if err != nil {
+			// Dicatat (tidak ditelan diam-diam) agar kegagalan fetch
+			// per sumber terlihat di log worker.
+			log.Printf("enrich %s: %v", j.titleID, err)
+			return false
+		}
+		if meta == nil {
+			log.Printf("enrich %s dari %s (%s): SeriesInfo mengembalikan meta nil", j.titleID, j.src.Name, j.url)
+			return false
+		}
+		if meta.Synopsis == "" && meta.Studio == "" && len(meta.Genres) == 0 {
+			log.Printf("enrich %s dari %s (%s): meta ditolak penjaga kosong: %s", j.titleID, j.src.Name, j.url, metaSummary(meta))
+			return false
+		}
+		if err := applySeriesMeta(ctx, pool, j.titleID, meta); err != nil {
+			log.Printf("enrich %s: %v", j.titleID, err)
+			return false
+		}
+		return true
 	}
-	// Kerjakan paralel, maksimal fetchParallel fetch bersamaan:
-	// cara lama satu per satu membuat fase ini berjalan belasan
-	// menit sendiri karena tiap judul menunggu 1 fetch HTTP.
-	sem := make(chan struct{}, fetchParallel)
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	done := 0
-	attempt := 0
-	for _, j := range jobs {
-		mu.Lock()
-		penuh := done >= enrichPerRun
-		mu.Unlock()
-		if penuh {
-			break
-		}
-		attempt++
-		ReportProgress(ctx, pool, "Melengkapi metadata", attempt, min(len(jobs), enrichPerRun), j.name)
+	totalDone := 0
+	var firstErr error
+	for _, typ := range []string{"anime", "donghua", "film"} {
 		wg.Add(1)
-		go func(j job) {
+		go func(typ string) {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			resolver, ok := sources.ByKey(j.src.Resolver)
-			if !ok {
-				log.Printf("enrich %s: resolver %q sumber %s tidak ditemukan, dilewati", j.titleID, j.src.Resolver, j.src.Name)
-				return
-			}
-			infoer, ok := resolver.(sources.SeriesInfoer)
-			if !ok {
-				log.Printf("enrich %s: resolver %q sumber %s tidak mendukung SeriesInfoer, dilewati", j.titleID, j.src.Resolver, j.src.Name)
-				return
-			}
-			meta, err := infoer.SeriesInfo(ctx, j.src, j.url)
+			jobs, err := loadJobs(typ)
 			if err != nil {
-				// Dicatat (tidak ditelan diam-diam) agar kegagalan fetch
-				// per sumber terlihat di log worker.
-				log.Printf("enrich %s: %v", j.titleID, err)
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
 				return
 			}
-			if meta == nil {
-				log.Printf("enrich %s dari %s (%s): SeriesInfo mengembalikan meta nil", j.titleID, j.src.Name, j.url)
-				return
+			// Kerjakan paralel, maksimal fetchParallel fetch
+			// bersamaan: cara lama satu per satu membuat fase ini
+			// berjalan belasan menit sendiri karena tiap judul
+			// menunggu 1 fetch HTTP.
+			sem := make(chan struct{}, fetchParallel)
+			var jwg sync.WaitGroup
+			var jmu sync.Mutex
+			done := 0
+			attempt := 0
+			for _, j := range jobs {
+				jmu.Lock()
+				penuh := done >= enrichPerRun
+				jmu.Unlock()
+				if penuh {
+					break
+				}
+				attempt++
+				ReportLaneProgress(ctx, pool, "Melengkapi metadata", typ, attempt, min(len(jobs), enrichPerRun), j.name)
+				jwg.Add(1)
+				go func(j job) {
+					defer jwg.Done()
+					sem <- struct{}{}
+					defer func() { <-sem }()
+					if enrichOne(j) {
+						jmu.Lock()
+						done++
+						jmu.Unlock()
+					}
+				}(j)
 			}
-			if meta.Synopsis == "" && meta.Studio == "" && len(meta.Genres) == 0 {
-				log.Printf("enrich %s dari %s (%s): meta ditolak penjaga kosong: %s", j.titleID, j.src.Name, j.url, metaSummary(meta))
-				return
-			}
-			if err := applySeriesMeta(ctx, pool, j.titleID, meta); err != nil {
-				log.Printf("enrich %s: %v", j.titleID, err)
-				return
-			}
+			jwg.Wait()
 			mu.Lock()
-			done++
+			totalDone += done
 			mu.Unlock()
-		}(j)
+		}(typ)
 	}
 	wg.Wait()
-	if done > 0 {
-		log.Printf("enrich: %d judul diperkaya metadata serinya", done)
+	if totalDone > 0 {
+		log.Printf("enrich: %d judul diperkaya metadata serinya", totalDone)
 	}
-	return nil
+	return firstErr
 }
 
 func DiscoverTitles(ctx context.Context, pool *pgxpool.Pool) error {
@@ -548,21 +584,25 @@ const maxResolvePerRun = 100
 // (film/anime pendek) menghabiskan anggaran di awal siklus —
 // Donghua yang episodenya puluhan tidak pernah kebagian, komplitnya
 // mentok di 403 sementara antrean belum-komplit menumpuk. Dengan
-// jatah per jenis (34 judul + 34 resolve tiap jenis ≈ total lama),
-// tiap jenis dijamin mendapat giliran tiap siklus.
-const syncTitlesPerType = 34
-const maxResolvePerType = 34
+// jatah per jenis (50 judul + 50 resolve tiap jenis — naik dari 34
+// saat jalur dipecah 2026-11-26), tiap jenis dijamin mendapat
+// giliran tiap siklus.
+const syncTitlesPerType = 50
+const maxResolvePerType = 50
 
 // SyncSources menjalankan resolver untuk judul-judul katalog: memetakan
 // judul ke halaman sumbernya (pencarian pertama yang cocok), mengambil
 // daftar episode, dan menyelesaikan aliran + trek subtitle episode yang
-// belum punya sumber putar. Kegagalan per judul/sumber dicatat, tidak
-// menghentikan putaran.
+// belum punya sumber putar. Ketiga jenis (anime/donghua/film) berjalan
+// sebagai 3 jalur BERSAMAAN — situs sumbernya berbeda per jenis, jadi
+// tidak saling berebut; kegagalan satu jalur (mis. satu situs down)
+// hanya menghentikan jalur itu, dua jalur lain tetap jalan.
+// Kegagalan per judul/sumber dicatat, tidak menghentikan putaran.
 func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
 	types := []string{"anime", "donghua", "film"}
 	type title struct{ id, typ, name string }
-	var titles []title
-	for _, typ := range types {
+	lists := make([][]title, len(types))
+	for i, typ := range types {
 		trows, err := pool.Query(ctx, `
 			select id, type, title from titles
 			where type = $1
@@ -591,7 +631,7 @@ func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
 		for trows.Next() {
 			var t title
 			if err := trows.Scan(&t.id, &t.typ, &t.name); err == nil {
-				titles = append(titles, t)
+				lists[i] = append(lists[i], t)
 			}
 		}
 		trows.Close()
@@ -600,37 +640,57 @@ func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 
+	var wg sync.WaitGroup
+	var mu sync.Mutex
 	resolvedByType := map[string]int{}
-	for i, t := range titles {
-		ReportProgress(ctx, pool, "Mengisi episode", i+1, len(titles), t.name)
-		if resolvedByType[t.typ] >= maxResolvePerType {
-			continue // jatah resolve jenis ini habis di siklus ini
-		}
-		srcs, err := loadSources(ctx, pool, t.typ)
-		if err != nil {
-			return err
-		}
-		for _, src := range srcs {
-			resolver, ok := sources.ByKey(src.Resolver)
-			if !ok {
-				continue // resolver belum diimplementasikan (menyusul per situs)
+	var firstErr error
+	for i, typ := range types {
+		wg.Add(1)
+		go func(typ string, titles []title) {
+			defer wg.Done()
+			resolved := 0
+			for j, t := range titles {
+				ReportLaneProgress(ctx, pool, "Mengisi episode", typ, j+1, len(titles), t.name)
+				if resolved >= maxResolvePerType {
+					continue // jatah resolve jalur ini habis di siklus ini
+				}
+				srcs, err := loadSources(ctx, pool, typ)
+				if err != nil {
+					log.Printf("sinkron %s: %v", typ, err)
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					mu.Unlock()
+					return
+				}
+				for _, src := range srcs {
+					resolver, ok := sources.ByKey(src.Resolver)
+					if !ok {
+						continue // resolver belum diimplementasikan (menyusul per situs)
+					}
+					done, err := syncTitle(ctx, pool, resolver, src, t.id, t.name, maxResolvePerType-resolved)
+					if err != nil {
+						log.Printf("sinkron %s dari %s: %v", t.name, src.Name, err)
+					}
+					resolved += done
+					if resolved >= maxResolvePerType {
+						break
+					}
+				}
 			}
-			done, err := syncTitle(ctx, pool, resolver, src, t.id, t.name, maxResolvePerType-resolvedByType[t.typ])
-			if err != nil {
-				log.Printf("sinkron %s dari %s: %v", t.name, src.Name, err)
-			}
-			resolvedByType[t.typ] += done
-			if resolvedByType[t.typ] >= maxResolvePerType {
-				break
-			}
-		}
+			mu.Lock()
+			resolvedByType[typ] = resolved
+			mu.Unlock()
+		}(typ, lists[i])
 	}
+	wg.Wait()
 	total := 0
 	for _, n := range resolvedByType {
 		total += n
 	}
 	log.Printf("sinkron sumber selesai: %d episode diselesaikan %v", total, resolvedByType)
-	return nil
+	return firstErr
 }
 
 // syncTitle menyinkronkan SATU judul dari satu sumber: memetakan judul,
