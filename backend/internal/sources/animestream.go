@@ -265,7 +265,7 @@ func (a *animestreamResolver) discoverArchive(ctx context.Context, src Source, l
 }
 
 var (
-	tsImgRe  = regexp.MustCompile(`(?is)<img[^>]+class="[^"]*ts-post-image[^"]*"[^>]*>`)
+	tsImgRe   = regexp.MustCompile(`(?is)<img[^>]+class="[^"]*ts-post-image[^"]*"[^>]*>`)
 	epTitleRe = regexp.MustCompile(`(?i)\s+Episode\s+\d+.*$`)
 )
 
@@ -393,8 +393,14 @@ func (a *animestreamResolver) Episodes(ctx context.Context, src Source, titleURL
 	if a.key == "anichin" {
 		if htmlEps, herr := a.episodesHTML(ctx, titleURL); herr == nil && len(htmlEps) > 0 {
 			return htmlEps, nil
+		} else if herr != nil {
+			return nil, herr
 		}
-		return a.episodesWP(ctx, src, titleURL)
+		// Halaman seri berhasil dibaca tapi eplister-nya kosong:
+		// jalur WP tidak akan membantu (wp-json Anichin 403 dari
+		// VPS sejak 2026-11-26), jadi gagal cepat dengan pesan
+		// yang jelas — bukan 403 WP yang menyesatkan.
+		return nil, fmt.Errorf("tidak ada episode di halaman %s", titleURL)
 	}
 	if a.key == "kuronime" {
 		// Kuronime: daftar episode HTML di halaman seri DIDAHULUKAN
@@ -902,9 +908,9 @@ func (a *animestreamResolver) episodesWPBase(ctx context.Context, base, slug str
 }
 
 var (
-	mirrorOptRe     = regexp.MustCompile(`(?is)<option\s+value="([A-Za-z0-9+/=\s]{40,})"[^>]*>(.*?)</option>`)
-	iframeSrcRe     = regexp.MustCompile(`(?is)src="([^"]+)"`)
-	labelBracketRe  = regexp.MustCompile(`\s*\[[^\]]*\]\s*$`)
+	mirrorOptRe    = regexp.MustCompile(`(?is)<option\s+value="([A-Za-z0-9+/=\s]{40,})"[^>]*>(.*?)</option>`)
+	iframeSrcRe    = regexp.MustCompile(`(?is)src="([^"]+)"`)
+	labelBracketRe = regexp.MustCompile(`\s*\[[^\]]*\]\s*$`)
 )
 
 func (a *animestreamResolver) Resolve(ctx context.Context, src Source, ep EpisodeRef) (Resolved, error) {

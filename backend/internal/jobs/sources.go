@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -70,6 +71,10 @@ func loadSourcesMode(ctx context.Context, pool *pgxpool.Pool, contentType string
 		from content_sources
 		where is_active and base_url is not null
 		  and content_type = $1`+modeFilter+`
+		  -- Sumber yang kesehatannya 'down' dilewati sampai pulih
+		  -- (diagnosis 2026-11-26: HiAnime down tetap dicoba tiap judul,
+		  -- tiap percobaan membakar timeout 30 dtk; 'unknown' tetap dicoba).
+		  and coalesce(health, 'unknown') <> 'down'
 		order by priority, name`, contentType)
 	if err != nil {
 		return nil, err
@@ -182,6 +187,7 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 			join title_sources ts on ts.title_id = t.id
 			join content_sources cs on cs.id = ts.source_id
 			where t.type = $2 and (t.synopsis is null or lower(t.synopsis) like any ($1)) and cs.is_active
+			  and coalesce(cs.health, 'unknown') <> 'down'
 			order by t.created_at
 			limit 60`, boilerplatePatterns(), typ)
 		if err != nil {
@@ -592,6 +598,61 @@ const maxResolvePerType = 50
 
 // SyncSources menjalankan resolver untuk judul-judul katalog: memetakan
 // judul ke halaman sumbernya (pencarian pertama yang cocok), mengambil
+// syncTitleItem adalah satu judul yang dipilih untuk disinkron.
+type syncTitleItem struct{ id, typ, name string }
+
+// selectSyncTitles memilih judul yang akan disinkron pada satu siklus:
+// judul dengan episode belum bersumber didahulukan (paling mungkin jadi
+// komplit), lalu judul tanpa episode; judul yang gagal sync kurang dari
+// 6 jam lalu dilewati — cooldown kegagalan (migrasi 0023, diagnosis
+// 2026-11-26: 134 judul donghua eps=0 yang gagal tiap siklus memonopoli
+// slot sehingga judul yang sebenarnya bisa selesai tak kebagian giliran).
+func selectSyncTitles(ctx context.Context, pool *pgxpool.Pool, typ string, limit int) ([]syncTitleItem, error) {
+	rows, err := pool.Query(ctx, `
+		select id, type, title from titles
+		where type = $1
+		  and (
+		    -- Judul tamat yang SEMUA episodenya sudah bersumber
+		    -- dilewati: tidak ada lagi yang bisa ditambah sinkron
+		    -- untuk mereka (paket percepatan 2026-11-24). Judul
+		    -- ongoing selalu disinkron — episode barunya dideteksi
+		    -- di sini; judul yang terlanjur tertanda tamat pun
+		    -- tetap terisi lewat jalur on-demand saat dibuka
+		    -- pengguna.
+		    titles.status = 'ongoing'
+		    or not exists (select 1 from episodes e where e.title_id = titles.id)
+		    or exists (
+		      select 1 from episodes e
+		      where e.title_id = titles.id
+		        and not exists (select 1 from episode_sources es
+		                        where es.episode_id = e.id))
+		  )
+		  -- Cooldown kegagalan sync: judul yang gagal <6 jam lalu
+		  -- dilewati (last_sync_at/last_sync_error, migrasi 0023).
+		  and not (last_sync_at > now() - interval '6 hours' and last_sync_error is not null)
+		order by exists (
+		    select 1 from episodes e
+		    where e.title_id = titles.id
+		      and not exists (select 1 from episode_sources es
+		                      where es.episode_id = e.id)
+		  ) desc,
+		  (select count(*) from episodes e where e.title_id = titles.id) asc,
+		  created_at
+		limit $2`, typ, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []syncTitleItem{}
+	for rows.Next() {
+		var t syncTitleItem
+		if err := rows.Scan(&t.id, &t.typ, &t.name); err == nil {
+			out = append(out, t)
+		}
+	}
+	return out, rows.Err()
+}
+
 // daftar episode, dan menyelesaikan aliran + trek subtitle episode yang
 // belum punya sumber putar. Ketiga jenis (anime/donghua/film) berjalan
 // sebagai 3 jalur BERSAMAAN — situs sumbernya berbeda per jenis, jadi
@@ -600,44 +661,13 @@ const maxResolvePerType = 50
 // Kegagalan per judul/sumber dicatat, tidak menghentikan putaran.
 func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
 	types := []string{"anime", "donghua", "film"}
-	type title struct{ id, typ, name string }
-	lists := make([][]title, len(types))
+	lists := make([][]syncTitleItem, len(types))
 	for i, typ := range types {
-		trows, err := pool.Query(ctx, `
-			select id, type, title from titles
-			where type = $1
-			  and (
-			    -- Judul tamat yang SEMUA episodenya sudah bersumber
-			    -- dilewati: tidak ada lagi yang bisa ditambah sinkron
-			    -- untuk mereka (paket percepatan 2026-11-24). Judul
-			    -- ongoing selalu disinkron — episode barunya dideteksi
-			    -- di sini; judul yang terlanjur tertanda tamat pun
-			    -- tetap terisi lewat jalur on-demand saat dibuka
-			    -- pengguna.
-			    titles.status = 'ongoing'
-			    or not exists (select 1 from episodes e where e.title_id = titles.id)
-			    or exists (
-			      select 1 from episodes e
-			      where e.title_id = titles.id
-			        and not exists (select 1 from episode_sources es
-			                        where es.episode_id = e.id))
-			  )
-			order by (select count(*) from episodes e where e.title_id = titles.id) asc,
-			         created_at
-			limit $2`, typ, syncTitlesPerType)
+		list, err := selectSyncTitles(ctx, pool, typ, syncTitlesPerType)
 		if err != nil {
 			return err
 		}
-		for trows.Next() {
-			var t title
-			if err := trows.Scan(&t.id, &t.typ, &t.name); err == nil {
-				lists[i] = append(lists[i], t)
-			}
-		}
-		trows.Close()
-		if err := trows.Err(); err != nil {
-			return err
-		}
+		lists[i] = list
 	}
 
 	var wg sync.WaitGroup
@@ -646,7 +676,7 @@ func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
 	var firstErr error
 	for i, typ := range types {
 		wg.Add(1)
-		go func(typ string, titles []title) {
+		go func(typ string, titles []syncTitleItem) {
 			defer wg.Done()
 			resolved := 0
 			for j, t := range titles {
@@ -664,6 +694,8 @@ func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
 					mu.Unlock()
 					return
 				}
+				titleDone := 0
+				var titleErr error
 				for _, src := range srcs {
 					resolver, ok := sources.ByKey(src.Resolver)
 					if !ok {
@@ -672,11 +704,23 @@ func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
 					done, err := syncTitle(ctx, pool, resolver, src, t.id, t.name, maxResolvePerType-resolved)
 					if err != nil {
 						log.Printf("sinkron %s dari %s: %v", t.name, src.Name, err)
+						if titleErr == nil {
+							titleErr = err
+						}
 					}
+					titleDone += done
 					resolved += done
 					if resolved >= maxResolvePerType {
 						break
 					}
+				}
+				// Catat hasil sync judul ini untuk cooldown (migrasi 0023):
+				// gagal di semua sumber → dilewati 6 jam; ada progres →
+				// hapus penanda gagal supaya tidak ikut tersaring.
+				if titleDone > 0 {
+					_, _ = pool.Exec(ctx, `update titles set last_sync_error = null where id = $1::uuid`, t.id)
+				} else if titleErr != nil {
+					_, _ = pool.Exec(ctx, `update titles set last_sync_at = now(), last_sync_error = $2 where id = $1::uuid`, t.id, titleErr.Error())
 				}
 			}
 			mu.Lock()
@@ -705,22 +749,49 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 		select source_url from title_sources
 		where title_id = $1::uuid and source_id = $2::uuid`, titleID, src.ID).Scan(&titleURL)
 	if err != nil {
-		cands, err := resolver.Search(ctx, src, titleName)
-		if err != nil {
-			return 0, err
+		// Pencarian HTML didahulukan bila resolver menyediakannya
+		// (TitleSearcher, mis. Anichin/Kuronime lewat /?s=): wp-json
+		// Anichin mati 403 dari VPS sejak 2026-11-26, jadi jalur lama
+		// tidak bisa membuat mapping baru. Pencarian dibatasi 10 dtk
+		// (bukan timeout HTTP 30 dtk) supaya satu sumber yang
+		// menggantung tidak membakar satu siklus.
+		sctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if hs, ok := resolver.(sources.TitleSearcher); ok {
+			items, serr := hs.SearchTitles(sctx, src, titleName)
+			if serr != nil {
+				return 0, serr
+			}
+			if len(items) == 0 {
+				return 0, nil // tidak ditemukan di sumber ini — bukan kegagalan
+			}
+			titleURL = items[0].URL
+			if _, err := pool.Exec(ctx, `
+				insert into title_sources (title_id, source_id, source_url, source_ref)
+				values ($1::uuid, $2::uuid, $3, $4)
+				on conflict (title_id, source_id) do nothing`,
+				titleID, src.ID, titleURL, nil); err != nil {
+				return 0, err
+			}
+			log.Printf("pemetaan baru: %s → %s (%s)", titleName, src.Name, titleURL)
+		} else {
+			cands, err := resolver.Search(sctx, src, titleName)
+			if err != nil {
+				return 0, err
+			}
+			if len(cands) == 0 {
+				return 0, nil // tidak ditemukan di sumber ini — bukan kegagalan
+			}
+			titleURL = cands[0].URL
+			if _, err := pool.Exec(ctx, `
+				insert into title_sources (title_id, source_id, source_url, source_ref)
+				values ($1::uuid, $2::uuid, $3, $4)
+				on conflict (title_id, source_id) do nothing`,
+				titleID, src.ID, titleURL, nullIfEmpty(cands[0].Ref)); err != nil {
+				return 0, err
+			}
+			log.Printf("pemetaan baru: %s → %s (%s)", titleName, src.Name, titleURL)
 		}
-		if len(cands) == 0 {
-			return 0, nil // tidak ditemukan di sumber ini — bukan kegagalan
-		}
-		titleURL = cands[0].URL
-		if _, err := pool.Exec(ctx, `
-			insert into title_sources (title_id, source_id, source_url, source_ref)
-			values ($1::uuid, $2::uuid, $3, $4)
-			on conflict (title_id, source_id) do nothing`,
-			titleID, src.ID, titleURL, nullIfEmpty(cands[0].Ref)); err != nil {
-			return 0, err
-		}
-		log.Printf("pemetaan baru: %s → %s (%s)", titleName, src.Name, titleURL)
 	}
 
 	// 2) Daftar episode dari sumber → baris episodes katalog.
