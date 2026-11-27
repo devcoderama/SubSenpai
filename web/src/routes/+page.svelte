@@ -46,9 +46,14 @@
         grid = [];
         const pick = rails.anime[0] || rails.donghua[0] || rails.film[0];
         if (pick) {
-          const det = await getTitle(pick.id);
-          hero = { ...(det.title || det), synopsis: det.title?.synopsis || det.synopsis };
-          heroFirstEp = det.episodes?.[0]?.id || null;
+          try {
+            const det = await getTitle(pick.id);
+            hero = { ...(det.title || det), synopsis: det.title?.synopsis || det.synopsis };
+            heroFirstEp = det.episodes?.[0]?.id || null;
+          } catch {
+            // Hero gagal tidak boleh mengosongkan Beranda — rel tetap tampil.
+            hero = null;
+          }
         }
       } else {
         const res = await getTitles({ type: t });
