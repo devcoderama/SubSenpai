@@ -107,6 +107,10 @@ class HomeSession {
     val homeLoaded = mutableStateOf(false)
     val terbaru = mutableStateOf<List<TitleCard>>(emptyList())
     val perType = mutableStateOf<Map<String, List<TitleCard>>>(emptyMap())
+    /** Rel Terbaru per jenis (tahun berjalan) — 28 Nov 2026. */
+    val perTypeYear = mutableStateOf<Map<String, List<TitleCard>>>(emptyMap())
+    /** Rel Ongoing per jenis (anime/donghua) — 28 Nov 2026. */
+    val ongoing = mutableStateOf<Map<String, List<TitleCard>>>(emptyMap())
     val homeLive = mutableStateOf<Map<String, List<CatalogRepository.LiveBrowseItem>>>(emptyMap())
     val lanjut = mutableStateOf<List<WatchHistoryItem>>(emptyList())
     val reloadKey = mutableStateOf(0)
@@ -131,6 +135,9 @@ class HomeTabSession {
     val year = mutableStateOf<Int?>(null)
     val country = mutableStateOf<String?>(null)
     val network = mutableStateOf<String?>(null)
+    /** Status ongoing/completed — disaring di klien (28 Nov 2026,
+     *  backend belum punya filter status). */
+    val status = mutableStateOf<String?>(null)
     val facets = mutableStateOf<TitleFacets?>(null)
     val hasil = mutableStateOf<List<TitleCard>>(emptyList())
     val hasilCursor = mutableStateOf<String?>(null)
@@ -157,6 +164,39 @@ class HomeTabSession {
 }
 
 /**
+ * Muat halaman katalog dengan saringan status di klien (28 Nov
+ * 2026): backend belum punya filter status, jadi halaman diambil
+ * satu demi satu sampai `want` judul cocok terkumpul atau katalog
+ * habis (maks 4 halaman tambahan) supaya grid tidak kosong.
+ * Tanpa status, tepat satu halaman — perilaku lama tidak berubah.
+ */
+private suspend fun titlesFiltered(
+    repo: CatalogRepository,
+    type: String?,
+    query: String?,
+    genre: String?,
+    year: Int?,
+    country: String?,
+    network: String?,
+    status: String?,
+    cursor: String?,
+    want: Int,
+): Pair<List<TitleCard>, String?> {
+    var out = emptyList<TitleCard>()
+    var cur = cursor
+    var next: String? = null
+    var extra = 0
+    do {
+        val (items, nx) = repo.titlesPaged(type, query, genre, year, country, network, cur)
+        out = out + if (status != null) items.filter { it.status == status } else items
+        next = nx
+        cur = nx
+        extra++
+    } while (status != null && out.size < want && next != null && extra <= 4)
+    return out to next
+}
+
+/**
  * Beranda ala Netflix (redesain 2026-11-22 atas contoh UI Netflix
  * dari Rams): header melayang transparan di atas hero — logo "S"
  * merah, ikon cari & akun, tab kategori teks (Semua/Anime/Donghua/
@@ -174,6 +214,7 @@ fun HomeScreen(
     onOpenEpisode: (String) -> Unit,
     onLogin: () -> Unit,
     onOpenMore: () -> Unit,
+    onOpenHistory: () -> Unit = {},
     onOpenNotices: () -> Unit = {},
     onOpenPremium: () -> Unit = {},
     onFatalChange: (Boolean) -> Unit = {},
@@ -209,6 +250,13 @@ fun HomeScreen(
     var year by tab.year
     var country by tab.country
     var network by tab.network
+    var status by tab.status
+    var perTypeYear by session.perTypeYear
+    var ongoing by session.ongoing
+    // Tahun berjalan untuk rel Terbaru (Film/Anime/Donghua Terbaru).
+    val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+    // Film Populer: film dari trending 24 jam (sama seperti web).
+    val filmPopuler = trending.filter { it.type == "film" }
     var facets by tab.facets
     var filterOpen by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
@@ -308,6 +356,20 @@ fun HomeScreen(
         }
     }
 
+    // "Lihat semua" rel Beranda (28 Nov 2026): buka mode telusur
+    // jenis itu dengan filter relnya (tahun/status), lalu mode
+    // Hasil memuat daftar yang sama — tanpa layar baru.
+    val openBrowse: (String, Int?, String?) -> Unit = { t, y, s ->
+        val target = session.tabFor(t)
+        target.genre.value = null
+        target.year.value = y
+        target.country.value = null
+        target.network.value = null
+        target.status.value = s
+        query = ""
+        type = t
+    }
+
     // Lencana lonceng di header: jumlah SEMUA notifikasi yang belum
     // dibaca (admin + postingan + episode baru favorit), diperiksa
     // berkala selama Beranda tampil (permintaan Rams: lonceng di
@@ -361,6 +423,41 @@ fun HomeScreen(
             }
         }
         perType = loaded
+        // Rel Terbaru per jenis (tahun berjalan) — satu panggilan
+        // per jenis, ikut muat utama.
+        val yearLoaded = mutableMapOf<String, List<TitleCard>>()
+        for ((t, _) in rowTypes) {
+            try {
+                yearLoaded[t] = repo.titles(t, null, year = thisYear)
+            } catch (e: Exception) {
+                // Rel Terbaru jenis ini dilewati bila gagal.
+            }
+        }
+        perTypeYear = yearLoaded
+        // Rel Ongoing dimuat di latar (tidak menahan Beranda): rel
+        // muncul saat siap. Donghua ongoing jarang di halaman
+        // teratas, jadi dipindai sampai 8 halaman.
+        scope.launch {
+            val ongoingLoaded = mutableMapOf<String, List<TitleCard>>()
+            for (t in listOf("anime", "donghua")) {
+                try {
+                    val out = mutableListOf<TitleCard>()
+                    var cursor: String? = null
+                    var pages = 0
+                    while (out.size < 12 && pages < 8) {
+                        val (items, next) = repo.titlesPaged(t, null, cursor = cursor)
+                        out += items.filter { it.status == "ongoing" }.take(12 - out.size)
+                        cursor = next
+                        pages++
+                        if (next == null) break
+                    }
+                    if (out.isNotEmpty()) ongoingLoaded[t] = out
+                } catch (e: Exception) {
+                    // Rel Ongoing jenis ini dilewati bila gagal.
+                }
+            }
+            ongoing = ongoingLoaded
+        }
         val liveLoaded = mutableMapOf<String, List<CatalogRepository.LiveBrowseItem>>()
         for ((t, _) in rowTypes) {
             try {
@@ -423,7 +520,7 @@ fun HomeScreen(
     // Muat awal Hasil (filter/pencarian berubah): selama berjalan
     // dan Hasil masih kosong, grid menampilkan skeleton loading.
     var hasilLoading by remember { mutableStateOf(false) }
-    LaunchedEffect(type, query, genre, year, country, network) {
+    LaunchedEffect(type, query, genre, year, country, network, status) {
         if (!browsing) return@LaunchedEffect
         // Hasil untuk kombinasi filter ini sudah termuat di sesi
         // (kembali dari Detail/Pemutar): pertahankan daftar yang
@@ -431,14 +528,16 @@ fun HomeScreen(
         // dari halaman pertama.
         val sig = listOf(
             genre ?: "", year?.toString() ?: "", country ?: "",
-            network ?: "", query,
+            network ?: "", query, status ?: "",
         ).joinToString("|")
         if (tab.hasilSignature == sig) return@LaunchedEffect
         // Filter benar-benar berubah: mulai dari atas lagi.
         tab.scroll.scrollToItem(0)
         hasilLoading = true
         try {
-            val (page, next) = repo.titlesPaged(type, query.ifBlank { null }, genre, year, country, network, null)
+            val (page, next) = titlesFiltered(
+                repo, type, query.ifBlank { null }, genre, year, country, network, status, null, 30,
+            )
             hasil = page
             hasilCursor = next
             hasilHasMore = next != null
@@ -464,8 +563,8 @@ fun HomeScreen(
             hasilLoadingMore = true
             scope.launch {
                 try {
-                    val (more, next) = repo.titlesPaged(
-                        type, query.ifBlank { null }, genre, year, country, network, cur,
+                    val (more, next) = titlesFiltered(
+                        repo, type, query.ifBlank { null }, genre, year, country, network, status, cur, 30,
                     )
                     val have = hasil.map { it.id }.toSet()
                     hasil = hasil + more.filter { it.id !in have }
@@ -572,7 +671,7 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                         ) {
-                            val extraActive = listOf(year, country, network).count { it != null }
+                            val extraActive = listOf(year, country, network, status).count { it != null }
                             val hasExtra = facets?.let {
                                 it.years.isNotEmpty() || it.countries.isNotEmpty() || it.networks.isNotEmpty()
                             } == true
@@ -754,7 +853,7 @@ fun HomeScreen(
                     }
                 }
                 if (lanjut.isNotEmpty()) {
-                    item { SectionTitle("Lanjutkan Menonton") }
+                    item { SectionTitle("Lanjutkan Menonton", onSeeAll = { onOpenHistory() }) }
                     item {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -785,35 +884,58 @@ fun HomeScreen(
                         }
                     }
                 }
-                if (trending.isNotEmpty()) {
-                    item { SectionTitle("Sedang Tren") }
-                    item { PosterRow(trending, onOpenTitle) }
-                }
-                for ((t, label) in rowTypes) {
-                    val liveRows = homeLive[t].orEmpty()
-                    val rows = perType[t].orEmpty()
-                    if (liveRows.isNotEmpty()) {
-                        item { SectionTitle(label) }
-                        item {
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                            ) {
-                                items(liveRows) { li ->
-                                    Box(Modifier.width(112.dp)) {
-                                        LivePosterCard(li, importingSlug == li.slug) { onHomeLiveTap(t, li) }
-                                    }
-                                }
-                            }
-                        }
-                    } else if (rows.isNotEmpty()) {
-                        item { SectionTitle(label) }
-                        item { PosterRow(rows, onOpenTitle) }
+                // Urutan rel (28 Nov 2026, permintaan Rams): 10 rel,
+                // tiap rel punya Lihat semua — sama seperti web.
+                if (homeLive["film"].orEmpty().isNotEmpty() || perType["film"].orEmpty().isNotEmpty()) {
+                    item { SectionTitle("Film", onSeeAll = { openBrowse("film", null, null) }) }
+                    item {
+                        TypeRow(
+                            homeLive["film"].orEmpty(), perType["film"].orEmpty(), "film",
+                            importingSlug, onOpenTitle, onHomeLiveTap,
+                        )
                     }
                 }
-                if (terbaru.isNotEmpty()) {
-                    item { SectionTitle("Baru Ditambahkan") }
-                    item { PosterRow(terbaru, onOpenTitle) }
+                if (perTypeYear["film"].orEmpty().isNotEmpty()) {
+                    item { SectionTitle("Film Terbaru", onSeeAll = { openBrowse("film", thisYear, null) }) }
+                    item { PosterRow(perTypeYear["film"]!!.take(12), onOpenTitle) }
+                }
+                if (filmPopuler.isNotEmpty()) {
+                    item { SectionTitle("Film Populer", onSeeAll = { openBrowse("film", null, null) }) }
+                    item { PosterRow(filmPopuler.take(12), onOpenTitle) }
+                }
+                if (homeLive["anime"].orEmpty().isNotEmpty() || perType["anime"].orEmpty().isNotEmpty()) {
+                    item { SectionTitle("Anime", onSeeAll = { openBrowse("anime", null, null) }) }
+                    item {
+                        TypeRow(
+                            homeLive["anime"].orEmpty(), perType["anime"].orEmpty(), "anime",
+                            importingSlug, onOpenTitle, onHomeLiveTap,
+                        )
+                    }
+                }
+                if (ongoing["anime"].orEmpty().isNotEmpty()) {
+                    item { SectionTitle("Anime Ongoing", onSeeAll = { openBrowse("anime", null, "ongoing") }) }
+                    item { PosterRow(ongoing["anime"]!!.take(12), onOpenTitle) }
+                }
+                if (perTypeYear["anime"].orEmpty().isNotEmpty()) {
+                    item { SectionTitle("Anime Terbaru", onSeeAll = { openBrowse("anime", thisYear, null) }) }
+                    item { PosterRow(perTypeYear["anime"]!!.take(12), onOpenTitle) }
+                }
+                if (homeLive["donghua"].orEmpty().isNotEmpty() || perType["donghua"].orEmpty().isNotEmpty()) {
+                    item { SectionTitle("Donghua", onSeeAll = { openBrowse("donghua", null, null) }) }
+                    item {
+                        TypeRow(
+                            homeLive["donghua"].orEmpty(), perType["donghua"].orEmpty(), "donghua",
+                            importingSlug, onOpenTitle, onHomeLiveTap,
+                        )
+                    }
+                }
+                if (ongoing["donghua"].orEmpty().isNotEmpty()) {
+                    item { SectionTitle("Donghua Ongoing", onSeeAll = { openBrowse("donghua", null, "ongoing") }) }
+                    item { PosterRow(ongoing["donghua"]!!.take(12), onOpenTitle) }
+                }
+                if (perTypeYear["donghua"].orEmpty().isNotEmpty()) {
+                    item { SectionTitle("Donghua Terbaru", onSeeAll = { openBrowse("donghua", thisYear, null) }) }
+                    item { PosterRow(perTypeYear["donghua"]!!.take(12), onOpenTitle) }
                 }
                 item { Spacer(Modifier.height(24.dp)) }
             }
@@ -959,6 +1081,7 @@ fun HomeScreen(
                             year = null
                             country = null
                             network = null
+                            status = null
                         }.padding(bottom = 10.dp),
                     )
                 }
@@ -972,15 +1095,19 @@ fun HomeScreen(
                     year = year,
                     country = country,
                     network = network,
+                    status = status,
+                    showStatus = type == "anime" || type == "donghua",
                     onGenre = { genre = it },
                     onYear = { year = it },
                     onCountry = { country = it },
                     onNetwork = { network = it },
+                    onStatus = { status = it },
                     onReset = {
                         genre = null
                         year = null
                         country = null
                         network = null
+                        status = null
                     },
                     onClose = { filterOpen = false },
                 )
@@ -1028,10 +1155,13 @@ private fun FilterSheetContent(
     year: Int?,
     country: String?,
     network: String?,
+    status: String? = null,
+    showStatus: Boolean = false,
     onGenre: (String?) -> Unit,
     onYear: (Int?) -> Unit,
     onCountry: (String?) -> Unit,
     onNetwork: (String?) -> Unit,
+    onStatus: (String?) -> Unit = {},
     onReset: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -1088,6 +1218,20 @@ private fun FilterSheetContent(
             ) {
                 facets.networks.forEach { n ->
                     GenreChip(n, network == n) { onNetwork(if (network == n) null else n) }
+                }
+            }
+        }
+        if (showStatus) {
+            Text("Status", fontWeight = FontWeight.Bold)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                GenreChip("Ongoing", status == "ongoing") {
+                    onStatus(if (status == "ongoing") null else "ongoing")
+                }
+                GenreChip("Selesai", status == "completed") {
+                    onStatus(if (status == "completed") null else "completed")
                 }
             }
         }
@@ -1312,13 +1456,58 @@ private fun HeroAction(icon: Int, label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 10.dp),
-    )
+private fun SectionTitle(text: String, onSeeAll: (() -> Unit)? = null) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+        )
+        if (onSeeAll != null) {
+            Text(
+                "Lihat semua ›",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFA1A1AA),
+                modifier = Modifier.clickable { onSeeAll() },
+            )
+        }
+    }
+}
+
+/**
+ * Baris jenis di Beranda: dari BERANDA situs sumber bila ada,
+ * kalau tidak katalog (perilaku lama sejak 23 Nov 2026).
+ */
+@Composable
+private fun TypeRow(
+    liveRows: List<CatalogRepository.LiveBrowseItem>,
+    rows: List<TitleCard>,
+    type: String,
+    importingSlug: String?,
+    onOpenTitle: (String) -> Unit,
+    onHomeLiveTap: (String, CatalogRepository.LiveBrowseItem) -> Unit,
+) {
+    if (liveRows.isNotEmpty()) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 16.dp),
+        ) {
+            items(liveRows) { li ->
+                Box(Modifier.width(112.dp)) {
+                    LivePosterCard(li, importingSlug == li.slug) { onHomeLiveTap(type, li) }
+                }
+            }
+        }
+    } else if (rows.isNotEmpty()) {
+        PosterRow(rows, onOpenTitle)
+    }
 }
 
 @Composable

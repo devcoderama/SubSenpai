@@ -441,6 +441,13 @@ class MainActivity : ComponentActivity() {
                                         restoreState = true
                                     }
                                 },
+                                onOpenHistory = {
+                                    nav.navigate("history") {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
                                 onOpenNotices = { nav.navigate("notices") },
                                 onOpenPremium = {
                                     nav.navigate("premium") {
