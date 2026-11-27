@@ -1,5 +1,4 @@
 <script>
-  import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import {
@@ -144,6 +143,7 @@
   async function loadDetail() {
     loading = true;
     error = '';
+    serupa = [];
     try {
       const res = await getTitle(id);
       title = res.title || res;
@@ -172,7 +172,15 @@
     }
   }
 
-  onMount(loadDetail);
+  // Pindah antar Detail (ketuk Judul Serupa) TIDAK me-remount komponen
+  // — SvelteKit memakai ulang instance untuk rute yang sama — jadi
+  // onMount saja tidak cukup: muat ulang tiap id berubah. Pola yang
+  // sama dengan loadedEp di halaman Nonton (yang sudah benar).
+  let loadedId = '';
+  $: if (id && id !== loadedId) {
+    loadedId = id;
+    loadDetail();
+  }
 </script>
 
 {#if loading}
