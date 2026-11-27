@@ -423,6 +423,21 @@ func (a *animestreamResolver) Episodes(ctx context.Context, src Source, titleURL
 
 var eplisterRe = regexp.MustCompile(`href="([^"]*-episode-(\d+)[^"]*)"`)
 
+// eplisterLiRe menangkap tiap <li> di daftar episode (eplister):
+// grup 1 = href episode, grup 2 = isi <li> (berisi .epl-num).
+var eplisterLiRe = regexp.MustCompile(`(?s)<li[^>]*>\s*<a\s+href="([^"]+)"[^>]*>(.*?)</a>\s*</li>`)
+
+// eplNumRe membaca label nomor di kolom Ep daftar episode
+// ("1", "9", "Movie", "Final Movie", "PV", ...).
+var eplNumRe = regexp.MustCompile(`epl-num">([^<]*)<`)
+
+// episodeNumRe mengambil nomor dari pola -episode-N di URL.
+var episodeNumRe = regexp.MustCompile(`-episode-(\d+)`)
+
+// trailerLabelRe menandai entri yang bukan episode (cuplikan):
+// PV/trailer/preview/teaser tidak boleh masuk katalog sebagai episode.
+var trailerLabelRe = regexp.MustCompile(`(?i)pv|trailer|preview|teaser`)
+
 // parseEplister mengurai tautan episode dari HTML halaman series
 // tema Animestream. Dua penjaga agar episode seri LAIN dari widget
 // "rilisan terbaru" di bilah sisi tidak ikut tertangkap: (1) hanya
@@ -441,20 +456,71 @@ func parseEplister(html, pageURL string) []EpisodeRef {
 	if err != nil {
 		return nil
 	}
-	seg := html
-	if i := strings.Index(seg, "eplister"); i >= 0 {
-		seg = seg[i:]
-		if j := strings.Index(seg, "</ul>"); j >= 0 {
-			seg = seg[:j]
-		}
+	// Tanpa penanda eplister, halaman ini BUKAN halaman seri (mis.
+	// 404 seri fiktif) -- kembalikan kosong. WAJIB: parser li baru
+	// tidak memakai filter prefix slug, jadi tanpa pembatasan ini
+	// ia akan menangkap <li><a> acak dari seluruh halaman (menu,
+	// rekomendasi) dan mengira itu episode.
+	i := strings.Index(html, "eplister")
+	if i < 0 {
+		return nil
 	}
+	seg := html[i:]
+	if j := strings.Index(seg, "</ul>"); j >= 0 {
+		seg = seg[:j]
+	}
+	byNo := map[int]EpisodeRef{}
+	// Jalur utama (diagnosis 2026-11-27): tiap <li> di dalam <ul>
+	// eplister SUDAH pasti milik halaman seri ini, jadi tidak perlu
+	// filter prefix slug -- filter itu yang membuang semua episode
+	// ARCANE (link episode pakai slug pendek
+	// "arcane-league-of-legends-episode-09-..." sementara slug
+	// halaman "arcane-league-of-legends-battle-of-the-two-cities").
+	// Nomor diambil dari kolom .epl-num bila angka; bila bukan angka
+	// (mis. "Movie", "Final Movie") dari -episode-N di href; bila
+	// tidak ada juga, dari urutan entri -- film/special satu entri
+	// jadi episode 1. Entri PV/trailer dilewati (bukan episode).
+	pos := 0
+	for _, m := range eplisterLiRe.FindAllStringSubmatch(seg, -1) {
+		ref, err := url.Parse(m[1])
+		if err != nil {
+			continue
+		}
+		label := ""
+		if lm := eplNumRe.FindStringSubmatch(m[2]); lm != nil {
+			label = strings.TrimSpace(lm[1])
+		}
+		if trailerLabelRe.MatchString(label) {
+			continue
+		}
+		n := 0
+		if v, err := strconv.Atoi(label); err == nil && v > 0 {
+			n = v
+		} else if em := episodeNumRe.FindStringSubmatch(m[1]); em != nil {
+			if v, err := strconv.Atoi(em[1]); err == nil && v > 0 {
+				n = v
+			}
+		}
+		pos++
+		if n <= 0 {
+			n = pos
+		}
+		if _, dup := byNo[n]; dup {
+			continue
+		}
+		byNo[n] = EpisodeRef{Number: n, URL: base.ResolveReference(ref).String()}
+	}
+	if len(byNo) > 0 {
+		return sortedEpisodeRefs(byNo)
+	}
+	// Cadangan: logika lama (regex -episode-N + prefix slug) untuk
+	// situs yang markup eplister-nya tidak memakai <li>.
 	parts := strings.Split(strings.Trim(base.Path, "/"), "/")
 	slug := parts[len(parts)-1]
 	prefixes := map[string]bool{slug: true, slug + "s": true}
 	if strings.HasSuffix(slug, "s") {
 		prefixes[strings.TrimSuffix(slug, "s")] = true
 	}
-	byNo := map[int]EpisodeRef{}
 	for _, m := range eplisterRe.FindAllStringSubmatch(seg, -1) {
 		ref, err := url.Parse(m[1])
 		if err != nil {
@@ -480,6 +546,11 @@ func parseEplister(html, pageURL string) []EpisodeRef {
 		}
 		byNo[n] = EpisodeRef{Number: n, URL: base.ResolveReference(ref).String()}
 	}
+	return sortedEpisodeRefs(byNo)
+}
+
+// sortedEpisodeRefs mengurutkan peta nomor -> episode menaik.
+func sortedEpisodeRefs(byNo map[int]EpisodeRef) []EpisodeRef {
 	out := make([]EpisodeRef, 0, len(byNo))
 	for _, e := range byNo {
 		out = append(out, e)

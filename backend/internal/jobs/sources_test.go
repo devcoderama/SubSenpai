@@ -486,3 +486,189 @@ func TestSyncTitleZeroBudgetLive(t *testing.T) {
 		t.Fatalf("episode tersimpan %d, harus 5 (langkah daftar episode tetap jalan)", epCount)
 	}
 }
+
+// TestSyncTitleMovieAndShortSlugLive menguji perbaikan parseEplister
+// 2026-11-27 terhadap situs langsung: Deep Sea (movie, 1 entri
+// "Movie") dan ARCANE (seri, link episode pakai slug pendek) sebelumnya
+// gagal dengan "tidak ada episode di halaman".
+func TestSyncTitleMovieAndShortSlugLive(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL kosong")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	resolver, ok := sources.ByKey("anichin")
+	if !ok {
+		t.Fatal("resolver anichin tidak terdaftar")
+	}
+	// Sumber Anichin sudah ada sebagai seed migrasi (id acak); cari
+	// id-nya, sisipkan hanya bila belum ada. Id tetap + ON CONFLICT
+	// DO NOTHING gagal diam-diam di sini: baris seed menang, id
+	// tetap tidak tersisip, lalu title_sources gagal FK.
+	var srcID string
+	if err := pool.QueryRow(ctx, `select id from content_sources where resolver = 'anichin' and content_type = 'donghua' and lang = 'id'`).Scan(&srcID); err != nil {
+		if err := pool.QueryRow(ctx, `
+			insert into content_sources (name, content_type, lang, base_url, resolver, fetch_mode, subtitle_kind, priority, is_active)
+			values ('Anichin', 'donghua', 'id', 'https://anichin.moe', 'anichin', 'server', 'hard', 10, true)
+			returning id`).Scan(&srcID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mkTitle := func(slug, url string) string {
+		_, _ = pool.Exec(ctx, `delete from titles where slug = $1`, slug)
+		var titleID string
+		if err := pool.QueryRow(ctx, `
+			insert into titles (slug, type, title, poster_url, synopsis, year, genres)
+			values ($1, 'donghua', $1, 'https://img.example/p.jpg', 'Sinopsis.', 2024, '{Action}')
+			returning id`, slug).Scan(&titleID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `
+			insert into title_sources (title_id, source_id, source_url, source_ref)
+			values ($1::uuid, $2::uuid, $3, 'x')`, titleID, srcID, url); err != nil {
+			t.Fatal(err)
+		}
+		return titleID
+	}
+	cleanup := func(slug string) {
+		_, _ = pool.Exec(ctx, `delete from episode_sources where episode_id in (select id from episodes where title_id in (select id from titles where slug = $1))`, slug)
+		_, _ = pool.Exec(ctx, `delete from episodes where title_id in (select id from titles where slug = $1)`, slug)
+		_, _ = pool.Exec(ctx, `delete from title_sources where title_id in (select id from titles where slug = $1)`, slug)
+		_, _ = pool.Exec(ctx, `delete from titles where slug = $1`, slug)
+	}
+	epCount := func(titleID string) int {
+		var n int
+		if err := pool.QueryRow(ctx, `select count(*) from episodes where title_id = $1::uuid`, titleID).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	src := sources.Source{ID: srcID, Name: "Anichin", Resolver: "anichin"}
+
+	slugD := "uji-sync-deepsea"
+	defer cleanup(slugD)
+	idD := mkTitle(slugD, "https://anichin.moe/deep-sea/")
+	done, err := syncTitle(ctx, pool, resolver, src, idD, "Deep Sea", 1)
+	if err != nil {
+		t.Fatalf("syncTitle Deep Sea: %v", err)
+	}
+	if n := epCount(idD); n != 1 {
+		t.Fatalf("Deep Sea: %d episode tersimpan, harus 1 (entri Movie)", n)
+	}
+	t.Logf("Deep Sea: done=%d", done)
+
+	slugA := "uji-sync-arcane"
+	defer cleanup(slugA)
+	idA := mkTitle(slugA, "https://anichin.moe/arcane-league-of-legends-battle-of-the-two-cities/")
+	done, err = syncTitle(ctx, pool, resolver, src, idA, "ARCANE", 1)
+	if err != nil {
+		t.Fatalf("syncTitle ARCANE: %v", err)
+	}
+	if n := epCount(idA); n != 9 {
+		t.Fatalf("ARCANE: %d episode tersimpan, harus 9 (slug pendek)", n)
+	}
+	if done < 1 {
+		t.Fatalf("ARCANE: done=%d, harus >= 1", done)
+	}
+}
+
+// TestEnrichTitlesCooldownLive menguji perbaikan enrich 2026-11-27:
+// judul yang episodenya sudah lengkap didahulukan, dan judul yang
+// gagal enrich <24 jam lalu dilewati (migrasi 0024).
+func TestEnrichTitlesCooldownLive(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL kosong")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	// Sumber Anichin sudah ada sebagai seed migrasi (id acak); cari
+	// id-nya, sisipkan hanya bila belum ada. Id tetap + ON CONFLICT
+	// DO NOTHING gagal diam-diam di sini: baris seed menang, id
+	// tetap tidak tersisip, lalu title_sources gagal FK.
+	var srcID string
+	if err := pool.QueryRow(ctx, `select id from content_sources where resolver = 'anichin' and content_type = 'donghua' and lang = 'id'`).Scan(&srcID); err != nil {
+		if err := pool.QueryRow(ctx, `
+			insert into content_sources (name, content_type, lang, base_url, resolver, fetch_mode, subtitle_kind, priority, is_active)
+			values ('Anichin', 'donghua', 'id', 'https://anichin.moe', 'anichin', 'server', 'hard', 10, true)
+			returning id`).Scan(&srcID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mkTitle := func(slug string, cooled bool) string {
+		_, _ = pool.Exec(ctx, `delete from titles where slug = $1`, slug)
+		var titleID string
+		if err := pool.QueryRow(ctx, `
+			insert into titles (slug, type, title, poster_url, year, genres)
+			values ($1, 'donghua', $1, 'https://img.example/p.jpg', 2024, '{Action}')
+			returning id`, slug).Scan(&titleID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `
+			insert into title_sources (title_id, source_id, source_url, source_ref)
+			values ($1::uuid, $2::uuid, 'https://anichin.moe/tales-of-herding-god/', 'x')`, titleID, srcID); err != nil {
+			t.Fatal(err)
+		}
+		var epID string
+		if err := pool.QueryRow(ctx, `
+			insert into episodes (title_id, episode_no, video_url)
+			values ($1::uuid, 1, 'https://anichin.moe/tales-of-herding-god-episode-1-subtitle-indonesia/') returning id`,
+			titleID).Scan(&epID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `
+			insert into episode_sources (episode_id, url, label, lang)
+			values ($1::uuid, 'https://cdn.uji.local/e1.mp4', 'HD', 'id')`, epID); err != nil {
+			t.Fatal(err)
+		}
+		if cooled {
+			if _, err := pool.Exec(ctx, `update titles set last_enrich_at = now(), last_enrich_error = 'gagal uji' where id = $1::uuid`, titleID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return titleID
+	}
+	cleanup := func(slug string) {
+		_, _ = pool.Exec(ctx, `delete from episode_sources where episode_id in (select id from episodes where title_id in (select id from titles where slug = $1))`, slug)
+		_, _ = pool.Exec(ctx, `delete from episodes where title_id in (select id from titles where slug = $1)`, slug)
+		_, _ = pool.Exec(ctx, `delete from title_sources where title_id in (select id from titles where slug = $1)`, slug)
+		_, _ = pool.Exec(ctx, `delete from titles where slug = $1`, slug)
+	}
+	slugA := "uji-enrich-a"
+	slugB := "uji-enrich-b"
+	defer cleanup(slugA)
+	defer cleanup(slugB)
+	idA := mkTitle(slugA, false)
+	idB := mkTitle(slugB, true)
+
+	if err := EnrichTitles(ctx, pool); err != nil {
+		t.Fatalf("EnrichTitles: %v", err)
+	}
+	var synA *string
+	if err := pool.QueryRow(ctx, `select synopsis from titles where id = $1::uuid`, idA).Scan(&synA); err != nil {
+		t.Fatal(err)
+	}
+	if synA == nil || *synA == "" {
+		t.Fatal("judul episode-lengkap tidak diperkaya (sinopsis tetap kosong)")
+	}
+	var synB *string
+	var errB *string
+	if err := pool.QueryRow(ctx, `select synopsis, last_enrich_error from titles where id = $1::uuid`, idB).Scan(&synB, &errB); err != nil {
+		t.Fatal(err)
+	}
+	if synB != nil {
+		t.Fatal("judul dalam cooldown enrich ikut diperkaya (seharusnya dilewati)")
+	}
+	if errB == nil || *errB != "gagal uji" {
+		t.Fatalf("penanda gagal judul cooldown berubah: %v", errB)
+	}
+}

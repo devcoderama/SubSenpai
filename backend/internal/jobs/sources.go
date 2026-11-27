@@ -188,7 +188,25 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 			join content_sources cs on cs.id = ts.source_id
 			where t.type = $2 and (t.synopsis is null or lower(t.synopsis) like any ($1)) and cs.is_active
 			  and coalesce(cs.health, 'unknown') <> 'down'
-			order by t.created_at
+			  -- Cooldown kegagalan enrich (migrasi 0024, diagnosis
+			  -- 2026-11-27): judul yang SeriesInfo-nya gagal <24 jam
+			  -- lalu dilewati, supaya 60 judul tertua yang selalu
+			  -- gagal tidak memonopoli antrean tiap siklus.
+			  and not (t.last_enrich_at > now() - interval '24 hours' and t.last_enrich_error is not null)
+			order by case
+			  -- Judul yang episodenya sudah lengkap didahulukan: satu
+			  -- sinopsis lagi mereka jadi komplit (Q1 2026-11-27: 81
+			  -- donghua dalam keadaan ini).
+			  when exists (select 1 from episodes e where e.title_id = t.id)
+			       and not exists (
+			         select 1 from episodes e
+			         where e.title_id = t.id
+			           and not exists (select 1 from episode_sources es
+			                           where es.episode_id = e.id))
+			  then 0
+			  when not exists (select 1 from episodes e where e.title_id = t.id) then 1
+			  else 2 end,
+			  t.created_at
 			limit 60`, boilerplatePatterns(), typ)
 		if err != nil {
 			return nil, err
@@ -215,6 +233,17 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 		return jobs, nil
 	}
+	// recordEnrich mencatat tiap percobaan enrich (migrasi 0024):
+	// gagal -> error dicatat (dilewati 24 jam); berhasil -> penanda
+	// gagal dihapus. Tanpa ini, judul yang SeriesInfo-nya selalu
+	// gagal diputar ulang tiap siklus tanpa henti.
+	recordEnrich := func(titleID string, err error) {
+		if err != nil {
+			_, _ = pool.Exec(ctx, `update titles set last_enrich_at = now(), last_enrich_error = $2 where id = $1::uuid`, titleID, err.Error())
+		} else {
+			_, _ = pool.Exec(ctx, `update titles set last_enrich_at = now(), last_enrich_error = null where id = $1::uuid`, titleID)
+		}
+	}
 	enrichOne := func(j job) bool {
 		resolver, ok := sources.ByKey(j.src.Resolver)
 		if !ok {
@@ -231,20 +260,25 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 			// Dicatat (tidak ditelan diam-diam) agar kegagalan fetch
 			// per sumber terlihat di log worker.
 			log.Printf("enrich %s: %v", j.titleID, err)
+			recordEnrich(j.titleID, err)
 			return false
 		}
 		if meta == nil {
 			log.Printf("enrich %s dari %s (%s): SeriesInfo mengembalikan meta nil", j.titleID, j.src.Name, j.url)
+			recordEnrich(j.titleID, fmt.Errorf("SeriesInfo mengembalikan meta nil"))
 			return false
 		}
 		if meta.Synopsis == "" && meta.Studio == "" && len(meta.Genres) == 0 {
 			log.Printf("enrich %s dari %s (%s): meta ditolak penjaga kosong: %s", j.titleID, j.src.Name, j.url, metaSummary(meta))
+			recordEnrich(j.titleID, fmt.Errorf("meta ditolak penjaga kosong"))
 			return false
 		}
 		if err := applySeriesMeta(ctx, pool, j.titleID, meta); err != nil {
 			log.Printf("enrich %s: %v", j.titleID, err)
+			recordEnrich(j.titleID, err)
 			return false
 		}
+		recordEnrich(j.titleID, nil)
 		return true
 	}
 
