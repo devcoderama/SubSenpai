@@ -938,7 +938,7 @@ private fun VideoPlayerContainer(
                 )
                 Text(
                     if (premiumLock) {
-                        "Akun gratis hanya bisa menonton episode pertama anime & donghua."
+                        "Film khusus Premium — atau buka episode ini dengan menonton iklan 15 detik."
                     } else {
                         "Masuk gratis untuk membuka semua episode — atau Premium untuk tanpa iklan."
                     },
