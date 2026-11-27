@@ -1,7 +1,8 @@
 <script>
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
   import { user } from '$lib/auth.js';
-  import { getFeed, createPost, uploadFeedImage } from '$lib/api.js';
+  import { getFeed, getTitle, createPost, uploadFeedImage } from '$lib/api.js';
   import PostCard from '$lib/components/PostCard.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { reveal, infiniteScroll } from '$lib/reveal.js';
@@ -29,6 +30,23 @@
   let filePreview = '';
   let posting = false;
   let postError = '';
+
+  // "Bagikan ke Post" dari halaman Detail/Nonton (?title={id}):
+  // judul terlampir di postingan (title_id), seperti di aplikasi.
+  let shareTitleId = '';
+  let shareTitle = null;
+
+  async function loadShareTitle() {
+    const tid = $page.url.searchParams.get('title');
+    if (!tid) return;
+    try {
+      const res = await getTitle(tid);
+      shareTitle = res.title || res;
+      shareTitleId = shareTitle?.id || tid;
+    } catch {
+      /* abaikan — komposer tetap bisa dipakai tanpa lampiran */
+    }
+  }
 
   async function load(reset = true) {
     if (reset) {
@@ -80,7 +98,7 @@
 
   async function submitPost() {
     const text = body.trim();
-    if ((!text && !file) || posting) return;
+    if ((!text && !file && !shareTitleId) || posting) return;
     posting = true;
     postError = '';
     try {
@@ -89,7 +107,12 @@
         const up = await uploadFeedImage(file);
         imageUrl = up.url || '';
       }
-      const res = await createPost({ body: text, image_url: imageUrl, category: cat });
+      const res = await createPost({
+        body: text,
+        image_url: imageUrl,
+        category: cat,
+        title_id: shareTitleId || null
+      });
       const created = res.post || res;
       if (created?.id || created?.post_id) posts = [created, ...posts];
       else await load(true);
@@ -97,6 +120,8 @@
       file = null;
       if (filePreview) URL.revokeObjectURL(filePreview);
       filePreview = '';
+      shareTitleId = '';
+      shareTitle = null;
     } catch (e) {
       postError = e.message || 'Gagal mengirim postingan.';
     } finally {
@@ -110,6 +135,7 @@
 
   onMount(() => {
     ioSupported = 'IntersectionObserver' in window;
+    loadShareTitle();
     load(true);
   });
 </script>
@@ -125,6 +151,17 @@
     </div>
   {:else}
     <div class="card composer">
+      {#if shareTitle}
+        <div class="share-attach">
+          <i class="fa-solid fa-tv"></i>
+          <span>Membagikan: <strong>{shareTitle.title}</strong></span>
+          <button
+            class="attach-x"
+            aria-label="Lepas lampiran judul"
+            on:click={() => { shareTitleId = ''; shareTitle = null; }}
+          ><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      {/if}
       <textarea
         placeholder="Bagikan rekomendasi anime, donghua, atau filmmu…"
         bind:value={body}
@@ -157,7 +194,7 @@
           <i class="fa-solid fa-paperclip"></i> <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" on:change={onFile} hidden />
         </label>
         <span class="muted count">{body.length}/1000</span>
-        <button class="btn" on:click={submitPost} disabled={posting || (!body.trim() && !file)}>
+        <button class="btn" on:click={submitPost} disabled={posting || (!body.trim() && !file && !shareTitleId)}>
           {posting ? 'Mengirim…' : 'Kirim'}
         </button>
       </div>
@@ -222,6 +259,14 @@
   .page h1 { font-size: 26px; margin-bottom: 16px; }
   .login-card { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
   .composer { margin-bottom: 16px; }
+  .share-attach {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; font-size: 14px;
+  }
+  .share-attach i.fa-tv { color: var(--purple); }
+  .share-attach span { flex: 1; min-width: 0; }
+  .attach-x { background: none; border: 0; color: var(--muted); font-size: 15px; padding: 2px 6px; }
   .composer textarea {
     width: 100%; background: var(--panel-2); border: 1px solid var(--border);
     border-radius: 10px; color: #fff; padding: 12px; font-size: 15px; resize: vertical;

@@ -17,14 +17,14 @@
   <div class="skeleton sk-player" aria-hidden="true"></div>
 {:else if kind === 'detail'}
   <div class="sk-detail" aria-hidden="true">
-    <div class="skeleton sk-detail-poster"></div>
-    <div class="sk-detail-info">
+    <div class="skeleton sk-detail-backdrop"></div>
+    <div class="sk-detail-body">
       <div class="skeleton sk-line" style="width: 70%; height: 28px;"></div>
       <div class="skeleton sk-line short"></div>
       <div class="skeleton sk-line" style="width: 90%;"></div>
+      <div><span class="skeleton sk-btn"></span></div>
       <div class="skeleton sk-line" style="width: 85%;"></div>
       <div class="skeleton sk-line" style="width: 60%;"></div>
-      <div><span class="skeleton sk-btn"></span><span class="skeleton sk-btn"></span></div>
     </div>
   </div>
 {:else}

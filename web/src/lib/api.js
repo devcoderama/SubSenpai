@@ -122,6 +122,25 @@ export function setJwt(token) {
   jwt = token || null;
 }
 
+// ID perangkat tamu yang persisten (seperti aplikasi): dikirim sebagai
+// header X-Device-Id — backend memakainya untuk laporan tamu, ad-unlock
+// tamu, dsb. Tanpa header, backend memakai hash IP (cadangan kasar).
+export function getDeviceId() {
+  if (typeof localStorage === 'undefined') return '';
+  try {
+    let id = localStorage.getItem('subsenpai_device_id');
+    if (!id) {
+      id =
+        (crypto.randomUUID && crypto.randomUUID()) ||
+        'web-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+      localStorage.setItem('subsenpai_device_id', id);
+    }
+    return id;
+  } catch {
+    return '';
+  }
+}
+
 async function fetchTimeout(url, opts = {}, ms = 20000) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), ms);
@@ -186,6 +205,8 @@ export async function api(path, opts = {}) {
   const attempt = async () => {
     const headers = { 'X-Session-Id': sessionId, 'Content-Type': 'application/json' };
     if (jwt) headers['Authorization'] = 'Bearer ' + jwt;
+    const did = getDeviceId();
+    if (did) headers['X-Device-Id'] = did;
     const res = await fetchTimeout(API_BASE + path, {
       method: opts.method || 'GET',
       headers,
@@ -284,10 +305,10 @@ export const getFeed = ({ tab = 'teman', category = '', q = '', cursor = '' } = 
   return api('/api/v1/feed?' + params.toString());
 };
 
-export const createPost = ({ body, image_url = '', category = 'umum' }) =>
+export const createPost = ({ body, image_url = '', category = 'umum', title_id = null }) =>
   api('/api/v1/feed/posts', {
     method: 'POST',
-    body: { body, image_url, category, visibility: 'publik' }
+    body: { body, image_url, category, visibility: 'publik', ...(title_id ? { title_id } : {}) }
   });
 
 export const likePost = (id) =>
@@ -321,6 +342,8 @@ export async function uploadFeedImage(file) {
   fd.append('image', file);
   const headers = { 'X-Session-Id': sessionId };
   if (jwt) headers['Authorization'] = 'Bearer ' + jwt;
+  const did = getDeviceId();
+  if (did) headers['X-Device-Id'] = did;
   const res = await fetchTimeout(API_BASE + '/api/v1/feed/upload', {
     method: 'POST',
     headers,
@@ -335,6 +358,24 @@ export async function uploadFeedImage(file) {
 }
 
 /* ================= Riwayat tontonan (butuh login) ================= */
+
+/* ================= Daftar Saya / watchlist (butuh login) ================= */
+
+export const getWatchlist = () => api('/api/v1/watchlist');
+
+export const checkWatchlist = (id) =>
+  api('/api/v1/watchlist/' + encodeURIComponent(id));
+
+export const addWatchlist = (id) =>
+  api('/api/v1/watchlist/' + encodeURIComponent(id), { method: 'POST', body: {} });
+
+export const removeWatchlist = (id) =>
+  api('/api/v1/watchlist/' + encodeURIComponent(id), { method: 'DELETE' });
+
+/* ================= Laporan masalah episode (tamu boleh, via device id) ================= */
+
+export const createReport = (episodeId, reason, note = '') =>
+  api('/api/v1/reports', { method: 'POST', body: { episode_id: episodeId, reason, note } });
 
 export const getHistory = (limit = 20) => api(`/api/v1/history/watch?limit=${limit}`);
 

@@ -11,6 +11,12 @@
   --red: #e50914;
   --red-dark: #b00610;
   --gold: #f5c518;
+  /* Warna halaman nonton/detail aplikasi (WatchBg/WatchSurface/
+     WatchAccent/WatchMuted di PlayerScreen.kt & FeedPurple). */
+  --purple: #8b5cf6;
+  --surface: #19191d;
+  --watch-bg: #0d0d0f;
+  --watch-muted: #a1a1aa;
 }
 
 * { box-sizing: border-box; }
@@ -120,10 +126,10 @@ img { display: block; }
 .sk-post-head { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
 .sk-avatar { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; }
 .sk-post-img { height: 200px; margin-top: 12px; border-radius: 8px; }
-.sk-detail { display: flex; gap: 24px; margin-top: 24px; flex-wrap: wrap; }
-.sk-detail-poster { width: 220px; height: 330px; flex-shrink: 0; border-radius: 10px; }
-.sk-detail-info { flex: 1 1 320px; min-width: 0; }
-.sk-detail-info .sk-line:first-child { margin-top: 0; }
+.sk-detail { display: block; }
+.sk-detail-backdrop { width: 100vw; margin-left: calc(50% - 50vw); height: 340px; border-radius: 0; }
+.sk-detail-body { max-width: 720px; margin: 0 auto; padding: 16px; }
+.sk-detail-body .sk-line:first-child { margin-top: 0; }
 .sk-btn { display: inline-block; width: 140px; height: 40px; border-radius: 6px; margin: 16px 10px 0 0; }
 
 .reveal { opacity: 0; transform: translateY(14px); transition: opacity .45s ease, transform .45s ease; transition-delay: var(--rd, 0ms); }

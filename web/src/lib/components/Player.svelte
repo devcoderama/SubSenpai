@@ -1,17 +1,26 @@
 <script>
   import { createEventDispatcher } from 'svelte';
 
+  // Pemutar ala aplikasi: server aktif dipegang halaman Nonton
+  // (tombol "Server: …" di bawah pemutar butuh labelnya), begitu juga
+  // pilihan subtitle. Komponen ini hanya me-render video/iframe-nya.
   export let sources = [];
+  export let current = 0;
   export let title = '';
+  export let subtitles = /** @type {{ lang: string, file_url: string, status: string }[]} */ ([]); // subtitle siap pakai {lang, file_url, status}
+  export let selectedSub = /** @type {string | null} */ (null); // lang subtitle terpilih, atau null
 
   const dispatch = createEventDispatcher();
-  let current = 0;
+  let videoEl = null;
   let iframeEl = null;
   let blocked = false;
   let autoAdvanced = false;
 
   $: src = sources?.[current];
   $: isDirect = !!src?.url && /\.(mp4|m3u8|webm)(\?|$)/i.test(src.url);
+  /** @type {{ lang: string, file_url: string, status: string }[]} */
+  let readySubs = [];
+  $: readySubs = (subtitles || []).filter((s) => s.status === 'done' && s.file_url);
 
   // Ganti episode -> mulai lagi dari server pertama.
   $: if (sources) {
@@ -20,6 +29,22 @@
   }
   // Ganti server -> kartu blokir ikut direset.
   $: if (src?.url) blocked = false;
+
+  // Terapkan pilihan subtitle ke video langsung tanpa memutar ulang:
+  // tiap <track> diaktifkan/dimatikan lewat TextTrack.mode. Tanpa
+  // crossorigin di <video> (agar pemutaran mp4 tak bergantung header
+  // CORS host video); track yang host-nya tak mengizinkan CORS gagal
+  // diam-diam dan video tetap jalan.
+  function applySubTrack() {
+    if (!videoEl) return;
+    const sel = (selectedSub || '').toLowerCase();
+    const tracks = videoEl.textTracks;
+    for (let i = 0; i < tracks.length; i++) {
+      const want = sel && (readySubs[i]?.lang || '').toLowerCase() === sel;
+      tracks[i].mode = want ? 'showing' : 'disabled';
+    }
+  }
+  $: if (videoEl && selectedSub !== undefined) applySubTrack();
 
   // Posisi video langsung dilaporkan ke halaman Nonton untuk riwayat.
   function onTime(e) {
@@ -54,25 +79,29 @@
 {#if !sources?.length}
   <p class="muted">Tidak ada server untuk episode ini.</p>
 {:else}
-  <div class="servers">
-    {#each sources as s, i}
-      <button class:active={i === current} on:click={() => (current = i)}>
-        {s.label || 'Server ' + (i + 1)}{s.lang ? ' • ' + s.lang : ''}
-      </button>
-    {/each}
-  </div>
   <div class="player">
     {#key src.url}
       {#if isDirect}
-        <!-- Subtitle ditangani sumber (hardsub/softsub), bukan track video: -->
         <!-- svelte-ignore a11y_media_has_caption -->
         <video
           src={src.url}
           controls
           autoplay
           playsinline
+          bind:this={videoEl}
           on:timeupdate={onTime}
-        ></video>
+          on:loadedmetadata={applySubTrack}
+        >
+          {#each readySubs as s}
+            <track
+              kind="subtitles"
+              srclang={s.lang}
+              label={s.lang.toUpperCase()}
+              src={s.file_url}
+              default={!!selectedSub && s.lang.toLowerCase() === selectedSub.toLowerCase()}
+            />
+          {/each}
+        </video>
       {:else if blocked}
         <div class="blocked">
           <strong>Server ini tidak bisa diputar di dalam halaman web.</strong>
@@ -98,32 +127,14 @@
       {/if}
     {/key}
   </div>
-  <p class="muted hint">
-    Server {current + 1} dari {sources.length}
-    {#if !isDirect}
-      — pemutar embed dari sumber; kalau macet, coba server lain atau
-      <button class="linklike" on:click={openExternal}>buka di tab baru <i class="fa-solid fa-arrow-up-right-from-square"></i></button>.
-    {/if}
-  </p>
 {/if}
 
 <style>
-  .servers { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-  .servers button {
-    background: var(--panel); border: 1px solid var(--border); color: #fff;
-    border-radius: 999px; padding: 7px 14px; font-size: 13px;
-  }
-  .servers button.active { background: var(--red); border-color: var(--red); font-weight: 600; }
   .player {
     position: relative; width: 100%; aspect-ratio: 16 / 9;
     background: #000; border-radius: 10px; overflow: hidden;
   }
   .player video, .player iframe { width: 100%; height: 100%; border: 0; display: block; }
-  .hint { font-size: 13px; margin-top: 10px; }
-  .linklike {
-    background: none; border: 0; padding: 0; color: #fff;
-    font-size: 13px; text-decoration: underline; cursor: pointer;
-  }
   .blocked {
     width: 100%; height: 100%; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 10px;

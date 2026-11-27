@@ -3,31 +3,40 @@
   import Navbar from '$lib/components/Navbar.svelte';
   import BottomNav from '$lib/components/BottomNav.svelte';
   import { page } from '$app/stores';
+
+  // Halaman Detail & Nonton ala aplikasi: layar penuh tanpa navbar
+  // atas, footer, maupun navigasi bawah — kembali lewat tombol ←.
+  $: path = $page.url.pathname;
+  $: immersive = path.startsWith('/judul/') || path.startsWith('/nonton/');
 </script>
 
-<Navbar />
+{#if !immersive}
+  <Navbar />
+{/if}
 
 <main>
   <slot />
 </main>
 
-<footer>
-  <div class="container">
-    <div class="foot-logo">SUB<span>SENPAI</span></div>
-    <p class="muted">
-      Nonton anime, donghua &amp; film subtitle Indonesia. Subtitle dan video diambil dari situs
-      sumber masing-masing; SubSenpai tidak menyimpan video di server sendiri.
-    </p>
-    <p class="muted small">
-      Unduh aplikasi Android di
-      <a href="/unduh">subsenpai.web.id/unduh</a>
-      • Komunitas:
-      <a href="https://discord.gg/yJebKEGNh" target="_blank" rel="noreferrer"><i class="fa-brands fa-discord"></i> Discord</a>
-      •
-      <a href="https://t.me/subsenpaianime" target="_blank" rel="noreferrer"><i class="fa-brands fa-telegram"></i> Telegram</a>
-    </p>
-  </div>
-</footer>
+{#if !immersive}
+  <footer>
+    <div class="container">
+      <div class="foot-logo">SUB<span>SENPAI</span></div>
+      <p class="muted">
+        Nonton anime, donghua &amp; film subtitle Indonesia. Subtitle dan video diambil dari situs
+        sumber masing-masing; SubSenpai tidak menyimpan video di server sendiri.
+      </p>
+      <p class="muted small">
+        Unduh aplikasi Android di
+        <a href="/unduh">subsenpai.web.id/unduh</a>
+        • Komunitas:
+        <a href="https://discord.gg/yJebKEGNh" target="_blank" rel="noreferrer"><i class="fa-brands fa-discord"></i> Discord</a>
+        •
+        <a href="https://t.me/subsenpaianime" target="_blank" rel="noreferrer"><i class="fa-brands fa-telegram"></i> Telegram</a>
+      </p>
+    </div>
+  </footer>
+{/if}
 
 <style>
   main { min-height: calc(100vh - 220px); }
@@ -43,6 +52,6 @@
   }
 </style>
 
-{#if !$page.url.pathname.startsWith('/nonton')}
+{#if !immersive}
   <BottomNav />
 {/if}
