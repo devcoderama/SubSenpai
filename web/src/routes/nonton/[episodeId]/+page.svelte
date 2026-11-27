@@ -1,8 +1,9 @@
 <script>
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
-  import { getPlayback, getTitle, adUnlockStart, adUnlockComplete, isPremiumRequired } from '$lib/api.js';
+  import { getPlayback, getTitle, adUnlockStart, adUnlockComplete, isPremiumRequired, reportHistory } from '$lib/api.js';
   import { user } from '$lib/auth.js';
+  import { addLocalHistory, updateLocalPosition } from '$lib/history.js';
   import Player from '$lib/components/Player.svelte';
 
   const AD_URL = 'https://uplcm.com/4/12330317';
@@ -37,6 +38,7 @@
         const det = await getTitle(playback.title_id);
         title = det.title || det;
         episodes = det.episodes || [];
+        recordWatch(0);
       }
     } catch (e) {
       if (isPremiumRequired(e)) {
@@ -90,6 +92,35 @@
     }
   }
 
+  // Catat ke riwayat: server bila masuk, lokal selalu (untuk tamu).
+  // Kegagalan pencatatan tidak boleh mengganggu pemutaran.
+  let lastSavedPos = -1;
+  let lastSavedAt = 0;
+  function recordWatch(position) {
+    if (!playback || !title) return;
+    const item = {
+      episode_id: epId,
+      title_id: playback.title_id,
+      title: title.title,
+      poster_url: title.poster_url,
+      episode_no: playback.episode_no,
+      position_sec: position
+    };
+    addLocalHistory(item);
+    if ($user) {
+      reportHistory(epId, position).catch(() => {});
+    }
+  }
+  function onProgress(e) {
+    const pos = e.detail?.position || 0;
+    const now = Date.now();
+    if (pos - lastSavedPos < 10 && now - lastSavedAt < 15000) return;
+    lastSavedPos = pos;
+    lastSavedAt = now;
+    updateLocalPosition(epId, pos);
+    if ($user) reportHistory(epId, pos).catch(() => {});
+  }
+
   onMount(load);
 </script>
 
@@ -128,7 +159,7 @@
         <a href={'/judul/' + title.id}>{title.title}</a> — Episode {playback.episode_no}
       </h1>
     {/if}
-    <Player sources={playback.sources || []} title={title?.title || ''} />
+    <Player sources={playback.sources || []} title={title?.title || ''} on:progress={onProgress} />
     <div class="epnav">
       {#if prevEp}
         <a class="btn ghost" href={'/nonton/' + prevEp.id}>← Ep {prevEp.episode_no}</a>

@@ -267,3 +267,74 @@ export function posterUrl(u) {
   if (!/^https?:\/\//i.test(u)) return u;
   return API_BASE + '/api/v1/img-proxy?u=' + encodeURIComponent(u);
 }
+
+/* ================= Feed komunitas (butuh login) ================= */
+
+export const getFeed = ({ tab = 'teman', category = '', q = '', cursor = '' } = {}) => {
+  const params = new URLSearchParams();
+  if (tab) params.set('tab', tab);
+  if (category) params.set('category', category);
+  if (q) params.set('q', q);
+  if (cursor) params.set('cursor', cursor);
+  return api('/api/v1/feed?' + params.toString());
+};
+
+export const createPost = ({ body, image_url = '', category = 'umum' }) =>
+  api('/api/v1/feed/posts', {
+    method: 'POST',
+    body: { body, image_url, category, visibility: 'publik' }
+  });
+
+export const likePost = (id) =>
+  api(`/api/v1/feed/posts/${encodeURIComponent(id)}/like`, { method: 'POST' });
+
+export const repostPost = (id) =>
+  api(`/api/v1/feed/posts/${encodeURIComponent(id)}/repost`, { method: 'POST' });
+
+export const bookmarkPost = (id) =>
+  api(`/api/v1/feed/posts/${encodeURIComponent(id)}/bookmark`, { method: 'POST' });
+
+export const sharePost = (id) =>
+  api(`/api/v1/feed/posts/${encodeURIComponent(id)}/share`, { method: 'POST' });
+
+export const deletePost = (id) =>
+  api(`/api/v1/feed/posts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+export const getComments = (id) =>
+  api(`/api/v1/feed/posts/${encodeURIComponent(id)}/comments`);
+
+export const createComment = (id, body) =>
+  api(`/api/v1/feed/posts/${encodeURIComponent(id)}/comments`, {
+    method: 'POST',
+    body: { body }
+  });
+
+/** Unggah gambar/video feed (multipart — tidak lewat envelope JSON). */
+export async function uploadFeedImage(file) {
+  await ensureSession();
+  const fd = new FormData();
+  fd.append('image', file);
+  const headers = { 'X-Session-Id': sessionId };
+  if (jwt) headers['Authorization'] = 'Bearer ' + jwt;
+  const res = await fetchTimeout(API_BASE + '/api/v1/feed/upload', {
+    method: 'POST',
+    headers,
+    body: fd
+  }, 60000);
+  const data = await res.json().catch(() => ({}));
+  const body = data && data.xdata ? await openEnvelope(data) : data;
+  if (!res.ok || body?.error) {
+    throw new Error(body?.error || 'Gagal mengunggah media (' + res.status + ')');
+  }
+  return body; // {url}
+}
+
+/* ================= Riwayat tontonan (butuh login) ================= */
+
+export const getHistory = (limit = 20) => api(`/api/v1/history/watch?limit=${limit}`);
+
+export const reportHistory = (episodeId, positionSec = 0) =>
+  api('/api/v1/history/watch', {
+    method: 'POST',
+    body: { episode_id: episodeId, position_sec: Math.floor(positionSec) }
+  });

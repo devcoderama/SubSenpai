@@ -1,6 +1,8 @@
 <script>
   import { onMount } from 'svelte';
-  import { getTitles, getTitle } from '$lib/api.js';
+  import { getTitles, getTitle, getHistory } from '$lib/api.js';
+  import { user } from '$lib/auth.js';
+  import { getLocalHistory, fmtWhen } from '$lib/history.js';
   import Hero from '$lib/components/Hero.svelte';
   import Rail from '$lib/components/Rail.svelte';
   import TitleCard from '$lib/components/TitleCard.svelte';
@@ -21,6 +23,31 @@
   let grid = [];
   let nextCursor = '';
   let loadingMore = false;
+  let continueWatching = [];
+
+  // Lanjutkan Menonton (seperti aplikasi): server bila masuk, lokal bila tamu.
+  async function loadContinue() {
+    try {
+      const raw = $user ? (await getHistory(12)).items || [] : getLocalHistory();
+      const seen = new Set();
+      continueWatching = raw
+        .filter((it) => {
+          if (seen.has(it.title_id)) return false;
+          seen.add(it.title_id);
+          return true;
+        })
+        .slice(0, 12)
+        .map((it) => ({
+          id: it.title_id,
+          poster_url: it.poster_url,
+          title: it.title,
+          sub: 'Episode ' + it.episode_no + ' • ' + fmtWhen(it.updated_at),
+          href: '/nonton/' + it.episode_id
+        }));
+    } catch {
+      continueWatching = [];
+    }
+  }
 
   async function loadTab(t) {
     loading = true;
@@ -87,7 +114,10 @@
     loadTab(t);
   }
 
-  onMount(() => loadTab(''));
+  onMount(() => {
+    loadTab('');
+    loadContinue();
+  });
 </script>
 
 {#if hero && tab === ''}
@@ -106,6 +136,9 @@
   {:else if error}
     <p class="error">{error}</p>
   {:else if tab === ''}
+    {#if continueWatching.length}
+      <Rail title="Lanjutkan Menonton" items={continueWatching} moreHref="/riwayat" />
+    {/if}
     <Rail title="Anime" items={rails.anime.slice(0, 12)} moreHref="/cari?type=anime" />
     <Rail title="Donghua" items={rails.donghua.slice(0, 12)} moreHref="/cari?type=donghua" />
     <Rail title="Film" items={rails.film.slice(0, 12)} moreHref="/cari?type=film" />

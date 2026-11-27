@@ -23,6 +23,9 @@
     <form class="search" on:submit={search}>
       <input type="search" placeholder="Cari judul…" bind:value={q} aria-label="Cari judul" />
     </form>
+    <a class="icon-btn search-ic" href="/cari" aria-label="Cari judul">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z" /></svg>
+    </a>
     {#if $user}
       <div class="userbox">
         <button class="avatar" on:click={() => (showMenu = !showMenu)} aria-label="Menu pengguna">
@@ -103,9 +106,16 @@
     padding: 8px; background: none; border: 0; color: #fff; font-size: 14px;
   }
   .menu a:hover, .menu button:hover { background: var(--panel-2); text-decoration: none; }
+  .search-ic { display: none; }
   @media (max-width: 767px) {
-    /* Mobile: tautan & kolom cari pindah ke navigasi bawah (BottomNav). */
+    /* Mobile: tautan & kolom cari pindah ke navigasi bawah (BottomNav);
+       yang tersisa di bar atas hanya logo, ikon cari, dan akun. */
     .links { display: none; }
     .search { display: none; }
+    .search-ic {
+      display: flex; align-items: center; justify-content: center;
+      margin-left: auto; width: 36px; height: 36px; color: #fff;
+    }
+    .search-ic svg { width: 24px; height: 24px; fill: currentColor; }
   }
 </style>

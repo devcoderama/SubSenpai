@@ -3,6 +3,7 @@
 
   export let item;
   export let href = null;
+  export let sub = null;
 
   $: link = href || '/judul/' + item.id;
   $: typeLabel = item.type === 'donghua' ? 'Donghua' : item.type === 'anime' ? 'Anime' : 'Film';
@@ -22,7 +23,7 @@
   <div class="meta">
     <div class="title">{item.title}</div>
     <div class="sub muted">
-      {typeLabel}{item.year ? ' • ' + item.year : ''}{item.status ? ' • ' + item.status : ''}
+      {#if sub}{sub}{:else}{typeLabel}{item.year ? ' • ' + item.year : ''}{item.status ? ' • ' + item.status : ''}{/if}
     </div>
     {#if item.genres?.length}
       <div class="genres muted">{item.genres.slice(0, 3).join(' • ')}</div>

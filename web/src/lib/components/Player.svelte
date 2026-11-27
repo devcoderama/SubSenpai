@@ -1,10 +1,18 @@
 <script>
+  import { createEventDispatcher } from 'svelte';
+
   export let sources = [];
   export let title = '';
 
+  const dispatch = createEventDispatcher();
   let current = 0;
   $: src = sources?.[current];
   $: isDirect = !!src?.url && /\.(mp4|m3u8|webm)(\?|$)/i.test(src.url);
+
+  // Posisi video langsung dilaporkan ke halaman Nonton untuk riwayat.
+  function onTime(e) {
+    dispatch('progress', { position: e.target.currentTime || 0 });
+  }
 </script>
 
 {#if !sources?.length}
@@ -22,7 +30,7 @@
       {#if isDirect}
         <!-- Subtitle ditangani sumber (hardsub/softsub), bukan track video: -->
         <!-- svelte-ignore a11y_media_has_caption -->
-        <video src={src.url} controls autoplay playsinline></video>
+        <video src={src.url} controls autoplay playsinline on:timeupdate={onTime}></video>
       {:else}
         <iframe
           title={title || 'Pemutar video'}
