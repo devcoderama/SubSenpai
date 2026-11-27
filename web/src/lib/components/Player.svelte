@@ -91,7 +91,6 @@
           src={src.url}
           allowfullscreen
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
           referrerpolicy="no-referrer"
           bind:this={iframeEl}
           on:load={onFrameLoad}
