@@ -1,0 +1,10 @@
+# Netlify — SubSenpai Web (SvelteKit, adapter-static)
+[build]
+  base = "web"
+  command = "npm run build"
+  publish = "web/build"
+
+[[redirects]]
+  from = "/*"
+  to = "/200.html"
+  status = 200
