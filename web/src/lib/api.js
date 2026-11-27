@@ -242,6 +242,8 @@ export function isPremiumRequired(e) {
 
 /* ================= Endpoint yang dipakai web ================= */
 
+export const getHome = () => api('/api/v1/home');
+
 export const getTitles = (params = {}) => {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== '' && v != null) q.set(k, String(v));
