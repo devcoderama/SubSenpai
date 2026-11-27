@@ -1,10 +1,11 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import {
     getTitles, getTitle, getHome, getHistory,
     checkWatchlist, addWatchlist, removeWatchlist, getFilters
   } from '$lib/api.js';
+  import { homeCache } from '$lib/homeCache.js';
   import { user, isPremium } from '$lib/auth.js';
   import { searchQuery } from '$lib/search.js';
   import { getLocalHistory, fmtWhen } from '$lib/history.js';
@@ -78,6 +79,13 @@
   function onSearchQuery(q) {
     clearTimeout(searchTimer);
     const query = (q || '').trim();
+    // Hidrasi dari cache: kata kunci tidak berubah sejak pergi —
+    // hasil pencarian sudah dipulihkan, jangan cari ulang.
+    if (hydrating) {
+      hydrating = false;
+      const cachedText = (tab && homeCache.tabs[tab]?.searchText) || '';
+      if (query && query === cachedText) return;
+    }
     if (!query) {
       searchMode = false;
       searchText = '';
@@ -155,11 +163,29 @@
   let resultsError = '';
   let resultsMoreError = '';
   let filterSeq = 0;
-  const filterState = {
-    film: { genre: '', year: '', country: '', network: '' },
-    anime: { genre: '', year: '', country: '', network: '' },
-    donghua: { genre: '', year: '', country: '', network: '' }
-  };
+  // Cache sesi Beranda (28 Nov 2026, ala HomeSession di aplikasi):
+  // pilihan filter per jenis kini hidup di homeCache (ikut grid,
+  // Hasil filter, hasil cari, dan posisi scroll per tab) supaya
+  // pindah ke Detail lalu kembali tidak memuat ulang dari nol.
+  // Hidrasi berjalan di sini — SEBELUM render pertama — supaya
+  // tidak ada skeleton dan posisi scroll bisa kembali tepat.
+  let hydrating = homeCache.loaded;
+  if (hydrating) {
+    tab = homeCache.tab;
+    rails = homeCache.rails;
+    trending = homeCache.trending;
+    filmYear = homeCache.filmYear;
+    animeYear = homeCache.animeYear;
+    donghuaYear = homeCache.donghuaYear;
+    filmPopuler = homeCache.filmPopuler;
+    animeOngoing = homeCache.animeOngoing;
+    donghuaOngoing = homeCache.donghuaOngoing;
+    heroItems = homeCache.heroItems;
+    continueWatching = homeCache.continueWatching;
+    loading = false;
+    searchMode = !!(tab && homeCache.tabs[tab]?.searchText);
+    if (tab) applyTabState(tab);
+  }
 
   // Hitungan filter aktif (28 Nov 2026): HARUS deklarasi reaktif
   // $:, bukan panggilan fungsi di template — Svelte tidak melacak
@@ -259,7 +285,7 @@
     resultsCursor = '';
     resultsError = '';
     resultsMoreError = '';
-    loadTab(tab);
+    // Grid tab sudah di memori — tanpa muat ulang (28 Nov 2026).
   }
 
   function pickGenre(g) {
@@ -295,6 +321,7 @@
           sub: 'Episode ' + it.episode_no + ' • ' + fmtWhen(it.updated_at),
           href: '/nonton/' + it.episode_id
         }));
+      homeCache.continueWatching = continueWatching;
     } catch {
       continueWatching = [];
     }
@@ -448,11 +475,13 @@
           ? trending
           : [rails.anime[0], rails.donghua[0], rails.film[0]].filter(Boolean);
         await loadHero(cands);
+        saveHomeState();
       } else {
         const res = await getTitles({ type: t });
         grid = res.items || [];
         nextCursor = res.next_cursor || '';
-        rails = { anime: [], donghua: [], film: [] };
+        // Rel Semua tetap di memori (tidak dihapus) supaya kembali
+        // ke tab Semua tidak memuat ulang.
         // Hero jenis ini: trending jenis itu; cadangan: 5 pertama grid.
         const cands = trending.filter((x) => x.type === t).slice(0, 5);
         await loadHero(cands.length >= 2 ? cands : grid.slice(0, 5));
@@ -501,36 +530,133 @@
     } catch {
       /* abaikan — rel ongoing disembunyikan bila gagal */
     }
-    if (t === 'anime') animeOngoing = out;
-    else if (t === 'donghua') donghuaOngoing = out;
+    if (t === 'anime') {
+      animeOngoing = out;
+      homeCache.animeOngoing = out;
+    } else if (t === 'donghua') {
+      donghuaOngoing = out;
+      homeCache.donghuaOngoing = out;
+    }
+  }
+
+  // --- Cache sesi Beranda (28 Nov 2026) ---
+  let restoringScroll = false;
+  function saveScroll() {
+    if (restoringScroll) return;
+    homeCache.scroll[tab] = window.scrollY;
+  }
+  async function restoreScroll(y) {
+    restoringScroll = true;
+    await tick();
+    window.scrollTo(0, y ?? (homeCache.scroll[tab] || 0));
+    restoringScroll = false;
+  }
+  function stashTabState(t) {
+    if (t === undefined || t === null) return;
+    const s = homeCache.tabs[t];
+    if (!s) return;
+    s.grid = grid;
+    s.nextCursor = nextCursor;
+    s.facets = facets;
+    s.genre = genre;
+    s.year = fYear;
+    s.country = fCountry;
+    s.network = fNetwork;
+    s.filterMode = filterMode;
+    s.results = results;
+    s.resultsCursor = resultsCursor;
+    s.searchText = searchText;
+    s.searchResults = searchResults;
+    s.searchCursor = searchCursor;
+  }
+  function applyTabState(t) {
+    const s = homeCache.tabs[t];
+    if (!s) return;
+    grid = s.grid;
+    nextCursor = s.nextCursor;
+    facets = s.facets;
+    facetsFor = s.facets ? t : '';
+    genre = s.genre;
+    fYear = s.year;
+    fCountry = s.country;
+    fNetwork = s.network;
+    filterMode = s.filterMode;
+    results = s.results;
+    resultsCursor = s.resultsCursor;
+    searchText = s.searchText;
+    searchResults = s.searchResults;
+    searchCursor = s.searchCursor;
+  }
+  function saveHomeState() {
+    homeCache.loaded = true;
+    homeCache.tab = tab;
+    homeCache.rails = rails;
+    homeCache.trending = trending;
+    homeCache.filmYear = filmYear;
+    homeCache.animeYear = animeYear;
+    homeCache.donghuaYear = donghuaYear;
+    homeCache.filmPopuler = filmPopuler;
+    homeCache.animeOngoing = animeOngoing;
+    homeCache.donghuaOngoing = donghuaOngoing;
+    homeCache.heroItems = heroItems;
+    homeCache.continueWatching = continueWatching;
+    saveScroll();
   }
 
   function setTab(t) {
-    // Simpan pilihan filter jenis lama, pulihkan untuk jenis baru.
-    if (tab && filterState[tab]) {
-      filterState[tab] = { genre, year: fYear, country: fCountry, network: fNetwork };
-    }
+    // Simpan posisi scroll + daftar tab lama sebelum pindah.
+    const targetY = homeCache.scroll[t] || 0;
+    saveScroll();
+    stashTabState(tab);
     tab = t;
-    if (t && filterState[t]) {
-      const s = filterState[t];
-      genre = s.genre;
-      fYear = s.year;
-      fCountry = s.country;
-      fNetwork = s.network;
-    } else {
-      genre = '';
-      fYear = '';
-      fCountry = '';
-      fNetwork = '';
-    }
     filterOpen = false;
     loadFacets(t);
-    // Ganti chip saat sedang mencari = cari dalam jenis baru.
-    if (searchMode) runSearch(searchText);
-    else if (t && filterActive()) runFilter();
+    const s = homeCache.tabs[t];
+    const hadContent =
+      s.grid.length ||
+      s.results.length ||
+      s.searchResults.length ||
+      s.facets ||
+      (t === '' && (rails.anime.length || rails.donghua.length || rails.film.length));
+    if (hadContent) {
+      // Tab ini sudah pernah dimuat: pulihkan tanpa muat ulang.
+      applyTabState(t);
+      loading = false;
+      if (searchMode) {
+        if (searchText !== s.searchText) runSearch(searchText).then(() => restoreScroll(targetY));
+        else restoreScroll(targetY);
+      } else {
+        // Hero kembali ke jenis/tab ini (detail di-cache, jadi murah);
+        // mode filter tidak punya hero, jadi jangan nyalakan timernya.
+        if (!filterMode) {
+          const cands =
+            t === ''
+              ? trending.length
+                ? trending
+                : [rails.anime[0], rails.donghua[0], rails.film[0]].filter(Boolean)
+              : trending.filter((x) => x.type === t).slice(0, 5);
+          if (cands.length) loadHero(t === '' ? cands : cands.length >= 2 ? cands : grid.slice(0, 5));
+        }
+        restoreScroll(targetY);
+      }
+      return;
+    }
+    // Tab baru: reset filter lalu muat seperti sebelumnya; posisi
+    // scroll dipulihkan sesudah muat selesai (bila tab sempat
+    // ditinggalkan saat muat berjalan, jangan ubah posisinya).
+    genre = '';
+    fYear = '';
+    fCountry = '';
+    fNetwork = '';
+    filterMode = false;
+    const tt = t;
+    if (searchMode) runSearch(searchText).then(() => {
+      if (tab === tt) restoreScroll(targetY);
+    });
     else {
-      filterMode = false;
-      loadTab(t);
+      loadTab(t).then(() => {
+        if (tab === tt) restoreScroll(targetY);
+      });
     }
   }
 
@@ -543,11 +669,29 @@
       else restartHeroTimer();
     };
     document.addEventListener('visibilitychange', onVis);
-    loadTab('');
-    loadContinue();
-    return () => document.removeEventListener('visibilitychange', onVis);
+    window.addEventListener('scroll', saveScroll, { passive: true });
+    if (homeCache.loaded) {
+      // Kembali dari halaman lain: konten sudah dipulihkan saat
+      // inisiasi; segarkan Lanjutkan Menonton (bisa bertambah
+      // sesudah menonton) lalu kembali ke posisi scroll tab aktif.
+      if (!searchMode && !filterMode) restartHeroTimer();
+      const y = homeCache.scroll[tab] || 0;
+      loadContinue().finally(() => restoreScroll(y));
+    } else {
+      loadTab('');
+      loadContinue();
+    }
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('scroll', saveScroll);
+    };
   });
-  onDestroy(() => stopHeroTimer());
+  onDestroy(() => {
+    stopHeroTimer();
+    saveScroll();
+    stashTabState(tab);
+    saveHomeState();
+  });
 </script>
 
 <div class="container tabs-top">
