@@ -284,6 +284,9 @@ export const getSchedule = (type) => api('/api/v1/schedule?type=' + encodeURICom
 export const getGenres = (type = '') =>
   api('/api/v1/genres' + (type ? '?type=' + encodeURIComponent(type) : ''));
 
+export const getFilters = (type) =>
+  api('/api/v1/filters?type=' + encodeURIComponent(type));
+
 export const getLiveBrowse = (type, genre, page = 1) =>
   api(
     `/api/v1/live-browse?type=${encodeURIComponent(type)}&genre=${encodeURIComponent(genre)}&page=${page}`

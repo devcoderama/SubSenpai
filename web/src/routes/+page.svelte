@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import {
     getTitles, getTitle, getHome, getHistory,
-    checkWatchlist, addWatchlist, removeWatchlist
+    checkWatchlist, addWatchlist, removeWatchlist, getFilters
   } from '$lib/api.js';
   import { user, isPremium } from '$lib/auth.js';
   import { searchQuery } from '$lib/search.js';
@@ -76,7 +76,7 @@
       searchResults = [];
       searchCursor = '';
       searchMoreError = '';
-      restartHeroTimer();
+      if (!filterMode) restartHeroTimer();
       return;
     }
     searchText = query;
@@ -124,6 +124,148 @@
     } finally {
       searchLoadingMore = false;
     }
+  }
+
+  // Filter genre + lanjutan di tab jenis (28 Nov 2026, cerminan
+  // aplikasi): baris chip di bawah chip jenis — hanya di tab
+  // Film/Anime/Donghua. Genre atau filter aktif = mode Hasil (hero
+  // disembunyikan, grid diganti hasil getTitles berfilter + infinite
+  // scroll). Pilihan diingat per jenis supaya pindah tab lalu kembali
+  // tidak hilang.
+  let genre = '';
+  let fYear = '';
+  let fCountry = '';
+  let fNetwork = '';
+  let facets = null; // {genres, years, countries, networks} jenis aktif
+  let facetsFor = '';
+  let filterOpen = false;
+  let filterMode = false;
+  let results = [];
+  let resultsCursor = '';
+  let resultsLoading = false;
+  let resultsLoadingMore = false;
+  let resultsError = '';
+  let resultsMoreError = '';
+  let filterSeq = 0;
+  const filterState = {
+    film: { genre: '', year: '', country: '', network: '' },
+    anime: { genre: '', year: '', country: '', network: '' },
+    donghua: { genre: '', year: '', country: '', network: '' }
+  };
+
+  function filterActive() {
+    return !!(genre || fYear || fCountry || fNetwork);
+  }
+  function extraFilterCount() {
+    return [fYear, fCountry, fNetwork].filter(Boolean).length;
+  }
+  function hasExtraFacets() {
+    if (!facets) return false;
+    return (
+      (facets.years?.length || 0) +
+      (facets.countries?.length || 0) +
+      (facets.networks?.length || 0) >
+      0
+    );
+  }
+
+  async function loadFacets(t) {
+    if (!t) {
+      facets = null;
+      facetsFor = '';
+      return;
+    }
+    if (facetsFor === t && facets) return;
+    try {
+      const f = await getFilters(t);
+      if (tab !== t) return;
+      facets = f;
+      facetsFor = t;
+    } catch {
+      facets = null;
+      facetsFor = '';
+    }
+  }
+
+  async function runFilter() {
+    const seq = ++filterSeq;
+    filterMode = true;
+    stopHeroTimer();
+    resultsLoading = true;
+    resultsError = '';
+    resultsMoreError = '';
+    results = [];
+    resultsCursor = '';
+    try {
+      const res = await getTitles({
+        type: tab,
+        genre,
+        year: fYear,
+        country: fCountry,
+        network: fNetwork
+      });
+      if (seq !== filterSeq) return;
+      results = res.items || [];
+      resultsCursor = res.next_cursor || '';
+    } catch (e) {
+      if (seq !== filterSeq) return;
+      resultsError = e.message || 'Gagal memuat hasil filter.';
+    } finally {
+      if (seq === filterSeq) resultsLoading = false;
+    }
+  }
+
+  async function loadMoreFilter() {
+    if (!resultsCursor || resultsLoadingMore) return;
+    const seq = filterSeq;
+    resultsLoadingMore = true;
+    resultsMoreError = '';
+    try {
+      const res = await getTitles({
+        type: tab,
+        genre,
+        year: fYear,
+        country: fCountry,
+        network: fNetwork,
+        cursor: resultsCursor
+      });
+      if (seq !== filterSeq) return;
+      results = [...results, ...(res.items || [])];
+      resultsCursor = res.next_cursor || '';
+    } catch (e) {
+      if (seq !== filterSeq) return;
+      resultsMoreError = e.message || 'Gagal memuat lagi.';
+    } finally {
+      if (seq === filterSeq) resultsLoadingMore = false;
+    }
+  }
+
+  function applyFilterChange() {
+    if (filterActive()) runFilter();
+    else exitFilterMode();
+  }
+
+  function exitFilterMode() {
+    filterMode = false;
+    results = [];
+    resultsCursor = '';
+    resultsError = '';
+    resultsMoreError = '';
+    loadTab(tab);
+  }
+
+  function pickGenre(g) {
+    genre = g;
+    applyFilterChange();
+  }
+
+  function resetFilters() {
+    genre = '';
+    fYear = '';
+    fCountry = '';
+    fNetwork = '';
+    filterOpen = false;
+    exitFilterMode();
   }
 
   // Lanjutkan Menonton (seperti aplikasi): server bila masuk, lokal bila tamu.
@@ -320,10 +462,32 @@
   }
 
   function setTab(t) {
+    // Simpan pilihan filter jenis lama, pulihkan untuk jenis baru.
+    if (tab && filterState[tab]) {
+      filterState[tab] = { genre, year: fYear, country: fCountry, network: fNetwork };
+    }
     tab = t;
+    if (t && filterState[t]) {
+      const s = filterState[t];
+      genre = s.genre;
+      fYear = s.year;
+      fCountry = s.country;
+      fNetwork = s.network;
+    } else {
+      genre = '';
+      fYear = '';
+      fCountry = '';
+      fNetwork = '';
+    }
+    filterOpen = false;
+    loadFacets(t);
     // Ganti chip saat sedang mencari = cari dalam jenis baru.
     if (searchMode) runSearch(searchText);
-    else loadTab(t);
+    else if (t && filterActive()) runFilter();
+    else {
+      filterMode = false;
+      loadTab(t);
+    }
   }
 
   onMount(() => {
@@ -349,6 +513,85 @@
     {/each}
   </div>
 </div>
+
+{#if !searchMode && tab && facets}
+  <!-- Baris filter genre (28 Nov 2026, cerminan aplikasi): Filter +
+       Semua Genre + chip genre jenis aktif; aktif = merah. -->
+  <div class="container genre-row-wrap">
+    <div class="genre-row">
+      {#if hasExtraFacets()}
+        <button
+          class="genre-chip filter-btn"
+          class:active={extraFilterCount() > 0}
+          on:click={() => (filterOpen = !filterOpen)}
+        >
+          <i class="fa-solid fa-sliders"></i> Filter{extraFilterCount() ? ` (${extraFilterCount()})` : ''}
+        </button>
+      {/if}
+      <button class="genre-chip" class:active={!genre} on:click={() => pickGenre('')}>Semua Genre</button>
+      {#each facets.genres || [] as g}
+        <button class="genre-chip" class:active={genre === g.name} on:click={() => pickGenre(g.name)}
+          >{g.name}</button
+        >
+      {/each}
+    </div>
+    {#if filterOpen}
+      <div class="filter-panel">
+        <div class="filter-fields">
+          {#if facets.years?.length}
+            <label
+              >Tahun
+              <select
+                value={fYear}
+                on:change={(e) => {
+                  fYear = e.currentTarget.value;
+                  applyFilterChange();
+                }}
+              >
+                <option value="">Semua</option>
+                {#each facets.years as y}<option value={y.value}>{y.name}</option>{/each}
+              </select>
+            </label>
+          {/if}
+          {#if facets.countries?.length}
+            <label
+              >Negara
+              <select
+                value={fCountry}
+                on:change={(e) => {
+                  fCountry = e.currentTarget.value;
+                  applyFilterChange();
+                }}
+              >
+                <option value="">Semua</option>
+                {#each facets.countries as c}<option value={c.value}>{c.name}</option>{/each}
+              </select>
+            </label>
+          {/if}
+          {#if facets.networks?.length}
+            <label
+              >Jaringan
+              <select
+                value={fNetwork}
+                on:change={(e) => {
+                  fNetwork = e.currentTarget.value;
+                  applyFilterChange();
+                }}
+              >
+                <option value="">Semua</option>
+                {#each facets.networks as n}<option value={n.value}>{n.name}</option>{/each}
+              </select>
+            </label>
+          {/if}
+        </div>
+        <div class="filter-actions">
+          <button class="btn ghost" on:click={resetFilters}>Reset filter</button>
+          <button class="btn ghost" on:click={() => (filterOpen = false)}>Tutup</button>
+        </div>
+      </div>
+    {/if}
+  </div>
+{/if}
 
 {#if loading}
   {#if tab === ''}
@@ -412,7 +655,7 @@
     {/if}
   </div>
 {:else}
-  {#if heroItems.length}
+  {#if heroItems.length && !filterMode}
     <div
       class="hero-wrap"
       role="region"
@@ -501,6 +744,59 @@
       <Rail title="Anime" items={rails.anime.slice(0, 12)} moreHref="/cari?type=anime" />
       <Rail title="Donghua" items={rails.donghua.slice(0, 12)} moreHref="/cari?type=donghua" />
       <Rail title="Film" items={rails.film.slice(0, 12)} moreHref="/cari?type=film" />
+    {:else if filterMode}
+      <!-- Hasil filter genre/lanjutan: menggantikan hero + grid tab. -->
+      <h2 class="results-title">Hasil</h2>
+      {#if resultsLoading}
+        <div class="poster-grid"><Skeleton kind="card" count={12} /></div>
+      {:else if resultsError}
+        <p class="error">{resultsError}</p>
+        <div class="more">
+          <button
+            class="btn ghost"
+            on:click={() => {
+              resultsError = '';
+              runFilter();
+            }}>Coba lagi</button
+          >
+        </div>
+      {:else}
+        <div class="poster-grid">
+          {#each results as item, i (item.id)}
+            <div use:reveal={(i % 12) * 45}><TitleCard {item} /></div>
+          {/each}
+        </div>
+        {#if !results.length}
+          <p class="muted">Belum ada judul yang cocok. Coba genre atau filter lain.</p>
+        {/if}
+        {#if resultsCursor}
+          <div
+            class="sentinel"
+            use:infiniteScroll={{
+              enabled: !!resultsCursor && !resultsLoadingMore && !resultsMoreError,
+              onLoad: loadMoreFilter
+            }}
+          ></div>
+          {#if resultsLoadingMore}
+            <p class="load-more-note"><span class="bar skeleton"></span>Memuat lagi…</p>
+          {:else if resultsMoreError}
+            <p class="error">{resultsMoreError}</p>
+            <div class="more">
+              <button
+                class="btn ghost"
+                on:click={() => {
+                  resultsMoreError = '';
+                  loadMoreFilter();
+                }}>Coba lagi</button
+              >
+            </div>
+          {:else if !ioSupported}
+            <div class="more">
+              <button class="btn ghost" on:click={loadMoreFilter}>Muat lagi</button>
+            </div>
+          {/if}
+        {/if}
+      {/if}
     {:else}
       <div class="poster-grid">
         {#each grid as item, i (item.id)}
@@ -607,6 +903,38 @@
     font-size: 13px; padding: 8px 14px; border-radius: 999px; white-space: nowrap;
   }
   .promo-cta i { font-size: 11px; margin-left: 2px; }
+  /* Baris filter genre (28 Nov 2026): geser horizontal seperti
+     aplikasi; chip aktif merah, bukan putih seperti chip jenis. */
+  .genre-row-wrap { padding-bottom: 4px; }
+  .genre-row {
+    display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px;
+    scrollbar-width: none;
+  }
+  .genre-row::-webkit-scrollbar { display: none; }
+  .genre-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 14px; font-size: 13px; color: var(--muted);
+    background: transparent; white-space: nowrap; cursor: pointer;
+  }
+  .genre-chip:hover { color: #fff; border-color: #666; }
+  .genre-chip.active { background: var(--red); color: #fff; border-color: var(--red); font-weight: 600; }
+  .genre-chip i { font-size: 11px; }
+  .filter-panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px; margin: 4px 0 12px;
+  }
+  .filter-fields { display: flex; flex-wrap: wrap; gap: 12px; }
+  .filter-fields label {
+    display: flex; flex-direction: column; gap: 6px; flex: 1 1 140px;
+    font-size: 13px; color: var(--muted);
+  }
+  .filter-fields select {
+    background: var(--bg); color: #fff; border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 10px; font-size: 14px;
+  }
+  .filter-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .results-title { font-size: 18px; font-weight: 700; margin: 8px 0 14px; }
   @media (prefers-reduced-motion: reduce) {
     .hero-slide { transition: none; }
   }
