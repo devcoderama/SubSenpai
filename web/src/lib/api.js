@@ -305,20 +305,24 @@ export function posterUrl(u) {
 
 /* ================= Feed komunitas (butuh login) ================= */
 
-export const getFeed = ({ tab = 'teman', category = '', q = '', cursor = '' } = {}) => {
+export const getFeed = ({ tab = 'teman', category = '', q = '', cursor = '', group_id = '' } = {}) => {
   const params = new URLSearchParams();
   if (tab) params.set('tab', tab);
   if (category) params.set('category', category);
   if (q) params.set('q', q);
   if (cursor) params.set('cursor', cursor);
+  if (group_id) params.set('group_id', group_id);
   return api('/api/v1/feed?' + params.toString());
 };
 
-export const createPost = ({ body, image_url = '', category = 'umum', title_id = null }) =>
+export const createPost = ({ body, image_url = '', category = 'umum', title_id = null, visibility = 'publik' }) =>
   api('/api/v1/feed/posts', {
     method: 'POST',
-    body: { body, image_url, category, visibility: 'publik', ...(title_id ? { title_id } : {}) }
+    body: { body, image_url, category, visibility, ...(title_id ? { title_id } : {}) }
   });
+
+/** Daftar grup saya + grup publik (handleGroupsList → {groups: [...]}). */
+export const getGroups = () => api('/api/v1/groups');
 
 export const likePost = (id) =>
   api(`/api/v1/feed/posts/${encodeURIComponent(id)}/like`, { method: 'POST' });

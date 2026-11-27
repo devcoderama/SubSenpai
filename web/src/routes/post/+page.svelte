@@ -1,9 +1,9 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
   import { user } from '$lib/auth.js';
   import { searchQuery } from '$lib/search.js';
-  import { getFeed, getTitle, createPost, uploadFeedImage } from '$lib/api.js';
+  import { getFeed, getGroups, getTitle, createPost, uploadFeedImage } from '$lib/api.js';
   import PostCard from '$lib/components/PostCard.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { reveal, infiniteScroll } from '$lib/reveal.js';
@@ -13,6 +13,14 @@
     { id: 'grup', label: 'Grup' }
   ];
   const CATS = ['semua', 'umum', 'rekomendasi', 'anime', 'donghua', 'film'];
+  const VISIBILITIES = [
+    { id: 'publik', label: 'Publik' },
+    { id: 'teman', label: 'Teman' },
+    { id: 'pribadi', label: 'Pribadi' }
+  ];
+  // Post yang disembunyikan lokal (tidak ada endpoint hide di server;
+  // aplikasi juga menyembunyikan lokal — FeedScreens.kt hiddenIds).
+  const HIDDEN_KEY = 'subsenpai_hidden_posts';
 
   let tab = 'teman';
   let category = 'semua';
@@ -27,10 +35,64 @@
   // Komposer.
   let body = '';
   let cat = 'umum';
+  let vis = 'publik';
   let file = null;
   let filePreview = '';
   let posting = false;
   let postError = '';
+  let uploadError = '';
+  let failedFile = null;
+  let composerTa = null;
+
+  // FAB kembali ke atas (item 1).
+  let showFab = false;
+  function onScroll() {
+    showFab = window.scrollY > 600;
+  }
+  function fabToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    composerTa?.focus({ preventScroll: true });
+  }
+
+  // Grup (item 5): chip filter hanya di tab Grup.
+  let groups = [];
+  let groupsLoaded = false;
+  let groupId = '';
+  async function loadGroups() {
+    if (groupsLoaded) return;
+    groupsLoaded = true;
+    try {
+      const res = await getGroups();
+      // Hanya grup yang diikuti — feed grup server mensyaratkan keanggotaan.
+      groups = (res.groups || []).filter((g) => g.is_member);
+    } catch {
+      groups = [];
+    }
+  }
+  function setGroup(g) {
+    groupId = g;
+    load(true);
+  }
+
+  // Post tersembunyi (item 2).
+  function loadHiddenIds() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]');
+      return new Set(Array.isArray(raw) ? raw.filter((x) => typeof x === 'string') : []);
+    } catch {
+      return new Set();
+    }
+  }
+  let hiddenIds = loadHiddenIds();
+  function hidePost(id) {
+    hiddenIds = new Set([...hiddenIds, id]);
+    try {
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify([...hiddenIds]));
+    } catch {
+      /* penyimpanan penuh/diblokir — sembunyikan tetap berlaku sesi ini */
+    }
+    posts = posts.filter((p) => p.id !== id);
+  }
 
   // "Bagikan ke Post" dari halaman Detail/Nonton (?title={id}):
   // judul terlampir di postingan (title_id), seperti di aplikasi.
@@ -78,9 +140,12 @@
         tab,
         category: category === 'semua' ? '' : category,
         q: searchQ,
-        cursor: reset ? '' : nextCursor
+        cursor: reset ? '' : nextCursor,
+        group_id: tab === 'grup' ? groupId : ''
       });
-      const items = res.items || [];
+      // Post tersembunyi lokal difilter di setiap halaman yang dimuat
+      // (awal + infinite scroll) agar tetap tersembunyi sesudah reload.
+      const items = (res.items || []).filter((p) => !hiddenIds.has(p.id));
       posts = reset ? items : [...posts, ...items];
       nextCursor = res.next_cursor || '';
     } catch (e) {
@@ -95,6 +160,8 @@
 
   function setTab(t) {
     tab = t;
+    if (t === 'grup') loadGroups();
+    else groupId = '';
     load(true);
   }
   function setCat(c) {
@@ -112,6 +179,17 @@
     file = e.target.files?.[0] || null;
     if (filePreview) URL.revokeObjectURL(filePreview);
     filePreview = file ? URL.createObjectURL(file) : '';
+    // File baru menggantikan yang gagal — bersihkan spanduk error.
+    uploadError = '';
+    failedFile = null;
+  }
+
+  function discardFailedMedia() {
+    file = null;
+    failedFile = null;
+    uploadError = '';
+    if (filePreview) URL.revokeObjectURL(filePreview);
+    filePreview = '';
   }
 
   async function submitPost() {
@@ -122,13 +200,24 @@
     try {
       let imageUrl = '';
       if (file) {
-        const up = await uploadFeedImage(file);
-        imageUrl = up.url || '';
+        try {
+          const up = await uploadFeedImage(file);
+          imageUrl = up.url || '';
+          uploadError = '';
+          failedFile = null;
+        } catch (ue) {
+          // Unggah gagal: tampilkan spanduk (item 4) — file disimpan
+          // agar "Coba lagi" mengulang dengan file yang sama.
+          uploadError = ue.message || 'Gagal mengunggah media.';
+          failedFile = file;
+          return;
+        }
       }
       const res = await createPost({
         body: text,
         image_url: imageUrl,
         category: cat,
+        visibility: vis,
         title_id: shareTitleId || null
       });
       const created = res.post || res;
@@ -153,8 +242,14 @@
 
   onMount(() => {
     ioSupported = 'IntersectionObserver' in window;
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
     loadShareTitle();
     load(true);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('scroll', onScroll);
   });
 </script>
 
@@ -168,6 +263,15 @@
       <div class="row"><a class="btn" href="/masuk">Masuk dengan Google</a></div>
     </div>
   {:else}
+    {#if uploadError}
+      <div class="card upload-banner" role="alert">
+        <span><i class="fa-solid fa-triangle-exclamation"></i> {uploadError}</span>
+        <div class="banner-actions">
+          <button class="btn small" on:click={submitPost} disabled={posting}>Coba lagi</button>
+          <button class="btn ghost small" on:click={discardFailedMedia}>Buang</button>
+        </div>
+      </div>
+    {/if}
     <div class="card composer">
       {#if shareTitle}
         <div class="share-attach">
@@ -181,6 +285,7 @@
         </div>
       {/if}
       <textarea
+        bind:this={composerTa}
         placeholder="Bagikan rekomendasi anime, donghua, atau filmmu…"
         bind:value={body}
         maxlength="1000"
@@ -207,6 +312,9 @@
       <div class="composer-foot">
         <select bind:value={cat} aria-label="Kategori">
           {#each CATS.slice(1) as c}<option value={c}>{c[0].toUpperCase() + c.slice(1)}</option>{/each}
+        </select>
+        <select bind:value={vis} aria-label="Visibilitas">
+          {#each VISIBILITIES as v}<option value={v.id}>{v.label}</option>{/each}
         </select>
         <label class="attach" title="Lampirkan gambar/video">
           <i class="fa-solid fa-paperclip"></i> <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" on:change={onFile} hidden />
@@ -235,6 +343,15 @@
       <p class="muted search-note">{posts.length} postingan untuk “{searchQ}”</p>
     {/if}
 
+    {#if tab === 'grup' && groups.length}
+      <div class="group-chips" aria-label="Filter grup">
+        <button class="chip" class:active={!groupId} on:click={() => setGroup('')}>Semua</button>
+        {#each groups as g (g.id)}
+          <button class="chip" class:active={groupId === g.id} on:click={() => setGroup(g.id)}>{g.name}</button>
+        {/each}
+      </div>
+    {/if}
+
     {#if loading}
       <Skeleton kind="post" count={3} />
     {:else if error}
@@ -245,7 +362,7 @@
       </p>
     {:else}
       {#each posts as post, i (post.id)}
-        <div use:reveal={(i % 10) * 40}><PostCard {post} onDelete={removePost} /></div>
+        <div use:reveal={(i % 10) * 40}><PostCard {post} onDelete={removePost} onHide={hidePost} /></div>
       {/each}
       {#if loadingMore}
         <Skeleton kind="post" count={2} />
@@ -276,6 +393,12 @@
       {/if}
     {/if}
   {/if}
+
+  {#if $user && showFab}
+    <button class="fab" on:click={fabToTop} aria-label="Kembali ke atas dan tulis postingan">
+      <i class="fa-solid fa-arrow-up"></i>
+    </button>
+  {/if}
 </div>
 
 <style>
@@ -283,6 +406,21 @@
   .page h1 { font-size: 26px; margin-bottom: 16px; }
   .login-card { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
   .composer { margin-bottom: 16px; }
+  .upload-banner {
+    display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;
+    border-color: #7a2e2e; background: #2a1616; font-size: 14px;
+  }
+  .upload-banner i { color: #ff8a8a; margin-right: 6px; }
+  .banner-actions { display: flex; gap: 8px; }
+  .small { font-size: 13px; padding: 6px 12px; }
+  .group-chips { display: flex; gap: 8px; margin: 0 0 16px; overflow-x: auto; align-items: center; }
+  .fab {
+    position: fixed; right: 16px; bottom: 100px; z-index: 50;
+    width: 48px; height: 48px; border-radius: 50%; border: 0;
+    background: var(--red); color: #fff; font-size: 18px; cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  }
+  .fab:hover { filter: brightness(1.15); }
   .share-attach {
     display: flex; align-items: center; gap: 8px;
     background: var(--panel-2); border: 1px solid var(--border);
@@ -298,7 +436,7 @@
   }
   .preview { margin-top: 10px; }
   .preview img, .preview video { width: 100%; max-height: 360px; object-fit: contain; background: #000; border-radius: 10px; }
-  .composer-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .composer-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
   .composer-foot select {
     background: var(--panel-2); border: 1px solid var(--border); color: #fff;
     border-radius: 999px; padding: 8px 12px; font-size: 13px;

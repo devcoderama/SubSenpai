@@ -19,6 +19,7 @@
   let serupa = [];
   let copied = false;
   let shareOpen = false;
+  let lockedEp = null; // episode terkunci yang dialognya sedang tampil
   let inWatchlist = false;
   let wlBusy = false;
   let wlError = '';
@@ -71,6 +72,38 @@
       setTimeout(() => (copied = false), 2000);
     } catch {
       window.prompt('Salin tautan ini:', url);
+    }
+  }
+
+  // Bagikan native (Web Share API): bila tidak tersedia, jatuh kembali
+  // ke Salin tautan. Judul/teks = judul konten, URL = halaman ini.
+  async function shareNative() {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: title?.title || 'SubSenpai', text: title?.title || '', url });
+        return;
+      } catch (e) {
+        // Pengguna menutup dialog share — jangan fallback ke salin.
+        if (e?.name === 'AbortError') return;
+      }
+    }
+    shareCopy();
+  }
+
+  // Ketuk episode terkunci di daftar: tahan navigasi, tampilkan dialog
+  // kunci dulu (seperti aplikasi). Episode terbuka tetap langsung jalan.
+  // Daftar episode di-render EpisodeList (tautan <a> polos), jadi klik
+  // dicegat di pembungkus ini lewat bubbling.
+  function onEpisodeClick(e) {
+    const a = e.target?.closest?.('a');
+    if (!a) return;
+    const m = (a.getAttribute('href') || '').match(/^\/nonton\/([^?]+)/);
+    if (!m) return;
+    const ep = episodes.find((x) => x.id === m[1]);
+    if (ep?.locked) {
+      e.preventDefault();
+      lockedEp = ep;
     }
   }
 
@@ -181,6 +214,9 @@
         {#if shareOpen}
           <button class="menu-backdrop" on:click={() => (shareOpen = false)} aria-label="Tutup menu"></button>
           <div class="menu">
+            <button on:click={() => { shareOpen = false; shareNative(); }}>
+              Bagikan…
+            </button>
             <button on:click={() => { shareOpen = false; goto('/post?title=' + id); }}>
               Bagikan ke Post
             </button>
@@ -207,7 +243,9 @@
 
     {#if title.type !== 'film'}
       {#if episodes.length}
-        <EpisodeList {episodes} titleId={title.id} />
+        <div on:click={onEpisodeClick}>
+          <EpisodeList {episodes} titleId={title.id} />
+        </div>
       {:else}
         <p class="muted">Episode belum tersedia di sumber untuk judul ini.</p>
         <button class="btn ghost" on:click={loadDetail}>Coba Lagi</button>
@@ -225,6 +263,24 @@
       </section>
     {/if}
   </div>
+
+  {#if lockedEp}
+    <div class="modal-backdrop" on:click={() => (lockedEp = null)}></div>
+    <div class="modal" role="dialog" aria-label="Episode Terkunci">
+      <h2><i class="fa-solid fa-lock"></i> Episode Terkunci</h2>
+      <p class="muted">
+        Episode {lockedEp.episode_no}{lockedEp.title ? ' — ' + lockedEp.title : ''} khusus Premium. Buka
+        episode ini dengan menonton iklan, atau upgrade ke Premium.
+      </p>
+      <div class="modal-actions">
+        <button class="btn" on:click={() => goto('/nonton/' + lockedEp.id + '?title=' + id)}>
+          <i class="fa-solid fa-tv"></i> Tonton Iklan
+        </button>
+        <button class="btn ghost" on:click={() => goto('/premium')}>Premium</button>
+        <button class="btn ghost" on:click={() => (lockedEp = null)}>Nanti Saja</button>
+      </div>
+    </div>
+  {/if}
 {/if}
 
 <style>
@@ -300,4 +356,15 @@
      sebelumnya aturan ini ada di blok media awal dan kalah dengan
      aturan dasar 3 kolom di bawahnya. */
   @media (min-width: 1280px) { .similar-grid { grid-template-columns: repeat(4, 1fr); } }
+  /* Dialog kunci episode — pola modal yang sama dengan halaman Nonton. */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); z-index: 70; }
+  .modal {
+    position: fixed; z-index: 71; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(420px, calc(100vw - 32px));
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px;
+  }
+  .modal h2 { margin: 0 0 6px; font-size: 19px; }
+  .modal h2 i { color: var(--gold); margin-right: 6px; }
+  .modal p { margin: 0 0 12px; font-size: 14px; line-height: 1.55; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
 </style>

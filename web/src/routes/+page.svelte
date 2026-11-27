@@ -1,7 +1,11 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { getTitles, getTitle, getHome, getHistory } from '$lib/api.js';
-  import { user } from '$lib/auth.js';
+  import { goto } from '$app/navigation';
+  import {
+    getTitles, getTitle, getHome, getHistory,
+    checkWatchlist, addWatchlist, removeWatchlist
+  } from '$lib/api.js';
+  import { user, isPremium } from '$lib/auth.js';
   import { searchQuery } from '$lib/search.js';
   import { getLocalHistory, fmtWhen } from '$lib/history.js';
   import Hero from '$lib/components/Hero.svelte';
@@ -31,6 +35,13 @@
   let reduceMotion = false;
   const HERO_MS = 6000;
   const heroDetailCache = new Map();
+  // Toggle Daftar Saya di hero (27 Nov 2026): mengikuti judul yang
+  // sedang tampil, seperti Hero aplikasi (LaunchedEffect hero.id).
+  let heroInWatchlist = false;
+  let heroWlBusy = false;
+  let heroWlError = '';
+  let heroWlFor = '';
+  let heroWlLogged = false;
   let rails = { anime: [], donghua: [], film: [] };
   let grid = [];
   let nextCursor = '';
@@ -178,6 +189,58 @@
     if (!heroItems.length) return;
     heroIdx = (i + heroItems.length) % heroItems.length;
     if (manual) restartHeroTimer();
+  }
+
+  // Status Daftar Saya dibaca ulang tiap hero berganti (dan saat status
+  // login berubah); tamu tidak dicek — ketuk langsung ke /masuk.
+  $: {
+    const hid = heroItems[heroIdx]?.title?.id;
+    const logged = !!$user;
+    if (hid && (hid !== heroWlFor || logged !== heroWlLogged)) {
+      heroWlFor = hid;
+      heroWlLogged = logged;
+      heroInWatchlist = false;
+      heroWlError = '';
+      if (logged) refreshHeroWatchlist(hid);
+    } else if (!hid) {
+      heroWlFor = '';
+      heroWlLogged = logged;
+    }
+  }
+
+  async function refreshHeroWatchlist(id) {
+    try {
+      const c = await checkWatchlist(id);
+      if (heroWlFor === id) heroInWatchlist = !!c.in_watchlist;
+    } catch {
+      /* abaikan — tombol tetap bisa diketuk, seperti Detail */
+    }
+  }
+
+  // Sama seperti toggleWatchlist di Detail: tamu -> /masuk, sibuk
+  // dikunci, sudah tersimpan -> hapus.
+  async function toggleHeroWatchlist() {
+    if (!$user) {
+      goto('/masuk');
+      return;
+    }
+    const id = heroItems[heroIdx]?.title?.id;
+    if (!id || heroWlBusy) return;
+    heroWlBusy = true;
+    heroWlError = '';
+    try {
+      if (heroInWatchlist) {
+        await removeWatchlist(id);
+        heroInWatchlist = false;
+      } else {
+        await addWatchlist(id);
+        heroInWatchlist = true;
+      }
+    } catch (e) {
+      heroWlError = e.message || 'Gagal mengubah Daftar Saya.';
+    } finally {
+      heroWlBusy = false;
+    }
   }
 
   // Geser (swipe) kiri/kanan di hero untuk ganti slide.
@@ -397,12 +460,41 @@
           >›</button
         >
       {/if}
+      <!-- Toggle Daftar Saya hero (27 Nov 2026): overlay di kanan atas —
+           Hero.svelte di luar cakupan batch ini, jadi tombol hidup di sini
+           seperti dot + panah; Nonton/Detail di dalam Hero tak disentuh. -->
+      <button
+        class="btn ghost hero-wl"
+        class:active={heroInWatchlist}
+        on:click={toggleHeroWatchlist}
+        disabled={heroWlBusy}
+        aria-pressed={heroInWatchlist}
+        aria-label={heroInWatchlist ? 'Hapus dari Daftar Saya' : 'Simpan ke Daftar Saya'}
+      >
+        <i class={heroInWatchlist ? 'fa-solid fa-bookmark' : 'fa-regular fa-bookmark'}></i>
+        {heroWlBusy ? 'Menyimpan…' : heroInWatchlist ? 'Tersimpan' : 'Daftar Saya'}
+      </button>
+      {#if heroWlError}
+        <p class="hero-wl-error">{heroWlError}</p>
+      {/if}
     </div>
   {/if}
   <div class="container">
     {#if error}
       <p class="error">{error}</p>
     {:else if tab === ''}
+      {#if !isPremium($user)}
+        <!-- Kartu promo Premium ala aplikasi (27 Nov 2026): gradien ungu
+             + bintang emas; tamu + gratis saja, premium disembunyikan. -->
+        <a class="promo-premium" href="/premium">
+          <span class="promo-icon"><i class="fa-solid fa-star"></i></span>
+          <span class="promo-text">
+            <strong>SubSenpai Premium</strong>
+            <span>Nonton tanpa iklan, semua film terbuka</span>
+          </span>
+          <span class="promo-cta">Lihat Premium <i class="fa-solid fa-chevron-right"></i></span>
+        </a>
+      {/if}
       {#if continueWatching.length}
         <Rail title="Lanjutkan Menonton" items={continueWatching} moreHref="/riwayat" />
       {/if}
@@ -488,6 +580,33 @@
   .hero-arrow.left { left: 16px; }
   .hero-arrow.right { right: 16px; }
   @media (hover: none) { .hero-arrow { display: none; } }
+  /* Toggle Daftar Saya di hero: overlay kanan atas (seperti dot +
+     panah); aktif = latar merah + bookmark penuh. */
+  .hero-wl { position: absolute; top: 14px; right: 16px; z-index: 6; }
+  .hero-wl.active { background: var(--red); }
+  .hero-wl.active:hover { background: var(--red-dark); }
+  .hero-wl-error {
+    position: absolute; left: 16px; bottom: 12px; z-index: 6; margin: 0;
+    font-size: 13px; color: #ffb4b4; background: rgba(0, 0, 0, 0.65);
+    padding: 4px 8px; border-radius: 4px;
+  }
+  /* Kartu promo Premium ala aplikasi: gradien ungu + bintang emas. */
+  .promo-premium {
+    display: flex; align-items: center; gap: 12px;
+    margin: 4px 0 20px; padding: 14px 16px; border-radius: 12px;
+    background: linear-gradient(90deg, #3b2a5d, #7c3aed); color: #fff;
+    text-decoration: none;
+  }
+  .promo-premium:hover { filter: brightness(1.1); text-decoration: none; }
+  .promo-icon { color: var(--gold); font-size: 24px; flex: 0 0 auto; }
+  .promo-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .promo-text strong { font-size: 16px; }
+  .promo-text span { font-size: 13px; color: #e9e4f5; }
+  .promo-cta {
+    flex: 0 0 auto; background: #fff; color: #000; font-weight: 700;
+    font-size: 13px; padding: 8px 14px; border-radius: 999px; white-space: nowrap;
+  }
+  .promo-cta i { font-size: 11px; margin-left: 2px; }
   @media (prefers-reduced-motion: reduce) {
     .hero-slide { transition: none; }
   }

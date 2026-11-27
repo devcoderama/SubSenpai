@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import { getPlans, getPaymentMethods, checkout, paymentStatus, api, redeemVoucher, getMyVouchers } from '$lib/api.js';
   import { user } from '$lib/auth.js';
   import { refreshPremium } from '$lib/ads.js';
@@ -501,6 +502,12 @@
             </button>
             {#if statusMsg}<span>{#if statusIcon === 'check'}<i class="fa-solid fa-circle-check"></i>{:else if statusIcon === 'exclamation'}<i class="fa-solid fa-circle-exclamation"></i>{/if} {statusMsg}</span>{/if}
           </div>
+          {#if payPaid}
+            <!-- Tombol Selesai seperti di aplikasi: kembali ke Beranda. -->
+            <button class="btn wide" on:click={() => goto('/')}>
+              <i class="fa-solid fa-check"></i> Selesai
+            </button>
+          {/if}
         </div>
       {/if}
     {/if}

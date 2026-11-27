@@ -37,6 +37,9 @@
   let shareOpen = false;
   let serverOpen = false;
   let subOpen = false;
+  let playerWrap = null; // pembungkus pemutar (target fullscreen)
+  let fsSupported = false;
+  let isFullscreen = false;
 
   // Popover Server/Subtitle/Bagikan: position: fixed + posisi dihitung
   // dari tombol yang diklik (27 Nov 2026). Sebelumnya popover itu
@@ -112,7 +115,13 @@
   onMount(() => {
     const onShow = () => resumeAd();
     window.addEventListener('pageshow', onShow);
-    return () => window.removeEventListener('pageshow', onShow);
+    fsSupported = !!document.fullscreenEnabled;
+    const onFsChange = () => { isFullscreen = !!document.fullscreenElement; };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => {
+      window.removeEventListener('pageshow', onShow);
+      document.removeEventListener('fullscreenchange', onFsChange);
+    };
   });
 
   function goBack() {
@@ -310,6 +319,39 @@
     }
   }
 
+  // Bagikan native (Web Share API) — fallback ke Salin tautan bila
+  // tidak tersedia atau gagal (selain pengguna membatalkan dialog).
+  async function shareNative() {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: title?.title || 'SubSenpai',
+          text: title?.title
+            ? title.title + (curEp?.episode_no != null ? ' — Episode ' + curEp.episode_no : '')
+            : '',
+          url
+        });
+        return;
+      } catch (e) {
+        if (e?.name === 'AbortError') return;
+      }
+    }
+    shareCopy();
+  }
+
+  // Layar penuh pada pembungkus pemutar — jalan untuk <video> langsung
+  // maupun iframe embed, karena yang di-fullscreen-kan div-nya.
+  async function toggleFullscreen() {
+    if (!playerWrap) return;
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await playerWrap.requestFullscreen();
+    } catch {
+      /* abaikan — mis. pengguna menekan Esc bersamaan */
+    }
+  }
+
   async function submitReport() {
     reportSending = true;
     reportError = '';
@@ -388,6 +430,9 @@
           </p>
           <div class="actions">
             <a class="btn" href="/premium">Lihat Premium</a>
+            {#if !$user}
+              <a class="btn ghost" href="/masuk">Masuk</a>
+            {/if}
             {#if adState === 'idle'}
               <button class="btn ghost" on:click={startAd}><i class="fa-solid fa-tv"></i> Buka iklan 60 detik untuk membuka episode ini</button>
             {:else if adState === 'waiting'}
@@ -421,7 +466,7 @@
         {/if}
       </div>
     {:else if playback}
-      <div class="player-wrap">
+      <div class="player-wrap" bind:this={playerWrap}>
         <Player
           bind:current
           sources={playback.sources || []}
@@ -496,6 +541,9 @@
             </button>
             {#if shareOpen}
               <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px">
+                <button class="pop-row" on:click={() => { shareOpen = false; shareNative(); }}>
+                  <span>Bagikan…</span>
+                </button>
                 <button class="pop-row" on:click={() => { shareOpen = false; goto('/post?title=' + title.id); }}>
                   <span>Bagikan ke Post</span>
                 </button>
@@ -506,6 +554,12 @@
             {/if}
           </div>
           <button class="action-btn" on:click={() => { showReport = true; reportDone = ''; }}>Laporkan</button>
+          {#if fsSupported}
+            <button class="action-btn" on:click={toggleFullscreen} aria-label={isFullscreen ? 'Keluar dari layar penuh' : 'Layar penuh'}>
+              <i class={'fa-solid ' + (isFullscreen ? 'fa-compress' : 'fa-expand')}></i>
+              {isFullscreen ? 'Keluar layar penuh' : 'Layar penuh'}
+            </button>
+          {/if}
         </div>
         {#if serverOpen || subOpen || shareOpen}
           <button
@@ -592,6 +646,12 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .player-wrap { margin-top: 4px; }
+  /* Layar penuh: pembungkus mengisi layar, pemutar di dalamnya ikut
+     mengisi (jalan untuk <video> maupun iframe embed). */
+  .player-wrap:fullscreen, .player-wrap:-webkit-full-screen { background: #000; display: flex; align-items: center; }
+  .player-wrap:fullscreen :global(.player), .player-wrap:-webkit-full-screen :global(.player) {
+    height: 100%; aspect-ratio: auto; border-radius: 0;
+  }
   @media (max-width: 767px) {
     .player-wrap { margin-left: -16px; margin-right: -16px; }
     .player-wrap :global(.player) { border-radius: 0; }

@@ -5,6 +5,33 @@
 
   export let post;
   export let onDelete = null;
+  export let onHide = null;
+
+  let menuOpen = false;
+  let lightbox = '';
+  let zoomed = false;
+
+  // Embed YouTube (hanya YouTube — TikTok/Instagram/Facebook tetap tautan
+  // biasa: embed script mereka berat dan tidak andal di web).
+  // Pola ID disamakan dengan aplikasi (FeedScreens.kt socialEmbedUrl).
+  $: ytId = (() => {
+    const m = (post.body || '').match(
+      /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/i
+    );
+    return m ? m[1] : '';
+  })();
+
+  function openLightbox(url) {
+    lightbox = url;
+    zoomed = false;
+  }
+  function closeLightbox() {
+    lightbox = '';
+    zoomed = false;
+  }
+  function onKey(e) {
+    if (e.key === 'Escape' && lightbox) closeLightbox();
+  }
 
   let liked = post.liked;
   let likeCount = post.like_count;
@@ -129,7 +156,17 @@
       actionError = e.message || 'Gagal menghapus.';
     }
   }
+
+  // Sembunyikan lokal saja (aplikasi juga begitu: FeedScreens.kt
+  // hiddenIds — tidak ada endpoint hide di server). Induk menyimpan
+  // ID-nya ke localStorage dan memfilter feed.
+  function hide() {
+    menuOpen = false;
+    onHide?.(post.id);
+  }
 </script>
+
+<svelte:window on:keydown={onKey} />
 
 <article class="post card">
   {#if post.reposted_by}
@@ -141,13 +178,41 @@
       <strong>{author.display_name}{#if author.is_premium} <i class="fa-solid fa-crown"></i>{/if}</strong>
       <span class="muted">{fmtWhen(post.created_at)}{post.category ? ' • ' + post.category : ''}{post.group_name ? ' • ' + post.group_name : ''}</span>
     </div>
-    {#if post.mine}
-      <button class="icon-btn" on:click={remove} aria-label="Hapus postingan"><i class="fa-solid fa-trash"></i></button>
-    {/if}
+    <div class="menu-wrap">
+      <button class="icon-btn" on:click={() => (menuOpen = !menuOpen)} aria-label="Menu postingan" aria-expanded={menuOpen}>
+        <i class="fa-solid fa-ellipsis-vertical"></i>
+      </button>
+      {#if menuOpen}
+        <div class="menu" role="menu">
+          {#if post.mine}
+            <button
+              role="menuitem"
+              on:click={() => {
+                menuOpen = false;
+                remove();
+              }}><i class="fa-solid fa-trash"></i> Hapus postingan</button
+            >
+          {/if}
+          <button role="menuitem" on:click={hide}><i class="fa-solid fa-eye-slash"></i> Sembunyikan</button>
+        </div>
+      {/if}
+    </div>
   </div>
 
   {#if post.body}
     <p class="body">{@html linkify(post.body)}</p>
+  {/if}
+  {#if ytId}
+    <div class="yt-embed">
+      <!-- svelte-ignore a11y_missing_attribute -->
+      <iframe
+        src={'https://www.youtube-nocookie.com/embed/' + ytId}
+        title="Video YouTube"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen
+        loading="lazy"
+      ></iframe>
+    </div>
   {/if}
   {#if mediaUrl}
     <div class="media">
@@ -155,7 +220,7 @@
         <!-- svelte-ignore a11y_media_has_caption -->
         <video src={mediaUrl} controls preload="metadata" playsinline></video>
       {:else}
-        <img src={mediaUrl} alt="" loading="lazy" />
+        <img src={mediaUrl} alt="" loading="lazy" on:click={() => openLightbox(mediaUrl)} />
       {/if}
     </div>
   {/if}
@@ -197,6 +262,23 @@
   {/if}
 </article>
 
+{#if lightbox}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="lightbox" on:click={closeLightbox}>
+    <button class="lb-close" aria-label="Tutup gambar" on:click|stopPropagation={closeLightbox}>
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
+    <img
+      src={lightbox}
+      alt="Gambar postingan ukuran penuh"
+      class:zoomed
+      on:click|stopPropagation={() => (zoomed = !zoomed)}
+    />
+    <p class="lb-hint muted">Ketuk gambar untuk {zoomed ? 'perkecil' : 'perbesar'} • Esc / ketuk latar untuk menutup</p>
+  </div>
+{/if}
+
 <style>
   .post { margin-bottom: 16px; padding: 16px; }
   .repost-line { font-size: 13px; margin: 0 0 8px; }
@@ -210,6 +292,34 @@
     display: flex; align-items: center; justify-content: center; font-size: 16px;
   }
   .icon-btn { background: none; border: 0; font-size: 16px; cursor: pointer; }
+  .menu-wrap { position: relative; }
+  .menu {
+    position: absolute; right: 0; top: 100%; z-index: 20; min-width: 180px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); padding: 4px; display: flex; flex-direction: column;
+  }
+  .menu button {
+    display: flex; align-items: center; gap: 8px; background: none; border: 0;
+    color: #fff; font-size: 14px; text-align: left; padding: 9px 12px;
+    border-radius: 8px; cursor: pointer;
+  }
+  .menu button:hover { background: var(--panel-2); }
+  .menu button i { color: var(--muted); width: 16px; text-align: center; }
+  .yt-embed { margin: 4px 0 8px; border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 9; background: #000; }
+  .yt-embed iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .lightbox {
+    position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.92);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 16px; cursor: zoom-out; overflow: auto;
+  }
+  .lightbox img { max-width: 100%; max-height: calc(100vh - 70px); object-fit: contain; cursor: zoom-in; }
+  .lightbox img.zoomed { max-width: none; max-height: none; width: auto; height: auto; cursor: zoom-out; }
+  .lb-close {
+    position: absolute; top: 14px; right: 14px; width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12); border: 0; color: #fff; font-size: 18px; cursor: pointer;
+  }
+  .lb-hint { margin: 10px 0 0; font-size: 12px; text-align: center; }
+  .media img { cursor: zoom-in; }
   .body { white-space: pre-wrap; word-break: break-word; line-height: 1.55; margin: 12px 0; }
   .media { margin: 4px 0 8px; border-radius: 10px; overflow: hidden; }
   .media img, .media video { width: 100%; display: block; max-height: 520px; object-fit: contain; background: #000; }
