@@ -17,6 +17,13 @@
   let q = $page.url.searchParams.get('q') || '';
   let type = $page.url.searchParams.get('type') || '';
   let genre = $page.url.searchParams.get('genre') || '';
+  // Filter lanjutan dari tautan "Lihat semua" Beranda (28 Nov 2026):
+  // year didukung backend, status disaring di klien (backend belum
+  // punya filter status).
+  const yearParam = $page.url.searchParams.get('year') || '';
+  let year = /^\d{4}$/.test(yearParam) ? yearParam : '';
+  const statusParam = $page.url.searchParams.get('status') || '';
+  let status = statusParam === 'ongoing' || statusParam === 'completed' ? statusParam : '';
   let genres = [];
   let results = [];
   let nextCursor = '';
@@ -32,7 +39,26 @@
     if (q.trim()) params.set('q', q.trim());
     if (type) params.set('type', type);
     if (genre) params.set('genre', genre);
+    if (year) params.set('year', year);
+    if (status) params.set('status', status);
     goto('/cari' + (params.toString() ? '?' + params.toString() : ''), { replaceState: true });
+  }
+
+  // Ambil halaman getTitles lalu saring status di klien — bila hasil
+  // saringan < 20 dan masih ada cursor, lanjut ambil halaman berikut
+  // (maks 4 tambahan) supaya halaman tidak kosong.
+  async function fetchFiltered(params, want) {
+    let items = [];
+    let cursor = params.cursor || '';
+    let extra = 0;
+    do {
+      const res = await getTitles({ ...params, ...(cursor ? { cursor } : {}) });
+      const page = res.items || [];
+      items = items.concat(status ? page.filter((it) => it.status === status) : page);
+      cursor = res.next_cursor || '';
+      extra++;
+    } while (status && items.length < want && cursor && extra <= 4);
+    return { items, nextCursor: cursor };
   }
 
   async function search() {
@@ -42,9 +68,9 @@
     searched = true;
     syncUrl();
     try {
-      const res = await getTitles({ q: q.trim(), type, genre });
-      results = res.items || [];
-      nextCursor = res.next_cursor || '';
+      const res = await fetchFiltered({ q: q.trim(), type, genre, year }, 20);
+      results = res.items;
+      nextCursor = res.nextCursor;
     } catch (e) {
       error = e.message || 'Pencarian gagal.';
       results = [];
@@ -58,9 +84,9 @@
     loadingMore = true;
     moreError = '';
     try {
-      const res = await getTitles({ q: q.trim(), type, genre, cursor: nextCursor });
-      results = [...results, ...(res.items || [])];
-      nextCursor = res.next_cursor || '';
+      const res = await fetchFiltered({ q: q.trim(), type, genre, year, cursor: nextCursor }, 20);
+      results = [...results, ...res.items];
+      nextCursor = res.nextCursor;
     } catch (e) {
       moreError = e.message || 'Gagal memuat lagi.';
     } finally {
@@ -92,14 +118,14 @@
   onMount(async () => {
     ioSupported = 'IntersectionObserver' in window;
     await loadGenres(type);
-    if (q || type || genre) search();
+    if (q || type || genre || year || status) search();
     else {
       // Tanpa kata kunci: tampilkan katalog terbaru sebagai penjelajah.
       loading = true;
       try {
-        const res = await getTitles({ type });
-        results = res.items || [];
-        nextCursor = res.next_cursor || '';
+        const res = await fetchFiltered({ type, year }, 20);
+        results = res.items;
+        nextCursor = res.nextCursor;
         searched = true;
       } catch (e) {
         error = e.message || 'Gagal memuat katalog.';
@@ -123,6 +149,29 @@
       <button class="chip" class:active={type === t.id} on:click={() => setType(t.id)}>{t.label}</button>
     {/each}
   </div>
+
+  {#if year || status}
+    <div class="active-filters">
+      {#if year}
+        <button
+          class="chip active"
+          on:click={() => {
+            year = '';
+            search();
+          }}>Tahun {year} ✕</button
+        >
+      {/if}
+      {#if status}
+        <button
+          class="chip active"
+          on:click={() => {
+            status = '';
+            search();
+          }}>{status === 'ongoing' ? 'Ongoing' : 'Selesai'} ✕</button
+        >
+      {/if}
+    </div>
+  {/if}
 
   {#if genres.length}
     <div class="genres">
@@ -187,6 +236,7 @@
   }
   .searchbar input:focus { outline: none; border-color: #fff; }
   .tabs { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }
+  .active-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .genres { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
   .more { text-align: center; margin: 24px 0; }
 </style>
