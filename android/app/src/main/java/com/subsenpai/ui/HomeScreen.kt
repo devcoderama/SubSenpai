@@ -77,8 +77,10 @@ import com.subsenpai.data.TitleCard
 import com.subsenpai.data.TitleFacets
 import com.subsenpai.data.WatchHistoryItem
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 private val typeFilters = listOf(
     null to "Semua", "film" to "Film", "anime" to "Anime", "donghua" to "Donghua",
@@ -196,6 +198,10 @@ fun HomeScreen(
     var lanjut by session.lanjut
     var error by remember { mutableStateOf<String?>(null) }
     var fatalKind by remember { mutableStateOf<AppErrorKind?>(null) }
+    // Muat Beranda yang sudah >10 detik: tawarkan "Coba lagi" di
+    // bawah layar (overlay) supaya pengguna tidak terjebak di
+    // spinner tanpa jalan keluar saat koneksi menggantung.
+    var showHomeRetry by remember { mutableStateOf(false) }
     var reloadKey by session.reloadKey
     var query by session.query
     var genre by tab.genre
@@ -326,10 +332,20 @@ fun HomeScreen(
         }
         session.homeReloadSeen = reloadKey
         try {
-            val (tr, te) = repo.home()
+            // Batas 25 detik untuk muat utama: koneksi yang menggantung
+            // (byte menetes pelan sehingga read timeout OkHttp tidak
+            // sempat bekerja) berubah jadi halaman error + tombol coba
+            // lagi, bukan spinner tanpa ujung (laporan Rams 27 Nov
+            // 21:01 — Beranda tamu muter terus di v0.24.32).
+            val (tr, te) = withTimeout(25_000) { repo.home() }
             trending = tr
             terbaru = te
             fatalKind = null
+        } catch (e: TimeoutCancellationException) {
+            fatalKind = AppErrorKind.NETWORK
+        } catch (e: CancellationException) {
+            // Efek dibatalkan (pindah halaman): bukan kegagalan muat.
+            throw e
         } catch (e: Exception) {
             // Kegagalan muat utama TIDAK ditampilkan mentah di Beranda:
             // pengguna diarahkan ke halaman peringatan khusus.
@@ -355,6 +371,17 @@ fun HomeScreen(
             }
         }
         homeLive = liveLoaded
+    }
+    // Penghitung 10 detik untuk tombol "Coba lagi": mulai tiap kali
+    // muat Beranda dimulai (homeLoaded false), batal bila muat
+    // selesai sebelum 10 detik.
+    LaunchedEffect(homeLoaded) {
+        if (!homeLoaded) {
+            delay(10_000)
+            if (!homeLoaded) showHomeRetry = true
+        } else {
+            showHomeRetry = false
+        }
     }
     LaunchedEffect(authVersion) {
         lanjut = if (repo.isLoggedIn) {
@@ -957,6 +984,30 @@ fun HomeScreen(
                     },
                     onClose = { filterOpen = false },
                 )
+            }
+        }
+        // Muat Beranda menggantung >10 detik: tombol "Coba lagi" di
+        // bawah layar — menaikkan reloadKey membatalkan muat yang
+        // menggantung dan memulai ulang dari awal.
+        if (showHomeRetry && !homeLoaded && fatalKind == null) {
+            Column(
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    "Masih memuat — koneksi tampaknya lambat.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        showHomeRetry = false
+                        reloadKey++
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
+                ) { Text("Coba lagi") }
             }
         }
     }
