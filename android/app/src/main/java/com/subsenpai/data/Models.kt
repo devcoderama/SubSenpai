@@ -1,5 +1,6 @@
 package com.subsenpai.data
 
+import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -247,6 +248,40 @@ fun blockedDescription(status: String, note: String): String {
     return base + notePart + "\n\nHubungi admin SubSenpai bila menurutmu ini keliru."
 }
 
+/** Perangkat yang ditendang oleh login baru (batas perangkat). */
+data class RevokedDeviceInfo(
+    val deviceId: String,
+    val deviceName: String?,
+)
+
+/**
+ * Pilah pesan penolakan perangkat dicabut dari server
+ * ("perangkat_dicabut:<nama perangkat>") — mengembalikan nama
+ * perangkatnya ("" bila tak ada nama), atau null bila pesannya
+ * bukan penolakan perangkat. Cerminan parseBlockedMessage.
+ */
+fun parseRevokedDeviceMessage(msg: String?): String? {
+    val m = msg.orEmpty()
+    if (!m.startsWith("perangkat_dicabut:")) return null
+    return m.removePrefix("perangkat_dicabut:")
+}
+
+/**
+ * Teks ramah untuk catatan perangkat dikeluarkan / sesi berakhir:
+ * sertakan nama perangkat bila ada, bila tidak pakai pesan umum.
+ */
+fun revokedDeviceMessage(deviceName: String?): String =
+    deviceName?.takeIf { it.isNotBlank() }?.let {
+        "Perangkat $it dikeluarkan karena akun ini login di perangkat lain."
+    } ?: "Sesi berakhir — akun ini login di perangkat lain."
+
+/**
+ * Nama perangkat ini yang ramah (untuk dicatat di user_devices
+ * saat login): merek + model, format yang sama dengan
+ * CrashReporter ("POCO F6" dan sejenisnya).
+ */
+fun deviceName(): String = "${Build.BRAND} ${Build.MODEL}".trim()
+
 class CatalogRepository(
     private val api: ApiClient = ApiClient(),
     val auth: AuthStore? = null,
@@ -303,9 +338,30 @@ class CatalogRepository(
 
     // ---------- Akun (Fase 3) ----------
 
+    // Perangkat yang ditendang oleh login terakhir (respons login
+    // membawa "revoked_device") — dibaca sekali oleh UI sesudah
+    // login berhasil, lalu dibersihkan (take = sekali pakai).
+    private var lastRevokedDevice: RevokedDeviceInfo? = null
+
+    /** Ambil + bersihkan catatan perangkat yang ditendang saat login. */
+    fun takeRevokedDevice(): RevokedDeviceInfo? {
+        val d = lastRevokedDevice
+        lastRevokedDevice = null
+        return d
+    }
+
     /** Tukar token ID Google dengan JWT backend; sesi disimpan di AuthStore. */
     suspend fun loginGoogle(idToken: String): UserProfile {
-        val o = api.post("/api/v1/auth/google", JSONObject().put("id_token", idToken))
+        // Batas perangkat: registerDevice backend membaca device_id /
+        // device_name dari BODY login (auth.go) — BUKAN dari header
+        // X-Device-Id (header itu hanya dipakai pengecekan per-request).
+        // Sebelum perbaikan ini login aplikasi hanya mengirim id_token,
+        // jadi tidak pernah tercatat di user_devices, revoked_device
+        // selalu null, dan batas sesi tidak berlaku di aplikasi.
+        val body = JSONObject().put("id_token", idToken)
+        auth?.deviceId?.let { body.put("device_id", it) }
+        body.put("device_name", deviceName())
+        val o = api.post("/api/v1/auth/google", body)
         val token = o.getString("token")
         val p = o.getJSONObject("profile")
         val profile = UserProfile(
@@ -325,6 +381,14 @@ class CatalogRepository(
             displayName = profile.displayName,
             friendCode = profile.friendCode,
         )
+        // Login ini menendang perangkat lain (batas perangkat):
+        // simpan catatannya untuk ditampilkan sekali sesudah login.
+        o.optJSONObject("revoked_device")?.let { rd ->
+            lastRevokedDevice = RevokedDeviceInfo(
+                deviceId = rd.optString("device_id"),
+                deviceName = rd.optString("device_name").ifBlank { null },
+            )
+        }
         return profile
     }
 

@@ -57,48 +57,76 @@ func (a *API) handleDeviceRevoke(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"revoked": true})
 }
 
+// deviceLimit: batas perangkat aktif per akun — 2 untuk premium,
+// 1 untuk gratis (permintaan Rams 27 Nov 2026).
+func deviceLimit(premium bool) int {
+	if premium {
+		return 2
+	}
+	return 1
+}
+
 // registerDevice mencatat perangkat saat login dan menegakkan batas
-// 2 perangkat untuk akun premium. Mengembalikan false bila login harus
-// ditolak (perangkat ketiga) — respons 409 sudah ditulis.
-func (a *API) registerDevice(w http.ResponseWriter, r *http.Request, userID, deviceID, deviceName string) bool {
+// perangkat: perangkat baru yang melebihi batas MENCABUT perangkat
+// aktif yang paling lama tidak aktif (last_seen_at tertua), lalu
+// login baru diloloskan — bukan ditolak (perilaku lama: 409
+// "batas_perangkat", dihapus 27 Nov 2026 atas permintaan Rams:
+// "jika lebih akan logout salah satunya").
+// Mengembalikan perangkat yang dicabut (nil bila tidak ada) dan
+// false bila login harus ditolak — dalam hal ini respons error
+// sudah ditulis. Dua login bersamaan dari perangkat baru yang
+// berbeda diserialkan dengan advisory lock per akun supaya
+// hitungan batas tidak lolos ganda.
+func (a *API) registerDevice(w http.ResponseWriter, r *http.Request, userID, deviceID, deviceName string) (*deviceOut, bool) {
 	if deviceID == "" {
-		return true
+		return nil, true
 	}
 	ctx := r.Context()
+	tx, err := a.pool.Begin(ctx)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal mencatat perangkat")
+		return nil, false
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtext($1))`, "user_devices:"+userID); err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal mencatat perangkat")
+		return nil, false
+	}
 	var known bool
-	_ = a.pool.QueryRow(ctx, `
+	_ = tx.QueryRow(ctx, `
 		select exists(select 1 from user_devices
 			where user_id = $1::uuid and device_id = $2 and revoked_at is null)`,
 		userID, deviceID).Scan(&known)
-	if !known && a.isPremiumAktif(userID) {
+	var kicked *deviceOut
+	if !known {
+		limit := deviceLimit(a.isPremiumAktif(userID))
 		var count int
-		_ = a.pool.QueryRow(ctx, `
+		_ = tx.QueryRow(ctx, `
 			select count(*) from user_devices
 			where user_id = $1::uuid and revoked_at is null`, userID).Scan(&count)
-		if count >= 2 {
-			devices := []deviceOut{}
-			rows, err := a.pool.Query(ctx, `
-				select device_id, device_name, last_seen_at, created_at
-				from user_devices
-				where user_id = $1::uuid and revoked_at is null
-				order by last_seen_at desc`, userID)
-			if err == nil {
-				defer rows.Close()
-				for rows.Next() {
-					var d deviceOut
-					if err := rows.Scan(&d.DeviceID, &d.DeviceName, &d.LastSeenAt, &d.CreatedAt); err == nil {
-						devices = append(devices, d)
-					}
-				}
+		// Biasanya menendang 1; perulangan menangani akun yang sudah
+		// terlanjur kelebihan (mis. premium habis sebelum sweeper jalan).
+		for count >= limit {
+			var d deviceOut
+			err := tx.QueryRow(ctx, `
+				update user_devices set revoked_at = now()
+				where (user_id, device_id) = (
+					select user_id, device_id from user_devices
+					where user_id = $1::uuid and revoked_at is null
+					order by last_seen_at asc, created_at asc limit 1
+				)
+				returning device_id, device_name, last_seen_at, created_at`,
+				userID).Scan(&d.DeviceID, &d.DeviceName, &d.LastSeenAt, &d.CreatedAt)
+			if err != nil {
+				break
 			}
-			writeJSON(w, http.StatusConflict, map[string]any{
-				"error":   "batas_perangkat: akun premium aktif di maks. 2 perangkat — cabut salah satu dulu",
-				"devices": devices,
-			})
-			return false
+			if kicked == nil {
+				kicked = &d
+			}
+			count--
 		}
 	}
-	if _, err := a.pool.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		insert into user_devices (user_id, device_id, device_name, last_seen_at)
 		values ($1::uuid, $2, $3, now())
 		on conflict (user_id, device_id)
@@ -106,7 +134,11 @@ func (a *API) registerDevice(w http.ResponseWriter, r *http.Request, userID, dev
 		              last_seen_at = now(), revoked_at = null`,
 		userID, deviceID, nullStr(deviceName)); err != nil {
 		writeErr(w, http.StatusInternalServerError, "gagal mencatat perangkat")
-		return false
+		return nil, false
 	}
-	return true
+	if err := tx.Commit(ctx); err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal mencatat perangkat")
+		return nil, false
+	}
+	return kicked, true
 }

@@ -43,6 +43,31 @@ func writeAuthErr(w http.ResponseWriter, status int, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
+// revokedDevice: nama perangkat bila X-Device-Id pada request ini
+// sudah dicabut untuk akun tersebut (dikeluarkan karena login di
+// perangkat lain melewati batas, atau dicabut manual di halaman
+// perangkat); ok=false bila tidak dicabut. Tanpa header atau tanpa
+// baris (login lama / klien lama yang belum mencatat perangkat) →
+// tidak diblokir, supaya peluncuran tidak mengusir sesi lama yang sah.
+func (a *Authenticator) revokedDevice(ctx context.Context, profileID string, r *http.Request) (string, bool) {
+	deviceID := r.Header.Get("X-Device-Id")
+	if deviceID == "" {
+		return "", false
+	}
+	var name *string
+	err := a.Pool.QueryRow(ctx, `
+		select device_name from user_devices
+		where user_id = $1::uuid and device_id = $2 and revoked_at is not null`,
+		profileID, deviceID).Scan(&name)
+	if err != nil {
+		return "", false
+	}
+	if name == nil || *name == "" {
+		return "perangkat ini", true
+	}
+	return *name, true
+}
+
 // Require adalah middleware untuk endpoint khusus user login: token
 // "Authorization: Bearer <JWT backend>" wajib valid dan akun tidak banned.
 func (a *Authenticator) Require(next http.Handler) http.Handler {
@@ -73,6 +98,13 @@ func (a *Authenticator) Require(next http.Handler) http.Handler {
 				st = "banned"
 			}
 			writeAuthErr(w, http.StatusForbidden, blockedMessage(st, p.AdminNote))
+			return
+		}
+		// Perangkat yang dicabut tidak lagi bisa memakai endpoint login:
+		// 401 "perangkat_dicabut:<nama>" — klien menghapus token dan
+		// menampilkan "Sesi berakhir — akun ini login di perangkat lain".
+		if name, revoked := a.revokedDevice(r.Context(), p.ID, r); revoked {
+			writeAuthErr(w, http.StatusUnauthorized, "perangkat_dicabut:"+name)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, &p)))
@@ -120,6 +152,14 @@ func (a *Authenticator) Optional(next http.Handler) http.Handler {
 				st = "banned"
 			}
 			writeAuthErr(w, http.StatusForbidden, blockedMessage(st, p.AdminNote))
+			return
+		}
+		// Perangkat yang dicabut turun jadi tamu (bukan 401): rute
+		// opsional tetap melayani konten tamu; 401-nya muncul di
+		// endpoint Require berikutnya (mis. /api/v1/me yang dipoll
+		// aplikasi/web tiap siklus).
+		if _, revoked := a.revokedDevice(r.Context(), p.ID, r); revoked {
+			next.ServeHTTP(w, r)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, &p)))

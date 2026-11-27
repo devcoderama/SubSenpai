@@ -195,6 +195,20 @@ async function openEnvelope(env) {
   return JSON.parse(new TextDecoder().decode(plain));
 }
 
+// 401 "perangkat_dicabut:<nama>": lempar error yang sama sesudah
+// memberitahu layout lewat event 'session-revoked' (detail = nama
+// perangkat yang dicabut). Bukan error — diam bila bukan 401 ini.
+function throwIfRevoked(r) {
+  const errText = (r.body && (r.body.error || r.body.message)) || '';
+  if (r.status === 401 && errText.startsWith('perangkat_dicabut:')) {
+    const name = errText.slice('perangkat_dicabut:'.length).trim();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('session-revoked', { detail: name }));
+    }
+    throw Object.assign(new Error(errText), { status: r.status, body: r.body });
+  }
+}
+
 /**
  * Panggil API: dekripsi envelope otomatis; sesi kedaluwarsa ->
  * handshake ulang sekali. Mengembalikan { status, body }.
@@ -221,11 +235,20 @@ export async function api(path, opts = {}) {
     return { status: res.status, body: data };
   };
   let r = await attempt();
+  // 401 perangkat_dicabut: sesi ini dicabut permanen (login di
+  // perangkat lain melewati batas — premium 2, gratis 1 — atau dicabut
+  // manual di halaman Perangkat). JANGAN handshake ulang (sesi ECDH
+  // bukan masalahnya): beri tahu layout lewat event supaya token
+  // dihapus dan pengguna diarahkan ke /masuk, lalu lempar error
+  // yang sama. Dicek SEBELUM logika retry sesi, dan sekali lagi
+  // sesudah retry (bila percobaan ulang yang mengembalikan 401 ini).
+  throwIfRevoked(r);
   if (r.status === 401 && /sesi/i.test((r.body && r.body.error) || '')) {
     sessionId = null;
     aesKey = null;
     await ensureSession();
     r = await attempt();
+    throwIfRevoked(r);
   }
   if (r.status >= 400) {
     throw Object.assign(
@@ -274,8 +297,54 @@ export const getAppConfig = () => api('/api/v1/app-config');
 // tukar voucher / klaim trial.
 export const getPremiumStatus = () => api('/api/v1/premium/status');
 
+// Nama perangkat web yang mudah dikenali di halaman Perangkat
+// ("Web · Chrome · Windows") — dikirim saat login supaya backend
+// mencatat perangkat ini; tanpa device_id, registerDevice backend
+// melewatkan pencatatan dan batas sesi tidak pernah berlaku di web.
+function webDeviceName() {
+  try {
+    const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+    const browser = /Edg\//.test(ua)
+      ? 'Edge'
+      : /Chrome\//.test(ua)
+        ? 'Chrome'
+        : /Firefox\//.test(ua)
+          ? 'Firefox'
+          : /Safari\//.test(ua)
+            ? 'Safari'
+            : 'Browser';
+    const os = /Android/.test(ua)
+      ? 'Android'
+      : /iPhone|iPad/.test(ua)
+        ? 'iOS'
+        : /Windows/.test(ua)
+          ? 'Windows'
+          : /Mac OS/.test(ua)
+            ? 'macOS'
+            : /Linux/.test(ua)
+              ? 'Linux'
+              : '';
+    return 'Web · ' + browser + (os ? ' · ' + os : '');
+  } catch {
+    return 'Web';
+  }
+}
+
 export const googleLogin = (idToken) =>
-  api('/api/v1/auth/google', { method: 'POST', body: { id_token: idToken } });
+  api('/api/v1/auth/google', {
+    method: 'POST',
+    body: { id_token: idToken, device_id: getDeviceId(), device_name: webDeviceName() }
+  });
+
+/* ================= Perangkat login (batas sesi) ================= */
+// GET /api/v1/devices → {devices: [{device_id, device_name?,
+// last_seen_at, created_at}]} — perangkat aktif akun ini.
+export const getDevices = () => api('/api/v1/devices');
+
+// Cabut satu perangkat milik sendiri; perangkat itu langsung 401
+// perangkat_dicabut pada request berikutnya.
+export const revokeDevice = (deviceId) =>
+  api('/api/v1/devices/revoke', { method: 'POST', body: { device_id: deviceId } });
 
 export const checkout = (body) =>
   api('/api/v1/payments/checkout', { method: 'POST', body });
@@ -379,6 +448,9 @@ export async function uploadFeedImage(file) {
   }, 60000);
   const data = await res.json().catch(() => ({}));
   const body = data && data.xdata ? await openEnvelope(data) : data;
+  // Perangkat dicabut: beri tahu layout seperti api() (upload ini
+  // tidak lewat api() sehingga perlu pengecekan sendiri).
+  throwIfRevoked({ status: res.status, body });
   if (!res.ok || body?.error) {
     throw new Error(body?.error || 'Gagal mengunggah media (' + res.status + ')');
   }

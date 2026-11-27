@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.getValue
@@ -198,6 +199,12 @@ class MainActivity : ComponentActivity() {
                 // lewat /me pada poll konfigurasi yang sama; layar
                 // blokir tampil selama status ini terisi.
                 var accountBlocked by remember { mutableStateOf<Pair<String, String>?>(null) }
+                // Catatan perangkat dikeluarkan (batas perangkat):
+                // diisi oleh poll /me saat server menolak dengan
+                // "perangkat_dicabut:..." atau oleh LoginScreen
+                // sesudah login menendang perangkat lain — tampil
+                // sekali sebagai Toast, lalu dibersihkan.
+                var deviceRevokedNotice by remember { mutableStateOf<String?>(null) }
                 var announcementDismissed by remember { mutableStateOf(false) }
                 // Izin notifikasi sistem (Android 13+) — diminta sekali
                 // agar pengumuman admin bisa muncul di bilah status.
@@ -215,6 +222,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 var prevUnread by remember { mutableStateOf(-1) }
+                // Catatan perangkat dikeluarkan: tampilkan sekali
+                // sebagai Toast di layar mana pun yang sedang tampil,
+                // lalu bersihkan agar tidak muncul berulang (mis. saat
+                // rotasi layar) — pola sekali pakai yang sama dengan
+                // takeRevokedDevice() di repositori.
+                LaunchedEffect(deviceRevokedNotice) {
+                    val notice = deviceRevokedNotice ?: return@LaunchedEffect
+                    Toast.makeText(context, notice, Toast.LENGTH_LONG).show()
+                    deviceRevokedNotice = null
+                }
                 LaunchedEffect(Unit) {
                     com.subsenpai.data.CrashReporter.uploadPending(context, repo)
                     // Periksa konfigurasi server TIAP 60 DETIK (v0.22.2):
@@ -243,6 +260,28 @@ class MainActivity : ComponentActivity() {
                         } catch (e: com.subsenpai.data.ApiException) {
                             val blocked = com.subsenpai.data.parseBlockedMessage(e.message)
                             if (blocked != null) accountBlocked = blocked
+                            // Perangkat ini dicabut karena akun login di
+                            // perangkat lain (batas perangkat: premium
+                            // maks 2, gratis maks 1): hapus sesi, kembali
+                            // ke layar masuk, beri tahu sekali. Cerminan
+                            // alur akun_nonaktif — bedanya akun_nonaktif
+                            // hanya menampilkan layar blokir, sedangkan
+                            // perangkat dicabut = sesi berakhir.
+                            val revokedName =
+                                com.subsenpai.data.parseRevokedDeviceMessage(e.message)
+                            if (revokedName != null) {
+                                repo.logout()
+                                accountBlocked = null
+                                deviceRevokedNotice =
+                                    com.subsenpai.data.revokedDeviceMessage(revokedName)
+                                authVersion++
+                                if (nav.currentDestination?.route != "login") {
+                                    nav.navigate("login") {
+                                        popUpTo("home") { saveState = false }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            }
                         } catch (e: Exception) {
                             // Abaikan: gangguan jaringan bukan blokir.
                         }
@@ -550,6 +589,7 @@ class MainActivity : ComponentActivity() {
                                 repo,
                                 onBack = { nav.popBackStack() },
                                 onAuthChanged = { authVersion++ },
+                                onRevokedDeviceNote = { deviceRevokedNotice = it },
                             )
                         }
                         composable("watchlist") {

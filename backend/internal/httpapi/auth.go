@@ -95,8 +95,12 @@ func (a *API) handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "akun_nonaktif:"+st+":"+note)
 		return
 	}
-	// Perangkat dicatat saat login; akun premium dibatasi 2 perangkat.
-	if !a.registerDevice(w, r, prof.ID, req.DeviceID, req.DeviceName) {
+	// Perangkat dicatat saat login; kelebihan batas (premium maks 2,
+	// gratis maks 1) mencabut perangkat yang paling lama tidak aktif
+	// — perangkat yang dicabut dikembalikan ke klien supaya bisa
+	// ditampilkan ("Perangkat X dikeluarkan").
+	kicked, ok := a.registerDevice(w, r, prof.ID, req.DeviceID, req.DeviceName)
+	if !ok {
 		return
 	}
 	// Referral: pendaftar baru yang membawa kode teman memicu voucher
@@ -138,6 +142,7 @@ func (a *API) handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 		"token":              token,
 		"profile":            prof,
 		"viewing_profile_id": vpID,
+		"revoked_device":     kicked,
 	})
 }
 

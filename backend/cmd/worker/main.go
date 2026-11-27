@@ -136,6 +136,13 @@ func main() {
 			if err := jobs.RecomputeTrending(ctx, pool); err != nil {
 				log.Printf("hitung tren: %v", err)
 			}
+			// Rapikan perangkat login yang kelebihan batas (mis. akun
+			// yang premiumnya habis: 2 → 1) — perangkat tertua dicabut.
+			if n, err := jobs.TrimDevices(ctx, pool); err != nil {
+				log.Printf("rapikan perangkat: %v", err)
+			} else if n > 0 {
+				log.Printf("rapikan perangkat: %d dicabut", n)
+			}
 		case <-sourceTicker.C:
 			runSources()
 		}

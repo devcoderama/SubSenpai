@@ -129,6 +129,11 @@ fun LoginScreen(
     repo: CatalogRepository,
     onBack: () -> Unit,
     onAuthChanged: () -> Unit,
+    // Dipanggil sekali sesudah login berhasil BILA login ini
+    // menendang perangkat lain (respons login membawa
+    // "revoked_device") — MainActivity menampilkan pesannya
+    // sebagai Toast satu kali.
+    onRevokedDeviceNote: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -173,6 +178,11 @@ fun LoginScreen(
                 scope.launch {
                     try {
                         repo.loginGoogle(token)
+                        repo.takeRevokedDevice()?.let {
+                            onRevokedDeviceNote(
+                                com.subsenpai.data.revokedDeviceMessage(it.deviceName),
+                            )
+                        }
                         loggedIn = true
                         onAuthChanged()
                     } catch (e: Exception) {
@@ -298,6 +308,11 @@ fun LoginScreen(
                         try {
                             val idToken = fetchGoogleIdToken(context)
                             repo.loginGoogle(idToken)
+                            repo.takeRevokedDevice()?.let {
+                                onRevokedDeviceNote(
+                                    com.subsenpai.data.revokedDeviceMessage(it.deviceName),
+                                )
+                            }
                             loggedIn = true
                             onAuthChanged()
                             busy = false

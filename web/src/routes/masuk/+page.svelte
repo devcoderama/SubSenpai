@@ -7,6 +7,8 @@
   let error = '';
   let busy = false;
   let gisReady = false;
+  // null = tidak ada flag; '' = flag ada tapi nama perangkat tak diketahui.
+  let revokedName = null;
 
   async function onCredential(resp) {
     busy = true;
@@ -40,6 +42,17 @@
   }
 
   onMount(() => {
+    // Sesi dicabut di perangkat ini (login di perangkat lain melewati
+    // batas): tampilkan pemberitahuan sekali, lalu hapus flag.
+    try {
+      const name = sessionStorage.getItem('ssweb.session_revoked');
+      if (name !== null) {
+        revokedName = name;
+        sessionStorage.removeItem('ssweb.session_revoked');
+      }
+    } catch {
+      /* abaikan — mode privat */
+    }
     if ($user) {
       goto('/');
       return;
@@ -67,6 +80,13 @@
       Masuk dengan Google untuk menyimpan riwayat, membuka Premium, dan menonton episode lanjutan.
       Sama seperti aplikasi: hanya Google, tanpa email/password — untuk menghindari bot.
     </p>
+    {#if revokedName !== null}
+      <p class="notice">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        Sesi berakhir — akun ini login di perangkat lain.{#if revokedName}
+          Perangkat {revokedName} telah dikeluarkan.{/if}
+      </p>
+    {/if}
     <div id="googleBtn" class="gbtn"></div>
     {#if busy}<p class="muted">Memproses login…</p>{/if}
     {#if error}<p class="error">{error}</p>{/if}
@@ -90,5 +110,11 @@
   .logo span { color: #fff; }
   h1 { margin: 12px 0 8px; font-size: 24px; }
   .gbtn { display: flex; justify-content: center; margin: 20px 0; min-height: 44px; }
+  .notice {
+    background: rgba(245, 197, 24, 0.12); border: 1px solid rgba(245, 197, 24, 0.45);
+    color: #fde68a; border-radius: 10px; padding: 12px 14px; font-size: 14px;
+    line-height: 1.5; text-align: left; margin: 16px 0 0;
+  }
+  .notice i { margin-right: 6px; }
   .small { font-size: 12px; }
 </style>

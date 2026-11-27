@@ -31,6 +31,15 @@ export async function loginWithGoogle(idToken) {
   const t = res.token || res.jwt;
   const profile = res.profile || null;
   if (!t) throw new Error('Login gagal: server tidak mengembalikan token.');
+  // Bila login ini menendang perangkat lain (melewati batas: premium
+  // 2, gratis 1), simpan namanya — layout menampilkan banner satu kali.
+  const kicked = res.revoked_device;
+  const kickedName = kicked && (kicked.device_name || kicked.device_id || '');
+  try {
+    if (kickedName) sessionStorage.setItem('ssweb.revoked_device', kickedName);
+  } catch {
+    /* abaikan — mode privat */
+  }
   try {
     localStorage.setItem(JWT_KEY, t);
     if (profile) localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
