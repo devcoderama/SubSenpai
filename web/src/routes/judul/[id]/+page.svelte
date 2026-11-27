@@ -229,8 +229,10 @@
 
 <style>
   /* Backdrop: poster buram memenuhi lebar, poster tajam di tengah,
-     gradasi ke latar di bawah (seperti DetailBackdrop aplikasi). */
-  .backdrop { position: relative; height: 340px; width: 100vw; margin-left: calc(50% - 50vw); overflow: hidden; }
+     gradasi ke latar di bawah (seperti DetailBackdrop aplikasi).
+     Lebar 100% (bukan 100vw): 100vw ikut menghitung lebar scrollbar,
+     sehingga halaman mendapat scroll horizontal yang tidak perlu. */
+  .backdrop { position: relative; height: 340px; width: 100%; overflow: hidden; }
   .backdrop .bg { position: absolute; inset: -5%; width: 110%; height: 110%; object-fit: cover; filter: blur(30px); }
   .backdrop .shade { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.35); }
   .backdrop .fg {
@@ -254,7 +256,6 @@
        info + episode + serupa lebih lega (1024px), bukan lagi 720px. */
     .backdrop { height: 420px; }
     .detail-wrap { max-width: 1024px; padding: 0 48px 48px; }
-    .similar-grid { grid-template-columns: repeat(4, 1fr); }
   }
   h1 { margin: 16px 0 4px; font-size: 28px; line-height: 1.15; font-weight: 900; }
   .alt { font-size: 15px; }
@@ -294,4 +295,9 @@
   .info-label { flex: 0 0 28%; color: var(--muted); }
   .sec-big { font-size: 19px; font-weight: 700; margin: 28px 0 12px; }
   .similar-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  /* Aturan 4 kolom HARUS sesudah aturan dasar di atas (27 Nov 2026):
+     spesifisitasnya sama, jadi yang ditulis belakangan yang menang —
+     sebelumnya aturan ini ada di blok media awal dan kalah dengan
+     aturan dasar 3 kolom di bawahnya. */
+  @media (min-width: 1280px) { .similar-grid { grid-template-columns: repeat(4, 1fr); } }
 </style>
