@@ -324,6 +324,20 @@ export const createPost = ({ body, image_url = '', category = 'umum', title_id =
 /** Daftar grup saya + grup publik (handleGroupsList → {groups: [...]}). */
 export const getGroups = () => api('/api/v1/groups');
 
+/* ================= Notifikasi (butuh login) ================= */
+// GET /api/v1/feed/notifications[?kind=social|broadcast|release]
+// → {items: [{id, kind, title, body, ref_post_id?, ref_title_id?,
+//    actor_id?, actor_avatar_url, read_at?, created_at}], unread}
+export const getNotifications = (kind = '') =>
+  api('/api/v1/feed/notifications' + (kind ? '?kind=' + encodeURIComponent(kind) : ''));
+
+// Tandai dibaca; kind membatasi hanya jenis itu, tanpa kind = semua.
+export const markNotificationsRead = (kind = '') =>
+  api('/api/v1/feed/notifications/read', {
+    method: 'POST',
+    body: kind ? { kind } : {}
+  });
+
 export const likePost = (id) =>
   api(`/api/v1/feed/posts/${encodeURIComponent(id)}/like`, { method: 'POST' });
 

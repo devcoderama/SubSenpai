@@ -4,8 +4,20 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { searchOpen, searchQuery, closeSearch, hideSearchRow, toggleSearch } from '$lib/search.js';
+  import { unreadCount, refreshUnread } from '$lib/notifications.js';
 
   let showMenu = false;
+
+  // Lencana lonceng: muat ulang jumlah belum dibaca tiap status login
+  // berubah (termasuk saat pertama kali tampil). Halaman /notifikasi
+  // yang menandai semuanya dibaca memanggil refreshUnread() sendiri.
+  $: if ($user) refreshUnread();
+  $: if (!$user) unreadCount.set(0);
+
+  // Ikon lonceng: login → /notifikasi; tamu → /masuk (notifikasi butuh login).
+  function onBell() {
+    goto($user ? '/notifikasi' : '/masuk');
+  }
 
   // Cakupan pencarian kontekstual (27 Nov 2026): di 4 halaman daftar,
   // tombol cari memfilter halaman itu sendiri; di halaman lain, cari
@@ -90,6 +102,12 @@
     </form>
     <button class="icon-btn search-ic" on:click={onSearchIcon} aria-label="Cari">
       <i class="fa-solid fa-magnifying-glass"></i>
+    </button>
+    <button class="icon-btn bell-ic" on:click={onBell} aria-label="Notifikasi">
+      <i class="fa-solid fa-bell"></i>
+      {#if $unreadCount > 0}
+        <span class="badge">{$unreadCount > 99 ? '99+' : $unreadCount}</span>
+      {/if}
     </button>
     {#if $user}
       <div class="userbox">
@@ -194,7 +212,25 @@
     padding: 8px; background: none; border: 0; color: #fff; font-size: 14px;
   }
   .menu a:hover, .menu button:hover { background: var(--panel-2); text-decoration: none; }
-  .search-ic { display: none; }
+  /* Ikon bar atas (cari + lonceng) ala aplikasi: latar TRANSPARAN,
+     ikon putih saja — tanpa kotak abu-abu. Penyebab kotak putih di
+     screenshot Rams 27 Nov 20:06: .icon-btn bukan class global (hanya
+     ada di PostCard), jadi tombol cari memakai gaya default browser
+     (kotak abu terang) — kaca pembesar putih di atasnya nyaris tak
+     terlihat. */
+  .search-ic { display: none; background: transparent; border: 0; cursor: pointer; }
+  .bell-ic {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; color: #fff;
+    background: transparent; border: 0; cursor: pointer; flex-shrink: 0;
+  }
+  .bell-ic i { font-size: 20px; }
+  .bell-ic .badge {
+    position: absolute; top: 1px; right: -1px;
+    min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 999px; background: var(--red); color: #fff;
+    font-size: 10px; font-weight: 700; line-height: 16px; text-align: center;
+  }
   /* Bilah cari yang muncul saat ikon kaca pembesar diketuk (27 Nov 2026). */
   .search-row {
     display: flex; align-items: center; gap: 10px;
