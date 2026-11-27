@@ -3,6 +3,8 @@
   import { user } from '$lib/auth.js';
   import { getFeed, createPost, uploadFeedImage } from '$lib/api.js';
   import PostCard from '$lib/components/PostCard.svelte';
+  import Skeleton from '$lib/components/Skeleton.svelte';
+  import { reveal, infiniteScroll } from '$lib/reveal.js';
 
   const TABS = [
     { id: 'teman', label: 'Teman' },
@@ -16,6 +18,8 @@
   let nextCursor = '';
   let loading = true;
   let loadingMore = false;
+  let moreError = '';
+  let ioSupported = true;
   let error = '';
 
   // Komposer.
@@ -30,6 +34,7 @@
     if (reset) {
       loading = true;
       error = '';
+      moreError = '';
       posts = [];
       nextCursor = '';
     }
@@ -43,7 +48,9 @@
       posts = reset ? items : [...posts, ...items];
       nextCursor = res.next_cursor || '';
     } catch (e) {
-      error = e.message || 'Gagal memuat Post.';
+      // Gagal memuat halaman berikut tidak boleh mengosongkan feed.
+      if (reset) error = e.message || 'Gagal memuat Post.';
+      else moreError = e.message || 'Gagal memuat lagi.';
     } finally {
       loading = false;
       loadingMore = false;
@@ -101,7 +108,10 @@
     posts = posts.filter((p) => p.id !== id);
   }
 
-  onMount(() => load(true));
+  onMount(() => {
+    ioSupported = 'IntersectionObserver' in window;
+    load(true);
+  });
 </script>
 
 <div class="container page">
@@ -167,21 +177,41 @@
     </div>
 
     {#if loading}
-      <p class="loading">Memuat Post…</p>
+      <Skeleton kind="post" count={3} />
     {:else if error}
       <p class="error">{error}</p>
     {:else if !posts.length}
       <p class="muted">Belum ada postingan di sini.</p>
     {:else}
-      {#each posts as post (post.id)}
-        <PostCard {post} onDelete={removePost} />
+      {#each posts as post, i (post.id)}
+        <div use:reveal={(i % 10) * 40}><PostCard {post} onDelete={removePost} /></div>
       {/each}
+      {#if loadingMore}
+        <Skeleton kind="post" count={2} />
+      {/if}
       {#if nextCursor}
-        <div class="more">
-          <button class="btn ghost" on:click={loadMore} disabled={loadingMore}>
-            {loadingMore ? 'Memuat…' : 'Muat lagi'}
-          </button>
-        </div>
+        <div
+          class="sentinel"
+          use:infiniteScroll={{ enabled: !!nextCursor && !loadingMore && !moreError, onLoad: loadMore }}
+        ></div>
+        {#if loadingMore}
+          <p class="load-more-note"><span class="bar skeleton"></span>Memuat lagi…</p>
+        {:else if moreError}
+          <p class="error">{moreError}</p>
+          <div class="more">
+            <button
+              class="btn ghost"
+              on:click={() => {
+                moreError = '';
+                loadMore();
+              }}>Coba lagi</button
+            >
+          </div>
+        {:else if !ioSupported}
+          <div class="more">
+            <button class="btn ghost" on:click={loadMore}>Muat lagi</button>
+          </div>
+        {/if}
       {/if}
     {/if}
   {/if}

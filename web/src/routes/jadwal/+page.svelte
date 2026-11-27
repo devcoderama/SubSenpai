@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { getSchedule, posterUrl } from '$lib/api.js';
   import TitleCard from '$lib/components/TitleCard.svelte';
+  import Skeleton from '$lib/components/Skeleton.svelte';
+  import { reveal } from '$lib/reveal.js';
 
   const TABS = [
     { id: 'anime', label: 'Anime' },
@@ -51,27 +53,29 @@
   </div>
 
   {#if loading}
-    <p class="loading">Memuat jadwal…</p>
+    <Skeleton kind="row" count={8} />
   {:else if error}
     <p class="error">{error}</p>
   {:else if tab === 'film'}
     <div class="poster-grid">
-      {#each films as item (item.title_id || item.slug)}
-        <TitleCard
-          item={{
-            id: item.title_id,
-            title: item.title,
-            poster_url: item.poster,
-            year: item.year,
-            type: 'film'
-          }}
-        />
+      {#each films as item, i (item.title_id || item.slug)}
+        <div use:reveal={(i % 12) * 45}>
+          <TitleCard
+            item={{
+              id: item.title_id,
+              title: item.title,
+              poster_url: item.poster,
+              year: item.year,
+              type: 'film'
+            }}
+          />
+        </div>
       {/each}
     </div>
     {#if !films.length}<p class="muted">Belum ada film terbaru.</p>{/if}
   {:else}
-    {#each groups as g (g.day || g.name)}
-      <section class="day">
+    {#each groups as g, gi (g.day || g.name)}
+      <section class="day" use:reveal={gi * 60}>
         <h2>{g.day || g.name}</h2>
         <div class="items">
           {#each g.items || [] as it (it.title_id || it.slug)}

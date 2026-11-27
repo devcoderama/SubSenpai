@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import Skeleton from '$lib/components/Skeleton.svelte';
 
   // FALLBACK — BUMP saat rilis APK baru (samakan dengan
   // landing-src/index.src.html). Dipakai bila API GitHub gagal.
@@ -102,7 +103,7 @@
 
   <div class="card dl">
     {#if status === 'loading'}
-      <p class="muted">Memeriksa versi terbaru…</p>
+      <Skeleton kind="plan" count={1} />
     {:else}
       <div class="ver">
         <span class="tag">{rel.tag}</span>

@@ -5,6 +5,7 @@
   import { user } from '$lib/auth.js';
   import { addLocalHistory, updateLocalPosition } from '$lib/history.js';
   import Player from '$lib/components/Player.svelte';
+  import Skeleton from '$lib/components/Skeleton.svelte';
 
   const AD_URL = 'https://uplcm.com/4/12330317';
 
@@ -126,7 +127,7 @@
 
 <div class="container">
   {#if loading}
-    <p class="loading">Memuat pemutar…</p>
+    <Skeleton kind="player" />
   {:else if error}
     <p class="error">{error}</p>
     <p><a href="/">← Kembali ke Beranda</a></p>

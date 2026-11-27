@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import { getTitle, posterUrl } from '$lib/api.js';
   import EpisodeList from '$lib/components/EpisodeList.svelte';
+  import Skeleton from '$lib/components/Skeleton.svelte';
 
   let loading = true;
   let error = '';
@@ -40,7 +41,7 @@
 
 <div class="container">
   {#if loading}
-    <p class="loading">Memuat detail…</p>
+    <Skeleton kind="detail" />
   {:else if error}
     <p class="error">{error}</p>
     <p><a href="/">← Kembali ke Beranda</a></p>

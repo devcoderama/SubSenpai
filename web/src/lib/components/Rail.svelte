@@ -1,5 +1,6 @@
 <script>
   import TitleCard from './TitleCard.svelte';
+  import { reveal } from '$lib/reveal.js';
 
   export let title;
   export let items = [];
@@ -7,7 +8,7 @@
 </script>
 
 {#if items?.length}
-  <section class="rail-section">
+  <section class="rail-section" use:reveal>
     <div class="rail-head">
       <h2>{title}</h2>
       {#if moreHref}<a href={moreHref} class="muted more">Lihat semua ›</a>{/if}

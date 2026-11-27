@@ -1,4 +1,6 @@
 <script>
+  import { reveal } from '$lib/reveal.js';
+
   export let episodes = [];
   export let titleId = '';
 </script>
@@ -7,19 +9,21 @@
   <section>
     <h2>Daftar Episode ({episodes.length})</h2>
     <div class="ep-grid">
-      {#each episodes as ep (ep.id)}
-        {#if ep.locked}
-          <a class="ep locked" href={'/judul/' + titleId} title="Khusus Premium">
-            <span class="num">🔒 {ep.episode_no}</span>
-            <span class="name">{ep.title || 'Episode ' + ep.episode_no}</span>
-            <span class="tag">Premium</span>
-          </a>
-        {:else}
-          <a class="ep" href={'/nonton/' + ep.id}>
-            <span class="num">{ep.episode_no}</span>
-            <span class="name">{ep.title || 'Episode ' + ep.episode_no}</span>
-          </a>
-        {/if}
+      {#each episodes as ep, i (ep.id)}
+        <div use:reveal={(i % 12) * 45}>
+          {#if ep.locked}
+            <a class="ep locked" href={'/judul/' + titleId} title="Khusus Premium">
+              <span class="num">🔒 {ep.episode_no}</span>
+              <span class="name">{ep.title || 'Episode ' + ep.episode_no}</span>
+              <span class="tag">Premium</span>
+            </a>
+          {:else}
+            <a class="ep" href={'/nonton/' + ep.id}>
+              <span class="num">{ep.episode_no}</span>
+              <span class="name">{ep.title || 'Episode ' + ep.episode_no}</span>
+            </a>
+          {/if}
+        </div>
       {/each}
     </div>
   </section>
@@ -33,6 +37,8 @@
     display: grid; gap: 8px;
     grid-template-columns: repeat(2, 1fr);
   }
+  .ep-grid > div { display: flex; }
+  .ep-grid .ep { flex: 1; }
   @media (min-width: 600px) { .ep-grid { grid-template-columns: repeat(3, 1fr); } }
   @media (min-width: 900px) { .ep-grid { grid-template-columns: repeat(5, 1fr); } }
   .ep {

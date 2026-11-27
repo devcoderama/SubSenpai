@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { getPlans, getPaymentMethods, checkout, paymentStatus, api } from '$lib/api.js';
   import { user } from '$lib/auth.js';
+  import Skeleton from '$lib/components/Skeleton.svelte';
 
   let loading = true;
   let error = '';
@@ -136,7 +137,7 @@
   {/if}
 
   {#if loading}
-    <p class="loading">Memuat paket…</p>
+    <div class="plans"><Skeleton kind="plan" count={3} /></div>
   {:else if error}
     <p class="error">{error}</p>
   {:else}

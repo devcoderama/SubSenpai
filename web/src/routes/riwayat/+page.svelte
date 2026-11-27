@@ -3,6 +3,8 @@
   import { user } from '$lib/auth.js';
   import { API_BASE, getHistory } from '$lib/api.js';
   import { getLocalHistory, removeLocalHistory, clearLocalHistory, fmtPosition, fmtWhen } from '$lib/history.js';
+  import Skeleton from '$lib/components/Skeleton.svelte';
+  import { reveal } from '$lib/reveal.js';
 
   let items = [];
   let loading = true;
@@ -69,7 +71,7 @@
   {/if}
 
   {#if loading}
-    <p class="loading">Memuat riwayat…</p>
+    <Skeleton kind="row" count={6} />
   {:else if error}
     <p class="error">{error}</p>
   {:else if !items.length}
@@ -86,33 +88,35 @@
     </div>
   {:else}
     <div class="list">
-      {#each items as it (it.episode_id)}
-        <a class="row card" href={'/nonton/' + it.episode_id}>
-          <div class="thumb">
-            {#if it.poster_url}
-              <img src={poster(it.poster_url)} alt={it.title} loading="lazy" />
-            {:else}
-              <div class="no-poster">S</div>
+      {#each items as it, i (it.episode_id)}
+        <div use:reveal={(i % 10) * 40}>
+          <a class="row card" href={'/nonton/' + it.episode_id}>
+            <div class="thumb">
+              {#if it.poster_url}
+                <img src={poster(it.poster_url)} alt={it.title} loading="lazy" />
+              {:else}
+                <div class="no-poster">S</div>
+              {/if}
+            </div>
+            <div class="info">
+              <strong>{it.title}</strong>
+              <span class="muted">Episode {it.episode_no}</span>
+              <span class="muted">
+                {fmtWhen(it.updated_at)}{it.position_sec > 0 ? ' • Lanjut ' + fmtPosition(it.position_sec) : ''}
+              </span>
+              {#if it.position_sec > 0}
+                <span class="bar"><span style="width: {Math.min(100, (it.position_sec / 1500) * 100)}%"></span></span>
+              {/if}
+            </div>
+            {#if !fromServer}
+              <button
+                class="icon-btn"
+                aria-label="Hapus dari riwayat"
+                on:click|preventDefault={() => removeItem(it.episode_id)}>✕</button
+              >
             {/if}
-          </div>
-          <div class="info">
-            <strong>{it.title}</strong>
-            <span class="muted">Episode {it.episode_no}</span>
-            <span class="muted">
-              {fmtWhen(it.updated_at)}{it.position_sec > 0 ? ' • Lanjut ' + fmtPosition(it.position_sec) : ''}
-            </span>
-            {#if it.position_sec > 0}
-              <span class="bar"><span style="width: {Math.min(100, (it.position_sec / 1500) * 100)}%"></span></span>
-            {/if}
-          </div>
-          {#if !fromServer}
-            <button
-              class="icon-btn"
-              aria-label="Hapus dari riwayat"
-              on:click|preventDefault={() => removeItem(it.episode_id)}>✕</button
-            >
-          {/if}
-        </a>
+          </a>
+        </div>
       {/each}
     </div>
   {/if}
