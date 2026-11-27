@@ -17,7 +17,7 @@ import (
 )
 
 // Unlock episode lewat iklan (permintaan Rams 2026-11-23, Monetag):
-// akun gratis & tamu menonton iklan ±15 detik di aplikasi, lalu
+// akun gratis & tamu menonton iklan 60 detik di aplikasi/web, lalu
 // episode itu terbuka permanen untuk mereka. Alurnya dua langkah
 // agar waktu tonton ditegakkan SERVER, bukan sekadar timer klien:
 //   POST /episodes/{id}/ad-unlock/start    -> token bertanda tangan
@@ -26,10 +26,17 @@ import (
 // Token = base64url(episode|subjek|unixStart) + "." + HMAC-SHA256
 // (kunci JWT_SECRET) — tanpa tabel tambahan, dan token milik subjek
 // lain (user/perangkat lain) otomatis tidak berlaku.
+//
+// Durasi 60 detik (permintaan Rams 2026-11-27): sebelumnya 15 detik,
+// terlalu mudah dilewati — di web iklan dibuka di tab baru sehingga
+// pengguna bisa menutup tab iklan lalu menunggu di halaman episode.
+// Sejak 27 Nov 2026 web membuka iklan di TAB YANG SAMA (seperti
+// WebView di aplikasi), dan 60 detik ditegakkan server untuk keduanya
+// (klien membaca wait_seconds dari respons start).
 
 // adUnlockWait: lama minimal iklan "ditonton" sebelum unlock sah.
 // Variabel (bukan konstanta) agar pengujian bisa memendekkannya.
-var adUnlockWait = 15 * time.Second
+var adUnlockWait = 60 * time.Second
 
 // adSubject: identitas pemilik unlock — "u:<user_id>" untuk user
 // login, "d:<device_key>" untuk tamu.

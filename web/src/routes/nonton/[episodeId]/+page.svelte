@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import {
@@ -59,11 +60,16 @@
   let reportDone = '';
   let reportError = '';
 
-  // Alur buka-iklan (sama dengan aplikasi): start -> buka iklan 15 detik
-  // di tab baru -> complete. Server yang menegakkan waktunya.
+  // Alur buka-iklan (sama dengan aplikasi): start -> iklan dibuka di
+  // TAB YANG SAMA -> kembali (tombol Kembali peramban) -> complete.
+  // Sebelumnya iklan dibuka di tab baru (window.open) sehingga pengguna
+  // bisa menutup tab iklan lalu menunggu di halaman episode (27 Nov
+  // 2026). Durasi 60 detik ditegakkan SERVER (wait_seconds dari start).
+  const AD_PENDING_KEY = 'subsenpai_ad_pending';
   let adState = 'idle'; // idle | waiting | done
   let adToken = null;
-  let adLeft = 15;
+  let adLeft = 60;
+  let adChecking = false;
   let adError = '';
   let adTimer = null;
 
@@ -100,6 +106,15 @@
     load();
   }
 
+  // Kembali dari halaman iklan (tab yang sama): peramban bisa
+  // memulihkan halaman dari bfcache tanpa memuat ulang — sinkronkan
+  // lagi hitung mundur dari sesi yang tersimpan.
+  onMount(() => {
+    const onShow = () => resumeAd();
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  });
+
   function goBack() {
     if (window.history.length > 1) window.history.back();
     else if (title) goto('/judul/' + title.id);
@@ -110,6 +125,80 @@
     if (!ep) return;
     if (ep.locked) goto('/premium');
     else goto('/nonton/' + ep.id);
+  }
+
+  // Sesi iklan yang tertunda (disimpan sebelum pindah ke halaman iklan
+  // di tab yang sama) — dibaca lagi saat pengguna kembali.
+  function saveAdPending(token, wait) {
+    try {
+      localStorage.setItem(
+        AD_PENDING_KEY,
+        JSON.stringify({ epId, token, startedAt: Date.now(), wait })
+      );
+    } catch {
+      /* abaikan */
+    }
+  }
+  function readAdPending() {
+    try {
+      const raw = localStorage.getItem(AD_PENDING_KEY);
+      if (!raw) return null;
+      const p = JSON.parse(raw);
+      return p && p.epId === epId && p.token ? p : null;
+    } catch {
+      return null;
+    }
+  }
+  function clearAdPending() {
+    try {
+      localStorage.removeItem(AD_PENDING_KEY);
+    } catch {
+      /* abaikan */
+    }
+  }
+  function startAdCountdown() {
+    clearInterval(adTimer);
+    adTimer = setInterval(() => {
+      adLeft -= 1;
+      if (adLeft <= 0) {
+        clearInterval(adTimer);
+        // Jeda 3 detik sebelum complete: toleransi selisih jam
+        // klien-server supaya complete tidak ditolak server.
+        adChecking = true;
+        setTimeout(() => {
+          adChecking = false;
+          completeAd();
+        }, 3000);
+      }
+    }, 1000);
+  }
+  // Lanjutkan sesi iklan yang tertunda (pengguna kembali dari halaman
+  // iklan — via muat ulang atau tombol Kembali peramban). Hitung mundur
+  // dihitung ulang dari waktu mulai supaya waktu di halaman iklan ikut
+  // terhitung; token kedaluwarsa (>10 mnt) dibuang.
+  function resumeAd() {
+    const p = readAdPending();
+    if (!p) return false;
+    const elapsed = Math.floor((Date.now() - p.startedAt) / 1000);
+    if (elapsed > 600) {
+      clearAdPending();
+      return false;
+    }
+    adToken = p.token;
+    adState = 'waiting';
+    adError = '';
+    adChecking = false;
+    adLeft = Math.max(p.wait - elapsed, 0);
+    if (adLeft <= 0) {
+      adChecking = true;
+      setTimeout(() => {
+        adChecking = false;
+        completeAd();
+      }, 3000);
+    } else {
+      startAdCountdown();
+    }
+    return true;
   }
 
   async function load() {
@@ -125,6 +214,7 @@
     clearInterval(adTimer);
     try {
       playback = await getPlayback(epId);
+      clearAdPending();
       // Respons playback TIDAK punya title_id di top-level — id judul
       // ada di dalam playback.episode.title_id. Cek lama
       // (playback.title_id) selalu undefined, sehingga title/episode/
@@ -140,6 +230,9 @@
     } catch (e) {
       if (isPremiumRequired(e)) {
         locked = true;
+        // Lanjutkan sesi iklan bila pengguna baru kembali dari
+        // halaman iklan di tab yang sama.
+        resumeAd();
         // Info judul dari ?title= bila ada (tautan dari baris episode
         // terkunci di halaman Detail) — respons 403 tak membawa title_id.
         if (titleParam) {
@@ -177,17 +270,17 @@
       const res = await adUnlockStart(epId);
       adToken = res.token;
       if (!adToken) throw new Error('Server tidak mengembalikan token iklan.');
-      window.open(AD_URL, '_blank', 'noopener');
+      // Durasi dari server (60 dtk sesudah installer jalan; 15 dtk
+      // sebelum itu) — sama seperti aplikasi yang membaca wait_seconds.
+      const wait = Number(res.wait_seconds) || 60;
+      saveAdPending(adToken, wait);
       adState = 'waiting';
-      adLeft = 15;
-      clearInterval(adTimer);
-      adTimer = setInterval(() => {
-        adLeft -= 1;
-        if (adLeft <= 0) {
-          clearInterval(adTimer);
-          completeAd();
-        }
-      }, 1000);
+      adLeft = wait;
+      startAdCountdown();
+      // TAB YANG SAMA: halaman episode ditinggal ke halaman iklan;
+      // pengguna kembali lewat tombol Kembali peramban, lalu resumeAd()
+      // melanjutkan hitung mundur (waktu di halaman iklan terhitung).
+      window.location.href = AD_URL;
     } catch (e) {
       adError = e.message || 'Gagal memulai iklan.';
     }
@@ -196,9 +289,11 @@
   async function completeAd() {
     try {
       await adUnlockComplete(epId, { token: adToken });
+      clearAdPending();
       adState = 'done';
       await load();
     } catch (e) {
+      clearAdPending();
       adState = 'idle';
       adError = e.message || 'Iklan belum selesai — tonton sampai selesai dulu.';
     }
@@ -288,14 +383,17 @@
           <p class="muted">
             {#if title}{title.title} — Episode {playback?.episode?.episode_no || curEp?.episode_no || ''}{/if}
             Anime &amp; donghua bebas ditonton semua episode. Film khusus Premium — atau buka episode
-            ini dengan menonton iklan 15 detik. Aturan ini ditegakkan server, sama seperti di aplikasi.
+            ini dengan menonton iklan 60 detik. Iklan dibuka di tab ini — setelah selesai, kembali
+            ke halaman ini dengan tombol Kembali. Aturan ini ditegakkan server, sama seperti di aplikasi.
           </p>
           <div class="actions">
             <a class="btn" href="/premium">Lihat Premium</a>
             {#if adState === 'idle'}
-              <button class="btn ghost" on:click={startAd}><i class="fa-solid fa-tv"></i> Buka iklan 15 detik untuk membuka episode ini</button>
+              <button class="btn ghost" on:click={startAd}><i class="fa-solid fa-tv"></i> Buka iklan 60 detik untuk membuka episode ini</button>
             {:else if adState === 'waiting'}
-              <button class="btn ghost" disabled>Menunggu iklan… {adLeft} detik</button>
+              <button class="btn ghost" disabled>
+                {adChecking ? 'Memeriksa iklan…' : 'Menunggu iklan… ' + adLeft + ' detik'}
+              </button>
             {:else}
               <span class="muted"><i class="fa-solid fa-circle-check"></i> Terbuka! Memuat ulang…</span>
             {/if}
