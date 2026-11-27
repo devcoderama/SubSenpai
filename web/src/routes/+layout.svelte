@@ -20,7 +20,7 @@
     </p>
     <p class="muted small">
       Unduh aplikasi Android di
-      <a href="https://www.subsenpai.web.id" target="_blank" rel="noreferrer">subsenpai.web.id</a>
+      <a href="/unduh">subsenpai.web.id/unduh</a>
       • Komunitas:
       <a href="https://discord.gg/yJebKEGNh" target="_blank" rel="noreferrer">Discord</a>
       •

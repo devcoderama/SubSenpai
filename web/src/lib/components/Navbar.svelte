@@ -19,6 +19,7 @@
       <a href="/jadwal">Jadwal Rilis</a>
       <a href="/cari">Genre</a>
       <a href="/premium">Premium</a>
+      <a href="/unduh">Unduh</a>
     </nav>
     <form class="search" on:submit={search}>
       <input type="search" placeholder="Cari judul…" bind:value={q} aria-label="Cari judul" />

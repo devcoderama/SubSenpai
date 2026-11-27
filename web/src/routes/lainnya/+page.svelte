@@ -41,7 +41,7 @@
     <a href="https://t.me/subsenpaianime" target="_blank" rel="noreferrer"
       ><span class="ic">✈️</span><span class="lbl">Grup Telegram</span><span class="chev">›</span></a
     >
-    <a href="https://www.subsenpai.web.id" target="_blank" rel="noreferrer"
+    <a href="/unduh"
       ><span class="ic">📱</span><span class="lbl">Unduh Aplikasi Android</span><span class="chev">›</span></a
     >
   </div>

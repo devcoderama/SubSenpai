@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.subsenpai",
+      "sha256_cert_fingerprints": ["1B:24:2D:3E:E6:63:1D:08:AE:CE:22:15:F1:DC:C4:D5:B4:81:24:1B:D9:84:86:DF:ED:D0:A6:86:B1:63:C8:34"]
+    }
+  }
+]
