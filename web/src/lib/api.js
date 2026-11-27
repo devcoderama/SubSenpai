@@ -249,6 +249,11 @@ export const googleLogin = (idToken) =>
 export const checkout = (body) =>
   api('/api/v1/payments/checkout', { method: 'POST', body });
 
+export const redeemVoucher = (code) =>
+  api('/api/v1/vouchers/redeem', { method: 'POST', body: { code } });
+
+export const getMyVouchers = () => api('/api/v1/vouchers/mine');
+
 export const paymentStatus = (sessionId) =>
   api('/api/v1/payments/status/' + encodeURIComponent(sessionId));
 

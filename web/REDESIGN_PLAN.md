@@ -85,6 +85,22 @@ sampah, chevron, panah, cek, tautan, kalender, cari, TV, unduh,
 paperclip, silang, brand Discord/Telegram) termasuk 5 SVG inline
 BottomNav + SVG cari Navbar. Verifikasi: scan emoji di `web/src` = 0.
 
+**DIPOTONG DULU (27 Nov 2026 17:58 WIB):** Rams memerintahkan halaman
+Premium web disamakan dengan aplikasi Android — 3 kategori: Langganan,
+Beli Voucher, Tukar Voucher. Implementasi (commit menyusul): tab bar 3
+kartu ala aplikasi; Langganan + Beli Voucher memakai alur 3 langkah
+aplikasi (1 pilih paket — kartu paket + ≈ harga/bulan, 2 pilih metode
+bayar dikelompokkan, 3 kartu pembayaran ala Netflix: total besar, QR
++ Unduh QRIS, nomor VA + Salin, Cek Pembayaran otomatis sekali);
+Beli Voucher tambah kartu "Mau dibagikan ke berapa orang?" (input
+jumlah 1–10, total = harga × jumlah) + daftar "Voucher Saya"
+(GET /api/v1/vouchers/mine) + kode voucher hasil checkout dengan
+tombol Salin; Tukar Voucher: input kode + POST /api/v1/vouchers/redeem
+→ "Voucher ditukar! Premium sampai …". Perangkap yang tertangkap saat
+cek live: API payment-methods mengembalikan field `group` (huruf kecil,
+mis. "qris"), BUKAN `grup` — pengelompokan metode harus pakai
+`m.group` lowercase, kalau tidak langkah 2 kosong.
+
 1. **Bottom nav mobile — KONFLIK dengan perintah lama.** Spek ini minta
    (Beranda, Cari, Jadwal, Daftar Saya, Akun). Tapi 27 Nov 16:53 WIB
    Rams memerintahkan tab web disamakan persis dengan aplikasi:
