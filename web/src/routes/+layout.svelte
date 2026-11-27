@@ -1,6 +1,8 @@
 <script>
   import '../app.css';
   import Navbar from '$lib/components/Navbar.svelte';
+  import BottomNav from '$lib/components/BottomNav.svelte';
+  import { page } from '$app/stores';
 </script>
 
 <Navbar />
@@ -34,4 +36,12 @@
   .foot-logo span { color: #fff; }
   footer p { font-size: 13px; line-height: 1.6; }
   .small a { color: #fff; }
+  @media (max-width: 767px) {
+    /* Ruang untuk navigasi bawah yang menempel di layar mobile. */
+    footer { padding-bottom: 92px; }
+  }
 </style>
+
+{#if !$page.url.pathname.startsWith('/nonton')}
+  <BottomNav />
+{/if}

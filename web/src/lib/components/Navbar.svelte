@@ -103,8 +103,9 @@
     padding: 8px; background: none; border: 0; color: #fff; font-size: 14px;
   }
   .menu a:hover, .menu button:hover { background: var(--panel-2); text-decoration: none; }
-  @media (max-width: 700px) {
+  @media (max-width: 767px) {
+    /* Mobile: tautan & kolom cari pindah ke navigasi bawah (BottomNav). */
     .links { display: none; }
-    .search input { width: 120px; }
+    .search { display: none; }
   }
 </style>
