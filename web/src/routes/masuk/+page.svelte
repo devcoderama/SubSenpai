@@ -27,7 +27,17 @@
     try {
       window.google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
-        callback: onCredential
+        callback: onCredential,
+        // Masuk otomatis tanpa klik (28 Nov 2026): bila sesi Google di
+        // peramban ini masih ada dan akun ini pernah login, One Tap
+        // mengembalikan kredensial sendiri — jadi tutup web lalu buka
+        // lagi tidak perlu pencet tombol. use_fedcm_for_prompt supaya
+        // tetap jalan walau cookie pihak ketiga diblokir (Brave).
+        // Bila tidak bisa (belum pernah login / sesi Google habis /
+        // peramban memblokir), prompt diam-diam tidak tampil dan tombol
+        // Google di bawah tetap bisa dipakai seperti biasa.
+        auto_select: true,
+        use_fedcm_for_prompt: true
       });
       window.google.accounts.id.renderButton(document.getElementById('googleBtn'), {
         theme: 'filled_black',
@@ -36,6 +46,20 @@
         width: 320
       });
       gisReady = true;
+      // Jangan masuk otomatis bila sesi ini baru dicabut perangkat
+      // lain: pengguna harus membaca dulu pemberitahuan kuning di atas
+      // (login otomatis di sini akan menendang balik perangkat itu
+      // tanpa ia sadari). Untuk sesi yang sekadar habis / token hilang,
+      // One Tap boleh masuk sendiri.
+      if (revokedName === null) {
+        try {
+          window.google.accounts.id.prompt(() => {
+            /* diam bila One Tap tidak tampil — tombol tetap ada */
+          });
+        } catch {
+          /* abaikan */
+        }
+      }
     } catch (e) {
       error = 'Gagal memuat tombol Google: ' + (e.message || 'kesalahan');
     }

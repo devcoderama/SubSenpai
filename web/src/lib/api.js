@@ -250,6 +250,17 @@ export async function api(path, opts = {}) {
     r = await attempt();
     throwIfRevoked(r);
   }
+  // 401 padahal token JWT dikirim (dan bukan perangkat_dicabut / sesi
+  // ECDH — keduanya sudah ditangani di atas): token tersimpan sudah
+  // mati (kedaluwarsa 30 hari / tidak valid / akun dihapus). Beri tahu
+  // layout lewat event 'session-expired' supaya token dihapus dan
+  // pengguna diarahkan ke /masuk — di sana One Tap bisa masuk lagi
+  // otomatis tanpa klik bila sesi Google masih ada.
+  if (r.status === 401 && jwt) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('session-expired'));
+    }
+  }
   if (r.status >= 400) {
     throw Object.assign(
       new Error((r.body && (r.body.error || r.body.message)) || 'Kesalahan server (' + r.status + ')'),

@@ -12,6 +12,14 @@
   // ssweb.revoked_device dari auth.js, dibaca tiap navigasi).
   let kickedNotice = '';
 
+  // Token tersimpan mati (kedaluwarsa 30 hari / tidak valid): hapus
+  // token, lalu arahkan ke /masuk — di sana One Tap bisa masuk lagi
+  // otomatis tanpa klik bila sesi Google di peramban ini masih ada.
+  function onSessionExpired() {
+    logout();
+    goto('/masuk');
+  }
+
   // Sesi dicabut di perangkat ini (login di perangkat lain melewati
   // batas, atau dicabut manual di halaman Perangkat): hapus token,
   // simpan nama perangkat untuk pesan di /masuk, lalu arahkan ke login.
@@ -32,7 +40,11 @@
   onMount(() => {
     maybeLoadAds();
     window.addEventListener('session-revoked', onSessionRevoked);
-    return () => window.removeEventListener('session-revoked', onSessionRevoked);
+    window.addEventListener('session-expired', onSessionExpired);
+    return () => {
+      window.removeEventListener('session-revoked', onSessionRevoked);
+      window.removeEventListener('session-expired', onSessionExpired);
+    };
   });
 
   // Halaman Detail & Nonton ala aplikasi: layar penuh tanpa navbar
