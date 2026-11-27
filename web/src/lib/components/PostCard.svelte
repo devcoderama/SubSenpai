@@ -31,10 +31,11 @@
   }
 
   // Tautan di feed memang dibolehkan (keputusan Rams) — jadikan klik.
+  // Tanpa tab baru (27 Nov 2026): tautan dibuka di tab yang sama.
   function linkify(text) {
     return esc(text || '').replace(
       /(https?:\/\/[^\s<]+)/g,
-      '<a href="$1" target="_blank" rel="noreferrer">$1</a>'
+      '<a href="$1" rel="noreferrer">$1</a>'
     );
   }
 

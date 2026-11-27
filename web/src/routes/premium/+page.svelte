@@ -279,7 +279,9 @@
       URL.revokeObjectURL(url);
       info = 'QRIS tersimpan — lihat di unduhan.';
     } catch {
-      window.open(payment.qr_url, '_blank');
+      // Gagal unduh QR: tampilkan gambar QR di tab yang sama (tanpa tab
+      // baru, 27 Nov 2026) — tombol Kembali mengembalikan ke Premium.
+      window.location.href = payment.qr_url;
     } finally {
       qrDownloading = false;
     }

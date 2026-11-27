@@ -51,8 +51,11 @@
     dispatch('progress', { position: e.target.currentTime || 0 });
   }
 
-  function openExternal() {
-    if (src?.url) window.open(src.url, '_blank', 'noopener');
+  // Server diblokir: buka langsung di situs sumber — di TAB YANG SAMA
+  // (27 Nov 2026: semua tab baru dimatikan untuk mencegah iklan).
+  // Tombol Kembali browser mengembalikan ke halaman Nonton.
+  function openSource() {
+    if (src?.url) window.location.href = src.url;
   }
 
   function nextSource() {
@@ -107,10 +110,10 @@
           <strong>Server ini tidak bisa diputar di dalam halaman web.</strong>
           <p>
             Pemutar {src.label || ''} menolak dibuka di dalam frame dari situs lain — di aplikasi ia
-            dibuka langsung sebagai halaman, jadi lolos. Buka di tab baru, atau coba server lain.
+            dibuka langsung sebagai halaman, jadi lolos. Buka langsung di situs sumber, atau coba server lain.
           </p>
           <div class="blocked-actions">
-            <button class="btn" on:click={openExternal}>Buka di tab baru <i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+            <button class="btn" on:click={openSource}>Buka di situs sumber <i class="fa-solid fa-arrow-up-right-from-square"></i></button>
             <button class="btn ghost" on:click={nextSource}>Coba server lain</button>
           </div>
         </div>

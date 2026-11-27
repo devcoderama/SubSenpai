@@ -138,7 +138,7 @@
 
   <p class="muted small">
     Semua rilis:
-    <a href="https://github.com/devcoderama/SubSenpai/releases" target="_blank" rel="noreferrer"
+    <a href="https://github.com/devcoderama/SubSenpai/releases" rel="noreferrer"
       >github.com/devcoderama/SubSenpai/releases</a
     >
     · SubSenpai belum tersedia di Play Store — unduh hanya dari situs ini atau GitHub Releases resmi.

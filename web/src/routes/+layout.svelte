@@ -39,9 +39,9 @@
         Unduh aplikasi Android di
         <a href="/unduh">subsenpai.web.id/unduh</a>
         • Komunitas:
-        <a href="https://discord.gg/yJebKEGNh" target="_blank" rel="noreferrer"><i class="fa-brands fa-discord"></i> Discord</a>
+        <a href="https://discord.gg/yJebKEGNh" rel="noreferrer"><i class="fa-brands fa-discord"></i> Discord</a>
         •
-        <a href="https://t.me/subsenpaianime" target="_blank" rel="noreferrer"><i class="fa-brands fa-telegram"></i> Telegram</a>
+        <a href="https://t.me/subsenpaianime" rel="noreferrer"><i class="fa-brands fa-telegram"></i> Telegram</a>
       </p>
     </div>
   </footer>

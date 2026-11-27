@@ -35,10 +35,10 @@
     <a href="/premium"><span class="ic"><i class="fa-solid fa-crown"></i></span><span class="lbl">Premium</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
     <a href="/jadwal"><span class="ic"><i class="fa-solid fa-calendar-days"></i></span><span class="lbl">Jadwal Rilis</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
     <a href="/cari"><span class="ic"><i class="fa-solid fa-magnifying-glass"></i></span><span class="lbl">Cari &amp; Genre</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
-    <a href="https://discord.gg/yJebKEGNh" target="_blank" rel="noreferrer"
+    <a href="https://discord.gg/yJebKEGNh" rel="noreferrer"
       ><span class="ic"><i class="fa-brands fa-discord"></i></span><span class="lbl">Komunitas Discord</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a
     >
-    <a href="https://t.me/subsenpaianime" target="_blank" rel="noreferrer"
+    <a href="https://t.me/subsenpaianime" rel="noreferrer"
       ><span class="ic"><i class="fa-brands fa-telegram"></i></span><span class="lbl">Grup Telegram</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a
     >
     <a href="/unduh"
