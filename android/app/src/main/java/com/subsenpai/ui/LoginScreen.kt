@@ -1,6 +1,7 @@
 package com.subsenpai.ui
 
 import android.content.Context
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -134,6 +135,10 @@ fun LoginScreen(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var cmDetail by remember { mutableStateOf<String?>(null) }
+    // Intent sign-in klasik yang menunggu diluncurkan (lihat LaunchedEffect
+    // di bawah — JANGAN panggil legacyLauncher.launch() langsung dari
+    // callback asinkron; itu yang menyebabkan crash 25 Nov 2026).
+    var pendingLegacyIntent by remember { mutableStateOf<Intent?>(null) }
     var loggedIn by remember { mutableStateOf(repo.isLoggedIn) }
     var premium by remember { mutableStateOf<PremiumStatus?>(null) }
     val auth = repo.auth
@@ -190,6 +195,29 @@ fun LoginScreen(
             error = e.message ?: "Masuk gagal."
             busy = false
         }
+    }
+
+    // Peluncur legacy HANYA boleh dipanggil selagi komposisi ini hidup.
+    // rememberLauncherForActivityResult mendaftarkan launcher saat
+    // komposisi masuk dan MELEPASNYA saat komposisi keluar; launch()
+    // sesudah itu melempar IllegalStateException "Attempting to launch
+    // an unregistered ActivityResultLauncher" — crash Play Console
+    // 25 Nov 2026 (v0.24.28, OnePlus 8 Pro, Android 11).
+    // Dulu launch() dipanggil langsung dari callback signOut()
+    // (addOnCompleteListener), yang TIDAK terikat pada lifecycle
+    // Compose maupun pada coroutine scope: callback itu tetap jalan
+    // walau layar sudah ditinggalkan (tombol Kembali / rotasi /
+    // activity dibuat ulang) di jeda antara ketuk tombol dan
+    // selesainya signOut. Menulis state dari callback itu aman
+    // (tulis ke state yang sudah tidak diamati = no-op), dan efek
+    // ini hanya berjalan selagi komposisi hidup — jadi launch() tidak
+    // pernah terpanggil sesudah launcher dilepas. Bila pengguna sudah
+    // meninggalkan layar, intent memang tidak diluncurkan: sudah
+    // tidak ada layar yang bisa menerima hasilnya.
+    LaunchedEffect(pendingLegacyIntent) {
+        val intent = pendingLegacyIntent ?: return@LaunchedEffect
+        pendingLegacyIntent = null
+        legacyLauncher.launch(intent)
     }
 
     Column(
@@ -283,8 +311,12 @@ fun LoginScreen(
                                 .requestEmail()
                                 .build()
                             val client = GoogleSignIn.getClient(context, gso)
+                            // JANGAN launch() di sini: callback signOut()
+                            // bisa jalan sesudah layar ditinggalkan (lihat
+                            // LaunchedEffect di atas) — simpan saja intent
+                            // ke state, efek yang meluncurkannya.
                             client.signOut().addOnCompleteListener {
-                                legacyLauncher.launch(client.signInIntent)
+                                pendingLegacyIntent = client.signInIntent
                             }
                         } catch (e: Exception) {
                             val blocked = com.subsenpai.data.parseBlockedMessage(e.message)
