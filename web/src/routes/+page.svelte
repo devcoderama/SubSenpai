@@ -40,6 +40,7 @@
   let donghuaOngoing = []; // donghua berstatus ongoing (dimuat di latar)
   let heroTimer = null;
   let heroPaused = false;
+  let heroOffscreen = false;
   let pageHidden = false;
   let reduceMotion = false;
   const HERO_MS = 6000;
@@ -110,15 +111,17 @@
 
   async function runSearch(query) {
     const seq = ++searchSeq;
+    const tt = tab;
     searchLoading = true;
     searchMoreError = '';
     try {
-      const res = await getTitles({ type: tab, q: query });
-      if (seq !== searchSeq) return;
+      const res = await getTitles({ type: tt, q: query });
+      if (seq !== searchSeq || tab !== tt) return;
       searchResults = res.items || [];
       searchCursor = res.next_cursor || '';
+      listsFor = tt;
     } catch (e) {
-      if (seq !== searchSeq) return;
+      if (seq !== searchSeq || tab !== tt) return;
       searchResults = [];
       searchCursor = '';
       searchMoreError = e.message || 'Pencarian gagal.';
@@ -129,13 +132,17 @@
 
   async function loadMoreSearch() {
     if (!searchCursor || searchLoadingMore) return;
+    const tt = tab;
+    const cur = searchCursor;
     searchLoadingMore = true;
     searchMoreError = '';
     try {
-      const res = await getTitles({ type: tab, q: searchText, cursor: searchCursor });
+      const res = await getTitles({ type: tt, q: searchText, cursor: cur });
+      if (tab !== tt) return;
       searchResults = [...searchResults, ...(res.items || [])];
       searchCursor = res.next_cursor || '';
     } catch (e) {
+      if (tab !== tt) return;
       searchMoreError = e.message || 'Gagal memuat lagi.';
     } finally {
       searchLoadingMore = false;
@@ -163,6 +170,11 @@
   let resultsError = '';
   let resultsMoreError = '';
   let filterSeq = 0;
+  // listsFor: tab yang sedang ditampilkan daftarnya di variabel
+  // grid/results/searchResults (lihat bagian Cache di bawah). HARUS
+  // dideklarasi SEBELUM blok hidrasi — applyTabState dipanggil saat
+  // inisiasi dan menulis variabel ini.
+  let listsFor = '';
   // Cache sesi Beranda (28 Nov 2026, ala HomeSession di aplikasi):
   // pilihan filter per jenis kini hidup di homeCache (ikut grid,
   // Hasil filter, hasil cari, dan posisi scroll per tab) supaya
@@ -223,6 +235,7 @@
 
   async function runFilter() {
     const seq = ++filterSeq;
+    const tt = tab;
     filterMode = true;
     stopHeroTimer();
     resultsLoading = true;
@@ -232,17 +245,18 @@
     resultsCursor = '';
     try {
       const res = await getTitles({
-        type: tab,
+        type: tt,
         genre,
         year: fYear,
         country: fCountry,
         network: fNetwork
       });
-      if (seq !== filterSeq) return;
+      if (seq !== filterSeq || tab !== tt) return;
       results = res.items || [];
       resultsCursor = res.next_cursor || '';
+      listsFor = tt;
     } catch (e) {
-      if (seq !== filterSeq) return;
+      if (seq !== filterSeq || tab !== tt) return;
       resultsError = e.message || 'Gagal memuat hasil filter.';
     } finally {
       if (seq === filterSeq) resultsLoading = false;
@@ -252,22 +266,23 @@
   async function loadMoreFilter() {
     if (!resultsCursor || resultsLoadingMore) return;
     const seq = filterSeq;
+    const tt = tab;
     resultsLoadingMore = true;
     resultsMoreError = '';
     try {
       const res = await getTitles({
-        type: tab,
+        type: tt,
         genre,
         year: fYear,
         country: fCountry,
         network: fNetwork,
         cursor: resultsCursor
       });
-      if (seq !== filterSeq) return;
+      if (seq !== filterSeq || tab !== tt) return;
       results = [...results, ...(res.items || [])];
       resultsCursor = res.next_cursor || '';
     } catch (e) {
-      if (seq !== filterSeq) return;
+      if (seq !== filterSeq || tab !== tt) return;
       resultsMoreError = e.message || 'Gagal memuat lagi.';
     } finally {
       if (seq === filterSeq) resultsLoadingMore = false;
@@ -329,8 +344,12 @@
 
   // Hero: ambil detail (sinopsis + episode pertama) untuk maks 5 judul
   // calon, paralel; yang gagal dilewati. Detail di-cache per id supaya
-  // ganti tab tidak memuat ulang.
+  // ganti tab tidak memuat ulang. Hanya panggilan terbaru yang boleh
+  // mengganti hero — muat hero tab lama yang selesai belakangan tidak
+  // boleh menimpa hero tab aktif (28 Nov 2026).
+  let heroSeq = 0;
   async function loadHero(candidates) {
+    const seq = ++heroSeq;
     const picks = (candidates || []).slice(0, 5);
     const settled = await Promise.allSettled(
       picks.map(async (c) => {
@@ -344,6 +363,7 @@
         return item;
       })
     );
+    if (seq !== heroSeq) return;
     heroItems = settled.filter((r) => r.status === 'fulfilled').map((r) => r.value);
     heroIdx = 0;
     restartHeroTimer();
@@ -351,7 +371,7 @@
 
   function restartHeroTimer() {
     stopHeroTimer();
-    if (heroItems.length < 2 || reduceMotion || heroPaused || pageHidden) return;
+    if (heroItems.length < 2 || reduceMotion || heroPaused || pageHidden || heroOffscreen) return;
     heroTimer = setInterval(() => {
       heroIdx = (heroIdx + 1) % heroItems.length;
     }, HERO_MS);
@@ -432,7 +452,31 @@
     if (Math.abs(dx) > 50) goHero(heroIdx + (dx < 0 ? 1 : -1), true);
   }
 
+  // Hero berhenti berputar saat sudah di luar layar (28 Nov 2026):
+  // tiap ganti slide tingginya bisa berubah mengikuti panjang
+  // sinopsis, dan itu menggeser seluruh halaman di bawahnya — posisi
+  // scroll pengguna ikut hanyut padahal hero tidak terlihat.
+  function observeHero(node) {
+    if (!('IntersectionObserver' in window)) return {};
+    const io = new IntersectionObserver(([e]) => {
+      heroOffscreen = !e.isIntersecting;
+      if (heroOffscreen) stopHeroTimer();
+      else restartHeroTimer();
+    });
+    io.observe(node);
+    return {
+      destroy() {
+        io.disconnect();
+      }
+    };
+  }
+
+  let loadTabSeq = 0;
   async function loadTab(t) {
+    // Muat yang kedaluwarsa (pengguna sudah pindah tab saat muat
+    // berjalan) tidak boleh menimpa daftar tab aktif — ini yang
+    // membuat pindah tab kembali ke atas di verifikasi 06:02 WIB.
+    const seq = ++loadTabSeq;
     loading = true;
     error = '';
     stopHeroTimer();
@@ -449,6 +493,7 @@
           getTitles({ type: 'anime', year: THIS_YEAR }),
           getTitles({ type: 'donghua', year: THIS_YEAR })
         ]);
+        if (seq !== loadTabSeq || tab !== t) return;
         rails = {
           anime: a.status === 'fulfilled' ? a.value.items || [] : [],
           donghua: d.status === 'fulfilled' ? d.value.items || [] : [],
@@ -469,39 +514,48 @@
         loadOngoing('anime');
         loadOngoing('donghua');
         grid = [];
+        listsFor = '';
         // Hero: 5 judul paling banyak ditonton (trending 24 jam);
         // cadangan bila tren kosong: judul pertama tiap rel.
         const cands = trending.length
           ? trending
           : [rails.anime[0], rails.donghua[0], rails.film[0]].filter(Boolean);
         await loadHero(cands);
+        if (seq !== loadTabSeq || tab !== t) return;
         saveHomeState();
       } else {
         const res = await getTitles({ type: t });
+        if (seq !== loadTabSeq || tab !== t) return;
         grid = res.items || [];
         nextCursor = res.next_cursor || '';
+        listsFor = t;
         // Rel Semua tetap di memori (tidak dihapus) supaya kembali
         // ke tab Semua tidak memuat ulang.
         // Hero jenis ini: trending jenis itu; cadangan: 5 pertama grid.
         const cands = trending.filter((x) => x.type === t).slice(0, 5);
         await loadHero(cands.length >= 2 ? cands : grid.slice(0, 5));
+        if (seq !== loadTabSeq || tab !== t) return;
       }
     } catch (e) {
-      error = e.message || 'Gagal memuat beranda.';
+      if (seq === loadTabSeq) error = e.message || 'Gagal memuat beranda.';
     } finally {
-      loading = false;
+      if (seq === loadTabSeq) loading = false;
     }
   }
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
+    const tt = tab;
+    const cur = nextCursor;
     loadingMore = true;
     moreError = '';
     try {
-      const res = await getTitles({ type: tab, cursor: nextCursor });
+      const res = await getTitles({ type: tt, cursor: cur });
+      if (tab !== tt) return;
       grid = [...grid, ...(res.items || [])];
       nextCursor = res.next_cursor || '';
     } catch (e) {
+      if (tab !== tt) return;
       // Gagal memuat halaman berikut tidak boleh mengosongkan grid —
       // tampilkan retry di bawah daftar.
       moreError = e.message || 'Gagal memuat lagi.';
@@ -540,34 +594,49 @@
   }
 
   // --- Cache sesi Beranda (28 Nov 2026) ---
+  // Muat yang kedaluwarsa (pengguna sudah pindah tab saat muat
+  // berjalan) tidak boleh menimpa daftar tab lain — baik saat
+  // menampilkan maupun saat menyimpan cache.
   let restoringScroll = false;
   function saveScroll() {
     if (restoringScroll) return;
     homeCache.scroll[tab] = window.scrollY;
   }
   async function restoreScroll(y) {
+    const target = y ?? (homeCache.scroll[tab] || 0);
     restoringScroll = true;
     await tick();
-    window.scrollTo(0, y ?? (homeCache.scroll[tab] || 0));
+    window.scrollTo(0, target);
+    const landed = window.scrollY;
     restoringScroll = false;
+    // Bila tata letak di atas viewport masih berubah sesudah scroll
+    // pertama (mis. hero berganti slide), coba sekali lagi — kecuali
+    // pengguna sudah menggulir sendiri.
+    await new Promise((r) => setTimeout(r, 250));
+    if (window.scrollY === landed && landed < target - 50 && document.documentElement.scrollHeight > target) {
+      window.scrollTo(0, target);
+    }
   }
   function stashTabState(t) {
     if (t === undefined || t === null) return;
     const s = homeCache.tabs[t];
     if (!s) return;
-    s.grid = grid;
-    s.nextCursor = nextCursor;
     s.facets = facets;
     s.genre = genre;
     s.year = fYear;
     s.country = fCountry;
     s.network = fNetwork;
     s.filterMode = filterMode;
-    s.results = results;
-    s.resultsCursor = resultsCursor;
-    s.searchText = searchText;
-    s.searchResults = searchResults;
-    s.searchCursor = searchCursor;
+    // Daftar hanya disimpan bila memang milik tab ini.
+    if (listsFor === t) {
+      s.grid = grid;
+      s.nextCursor = nextCursor;
+      s.results = results;
+      s.resultsCursor = resultsCursor;
+      s.searchText = searchText;
+      s.searchResults = searchResults;
+      s.searchCursor = searchCursor;
+    }
   }
   function applyTabState(t) {
     const s = homeCache.tabs[t];
@@ -586,6 +655,7 @@
     searchText = s.searchText;
     searchResults = s.searchResults;
     searchCursor = s.searchCursor;
+    listsFor = t;
   }
   function saveHomeState() {
     homeCache.loaded = true;
@@ -861,6 +931,7 @@
       class="hero-wrap"
       role="region"
       aria-label="Hero judul populer"
+      use:observeHero
       on:mouseenter={() => {
         heroPaused = true;
         stopHeroTimer();
