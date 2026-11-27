@@ -5,8 +5,8 @@
   // FALLBACK — BUMP saat rilis APK baru (samakan dengan
   // landing-src/index.src.html). Dipakai bila API GitHub gagal.
   const FALLBACK_URL =
-    'https://github.com/devcoderama/SubSenpai/releases/download/v0.24.29/SubSenpai-v0.24.29.apk';
-  const FALLBACK_VERSION = 'v0.24.29';
+    'https://github.com/devcoderama/SubSenpai/releases/download/v0.24.30/SubSenpai-v0.24.30.apk';
+  const FALLBACK_VERSION = 'v0.24.30';
 
   let status = 'loading'; // loading | ok | fallback
   let rel = null; // { tag, name, size, published, url }
