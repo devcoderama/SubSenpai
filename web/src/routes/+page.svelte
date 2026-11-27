@@ -27,12 +27,22 @@
     error = '';
     try {
       if (t === '') {
-        const [a, d, f] = await Promise.all([
+        // Rel dimuat terpisah: satu jenis yang gagal tidak boleh
+        // mengosongkan seluruh Beranda.
+        const [a, d, f] = await Promise.allSettled([
           getTitles({ type: 'anime' }),
           getTitles({ type: 'donghua' }),
           getTitles({ type: 'film' })
         ]);
-        rails = { anime: a.items || [], donghua: d.items || [], film: f.items || [] };
+        rails = {
+          anime: a.status === 'fulfilled' ? a.value.items || [] : [],
+          donghua: d.status === 'fulfilled' ? d.value.items || [] : [],
+          film: f.status === 'fulfilled' ? f.value.items || [] : []
+        };
+        if (!rails.anime.length && !rails.donghua.length && !rails.film.length) {
+          const failed = [a, d, f].find((r) => r.status === 'rejected');
+          if (failed && failed.status === 'rejected') throw failed.reason;
+        }
         grid = [];
         const pick = rails.anime[0] || rails.donghua[0] || rails.film[0];
         if (pick) {

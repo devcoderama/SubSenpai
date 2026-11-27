@@ -98,6 +98,24 @@ function b64urlDecode(str) {
 
 let sessionId = null;
 let aesKey = null;
+let handshakePromise = null;
+
+// Satu handshake yang sedang berjalan dipakai bersama oleh semua
+// panggilan paralel. Tanpa ini, tiap panggilan pertama memulai
+// handshake sendiri dan handshake yang selesai terakhir menimpa
+// aesKey, sehingga respons panggilan yang lebih dulu gagal didekripsi
+// (race ini yang membuat Beranda menampilkan "Gagal memuat beranda"
+// di produksi 27 Nov 2026, sementara halaman yang panggilannya
+// tunggal seperti Jadwal normal-normal saja).
+async function ensureSession() {
+  if (sessionId) return;
+  if (!handshakePromise) {
+    handshakePromise = handshake().finally(() => {
+      handshakePromise = null;
+    });
+  }
+  await handshakePromise;
+}
 let jwt = null;
 
 export function setJwt(token) {
@@ -164,7 +182,7 @@ async function openEnvelope(env) {
  * Lempar Error bila body berisi {error} dengan status >= 400.
  */
 export async function api(path, opts = {}) {
-  if (!sessionId) await handshake();
+  await ensureSession();
   const attempt = async () => {
     const headers = { 'X-Session-Id': sessionId, 'Content-Type': 'application/json' };
     if (jwt) headers['Authorization'] = 'Bearer ' + jwt;
@@ -179,7 +197,9 @@ export async function api(path, opts = {}) {
   };
   let r = await attempt();
   if (r.status === 401 && /sesi/i.test((r.body && r.body.error) || '')) {
-    await handshake();
+    sessionId = null;
+    aesKey = null;
+    await ensureSession();
     r = await attempt();
   }
   if (r.status >= 400) {
