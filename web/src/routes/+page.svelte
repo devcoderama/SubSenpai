@@ -29,6 +29,7 @@
   let heroItems = []; // [{ title, firstEp }]
   let heroIdx = 0;
   let trending = []; // kartu trending (tanpa sinopsis)
+  let terbaru = []; // 10 judul terbaru ditambahkan (dari /api/v1/home)
   let heroTimer = null;
   let heroPaused = false;
   let pageHidden = false;
@@ -153,20 +154,20 @@
     donghua: { genre: '', year: '', country: '', network: '' }
   };
 
-  function filterActive() {
-    return !!(genre || fYear || fCountry || fNetwork);
-  }
-  function extraFilterCount() {
-    return [genre, fYear, fCountry, fNetwork].filter(Boolean).length;
-  }
-  function hasExtraFacets() {
-    if (!facets) return false;
-    return (
-      (facets.years?.length || 0) +
+  // Hitungan filter aktif (28 Nov 2026): HARUS deklarasi reaktif
+  // $:, bukan panggilan fungsi di template — Svelte tidak melacak
+  // variabel di dalam badan fungsi, jadi label "Filter (n)" tidak
+  // pernah berubah (ditemukan verifikasi live 05:17 WIB).
+  $: filterCount = [genre, fYear, fCountry, fNetwork].filter(Boolean).length;
+  $: hasExtra =
+    !!facets &&
+    ((facets.years?.length || 0) +
       (facets.countries?.length || 0) +
       (facets.networks?.length || 0) >
-      0
-    );
+      0);
+
+  function filterActive() {
+    return !!(genre || fYear || fCountry || fNetwork);
   }
 
   async function loadFacets(t) {
@@ -421,6 +422,7 @@
           if (failed && failed.status === 'rejected') throw failed.reason;
         }
         trending = h.status === 'fulfilled' ? h.value.trending || [] : [];
+        terbaru = h.status === 'fulfilled' ? h.value.terbaru || [] : [];
         grid = [];
         // Hero: 5 judul paling banyak ditonton (trending 24 jam);
         // cadangan bila tren kosong: judul pertama tiap rel.
@@ -519,13 +521,13 @@
        Semua Genre + chip genre jenis aktif; aktif = merah. -->
   <div class="container genre-row-wrap">
     <div class="genre-row">
-      {#if hasExtraFacets()}
+      {#if hasExtra}
         <button
           class="genre-chip filter-btn"
-          class:active={extraFilterCount() > 0}
+          class:active={filterCount > 0}
           on:click={() => (filterOpen = !filterOpen)}
         >
-          <i class="fa-solid fa-sliders"></i> Filter{extraFilterCount() ? ` (${extraFilterCount()})` : ''}
+          <i class="fa-solid fa-sliders"></i> Filter{filterCount ? ` (${filterCount})` : ''}
         </button>
       {/if}
       <button class="genre-chip" class:active={!genre} on:click={() => pickGenre('')}>Semua Genre</button>
@@ -754,9 +756,14 @@
       {#if continueWatching.length}
         <Rail title="Lanjutkan Menonton" items={continueWatching} moreHref="/riwayat" />
       {/if}
-      <Rail title="Anime" items={rails.anime.slice(0, 12)} moreHref="/cari?type=anime" />
-      <Rail title="Donghua" items={rails.donghua.slice(0, 12)} moreHref="/cari?type=donghua" />
+      <!-- Urutan rel (28 Nov 2026, permintaan Rams): Film paling atas,
+           lalu Anime, Terbaru Rilis, Donghua. -->
       <Rail title="Film" items={rails.film.slice(0, 12)} moreHref="/cari?type=film" />
+      <Rail title="Anime" items={rails.anime.slice(0, 12)} moreHref="/cari?type=anime" />
+      {#if terbaru.length}
+        <Rail title="Terbaru Rilis" items={terbaru.slice(0, 12)} moreHref="/cari" />
+      {/if}
+      <Rail title="Donghua" items={rails.donghua.slice(0, 12)} moreHref="/cari?type=donghua" />
     {:else if filterMode}
       <!-- Hasil filter genre/lanjutan: menggantikan hero + grid tab. -->
       <h2 class="results-title">Hasil</h2>
