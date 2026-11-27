@@ -128,78 +128,82 @@
   });
 </script>
 
-{#if hero && tab === ''}
-  <Hero item={hero} firstEpisodeId={heroFirstEp} />
-{/if}
-
-<div class="container">
+<div class="container tabs-top">
   <div class="tabs">
     {#each TABS as t}
       <button class="chip" class:active={tab === t.id} on:click={() => setTab(t.id)}>{t.label}</button>
     {/each}
   </div>
-
-{#if loading}
-    {#if tab === ''}
-      <Skeleton kind="hero" />
-      <div class="container">
-        <div class="rail" aria-hidden="true"><Skeleton kind="card" count={6} /></div>
-        <div class="rail" aria-hidden="true"><Skeleton kind="card" count={6} /></div>
-      </div>
-    {:else}
-      <div class="container">
-        <div class="poster-grid"><Skeleton kind="card" count={12} /></div>
-      </div>
-    {/if}
-  {:else if error}
-    <p class="error">{error}</p>
-  {:else if tab === ''}
-    {#if continueWatching.length}
-      <Rail title="Lanjutkan Menonton" items={continueWatching} moreHref="/riwayat" />
-    {/if}
-    <Rail title="Anime" items={rails.anime.slice(0, 12)} moreHref="/cari?type=anime" />
-    <Rail title="Donghua" items={rails.donghua.slice(0, 12)} moreHref="/cari?type=donghua" />
-    <Rail title="Film" items={rails.film.slice(0, 12)} moreHref="/cari?type=film" />
-  {:else}
-    <div class="poster-grid">
-      {#each grid as item, i (item.id)}
-        <div use:reveal={(i % 12) * 45}><TitleCard {item} /></div>
-      {/each}
-      {#if loadingMore}
-        <Skeleton kind="card" count={6} />
-      {/if}
-    </div>
-    {#if !grid.length}
-      <p class="muted">Belum ada judul untuk jenis ini.</p>
-    {/if}
-    {#if nextCursor}
-      <div
-        class="sentinel"
-        use:infiniteScroll={{ enabled: !!nextCursor && !loadingMore && !moreError, onLoad: loadMore }}
-      ></div>
-      {#if loadingMore}
-        <p class="load-more-note"><span class="bar skeleton"></span>Memuat lagi…</p>
-      {:else if moreError}
-        <p class="error">{moreError}</p>
-        <div class="more">
-          <button
-            class="btn ghost"
-            on:click={() => {
-              moreError = '';
-              loadMore();
-            }}>Coba lagi</button
-          >
-        </div>
-      {:else if !ioSupported}
-        <div class="more">
-          <button class="btn ghost" on:click={loadMore}>Muat lagi</button>
-        </div>
-      {/if}
-    {/if}
-  {/if}
 </div>
 
+{#if loading}
+  {#if tab === ''}
+    <Skeleton kind="hero" />
+    <div class="container">
+      <div class="rail" aria-hidden="true"><Skeleton kind="card" count={6} /></div>
+      <div class="rail" aria-hidden="true"><Skeleton kind="card" count={6} /></div>
+    </div>
+  {:else}
+    <div class="container">
+      <div class="poster-grid"><Skeleton kind="card" count={12} /></div>
+    </div>
+  {/if}
+{:else}
+  {#if hero && tab === ''}
+    <Hero item={hero} firstEpisodeId={heroFirstEp} />
+  {/if}
+  <div class="container">
+    {#if error}
+      <p class="error">{error}</p>
+    {:else if tab === ''}
+      {#if continueWatching.length}
+        <Rail title="Lanjutkan Menonton" items={continueWatching} moreHref="/riwayat" />
+      {/if}
+      <Rail title="Anime" items={rails.anime.slice(0, 12)} moreHref="/cari?type=anime" />
+      <Rail title="Donghua" items={rails.donghua.slice(0, 12)} moreHref="/cari?type=donghua" />
+      <Rail title="Film" items={rails.film.slice(0, 12)} moreHref="/cari?type=film" />
+    {:else}
+      <div class="poster-grid">
+        {#each grid as item, i (item.id)}
+          <div use:reveal={(i % 12) * 45}><TitleCard {item} /></div>
+        {/each}
+        {#if loadingMore}
+          <Skeleton kind="card" count={6} />
+        {/if}
+      </div>
+      {#if !grid.length}
+        <p class="muted">Belum ada judul untuk jenis ini.</p>
+      {/if}
+      {#if nextCursor}
+        <div
+          class="sentinel"
+          use:infiniteScroll={{ enabled: !!nextCursor && !loadingMore && !moreError, onLoad: loadMore }}
+        ></div>
+        {#if loadingMore}
+          <p class="load-more-note"><span class="bar skeleton"></span>Memuat lagi…</p>
+        {:else if moreError}
+          <p class="error">{moreError}</p>
+          <div class="more">
+            <button
+              class="btn ghost"
+              on:click={() => {
+                moreError = '';
+                loadMore();
+              }}>Coba lagi</button
+            >
+          </div>
+        {:else if !ioSupported}
+          <div class="more">
+            <button class="btn ghost" on:click={loadMore}>Muat lagi</button>
+          </div>
+        {/if}
+      {/if}
+    {/if}
+  </div>
+{/if}
+
 <style>
-  .tabs { display: flex; gap: 8px; margin: 20px 0 4px; overflow-x: auto; }
+  .tabs-top { padding-top: 16px; }
+  .tabs { display: flex; gap: 8px; margin: 0 0 16px; overflow-x: auto; }
   .more { text-align: center; margin: 24px 0; }
 </style>
