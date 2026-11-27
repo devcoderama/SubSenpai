@@ -23,6 +23,7 @@
 
 <style>
   .rail-section { margin: 28px 0; }
+  @media (min-width: 1280px) { .rail-section { margin: 36px 0; } }
   .rail-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
   .rail-head h2 { margin: 0; font-size: 19px; }
   .more { font-size: 13px; }

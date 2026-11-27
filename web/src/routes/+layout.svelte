@@ -52,7 +52,7 @@
   footer { border-top: 1px solid var(--border); margin-top: 48px; padding: 28px 0 36px; }
   .foot-logo { color: var(--red); font-weight: 900; font-size: 18px; }
   .foot-logo span { color: #fff; }
-  footer p { font-size: 13px; line-height: 1.6; }
+  footer p { font-size: 13px; line-height: 1.6; max-width: 760px; }
   .small a { color: #fff; }
   .small i[class*="fa-"] { margin-right: 4px; }
   @media (max-width: 767px) {

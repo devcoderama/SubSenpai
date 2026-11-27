@@ -451,6 +451,7 @@
 
 <style>
   .tabs-top { padding-top: 16px; }
+  @media (min-width: 1280px) { .tabs-top { padding-top: 24px; } }
   .tabs { display: flex; gap: 8px; margin: 0 0 16px; overflow-x: auto; justify-content: safe center; }
   .more { text-align: center; margin: 24px 0; }
 

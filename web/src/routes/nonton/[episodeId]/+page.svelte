@@ -574,7 +574,12 @@
 
 <style>
   .watch { background: var(--watch-bg); min-height: 100vh; }
-  .watch-inner { max-width: 1280px; margin: 0 auto; padding: 0 16px 48px; }
+  /* Pemutar ala Netflix di desktop (27 Nov 2026): tanpa batas 1280px —
+     pemutar mengikuti pinggir 4vw seperti konten lain, jauh lebih besar
+     dari sebelumnya (di 1920px: ~1766px, bukan 1248px). */
+  .watch-inner { margin: 0 auto; padding: 0 16px 48px; }
+  @media (min-width: 768px) { .watch-inner { padding: 0 32px 48px; } }
+  @media (min-width: 1280px) { .watch-inner { padding: 0 4vw 48px; } }
   .watch-head { display: flex; align-items: center; gap: 4px; padding: 6px 0; }
   .back-btn {
     background: none; border: 0; color: #fff; font-size: 20px;
@@ -592,6 +597,12 @@
     .player-wrap :global(.player) { border-radius: 0; }
   }
   .watch-body { max-width: 720px; margin: 0 auto; }
+  @media (min-width: 1280px) {
+    /* Info + daftar episode di bawah pemutar yang kini lebar: 1080px
+       supaya tidak tampak hilang di tengah, tapi sinopsis tetap nyaman
+       dibaca (bukan selebar pemutar). */
+    .watch-body { max-width: 1080px; }
+  }
   .info { padding: 12px 0 0; }
   .watch-title { font-size: 22px; font-weight: 700; margin: 0; line-height: 1.25; }
   .ep-sub { font-size: 15px; margin-top: 2px; }

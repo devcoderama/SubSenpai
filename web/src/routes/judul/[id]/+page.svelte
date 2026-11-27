@@ -249,6 +249,13 @@
   }
 
   .detail-wrap { max-width: 720px; margin: 0 auto; padding: 0 16px 48px; }
+  @media (min-width: 1280px) {
+    /* Desktop ala Netflix (27 Nov 2026): backdrop lebih tinggi, kolom
+       info + episode + serupa lebih lega (1024px), bukan lagi 720px. */
+    .backdrop { height: 420px; }
+    .detail-wrap { max-width: 1024px; padding: 0 48px 48px; }
+    .similar-grid { grid-template-columns: repeat(4, 1fr); }
+  }
   h1 { margin: 16px 0 4px; font-size: 28px; line-height: 1.15; font-weight: 900; }
   .alt { font-size: 15px; }
   .meta { margin-top: 6px; color: #ddd; font-size: 15px; }

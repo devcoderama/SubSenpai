@@ -180,7 +180,7 @@
 
 <style>
   h1 { margin: 24px 0 12px; font-size: 28px; }
-  .searchbar { display: flex; gap: 8px; margin-bottom: 16px; }
+  .searchbar { display: flex; gap: 8px; margin-bottom: 16px; max-width: 720px; }
   .searchbar input {
     flex: 1; background: var(--panel); border: 1px solid var(--border);
     color: #fff; border-radius: 6px; padding: 12px 14px; font-size: 15px;

@@ -50,7 +50,9 @@
 </div>
 
 <style>
-  .page { padding-top: 24px; }
+  /* Kolom menu ala pengaturan (27 Nov 2026): dibatasi 720px di desktop
+     supaya baris menu tidak meregang selebar layar — sama seperti Riwayat. */
+  .page { padding-top: 24px; max-width: 720px; }
   .page h1 { font-size: 26px; margin-bottom: 16px; }
   .profile {
     display: flex;

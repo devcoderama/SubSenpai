@@ -38,8 +38,16 @@ input, select { font-family: inherit; }
 
 img { display: block; }
 
-.container { max-width: 1280px; margin: 0 auto; padding: 0 16px; }
-@media (min-width: 768px) { .container { padding: 0 24px; } }
+/* Lebar konten ala Netflix (27 Nov 2026): TANPA batas 1280px — pinggir
+   kiri/kanan mengikuti viewport (4vw di desktop), jadi logo navbar, teks
+   hero, judul rel, dan grid selalu rata di garis yang sama. Sebelumnya
+   max-width 1280px membuat konten desktop tampak sempit dengan ruang
+   kosong ~320px di tiap sisi pada layar 1920px. Halaman yang memang
+   butuh kolom sempit (Post, Riwayat, Unduh, Masuk) membatasi lebarnya
+   sendiri lewat kelas .page/.narrow — tidak terpengaruh. */
+.container { margin: 0 auto; padding: 0 16px; }
+@media (min-width: 768px) { .container { padding: 0 32px; } }
+@media (min-width: 1280px) { .container { padding: 0 4vw; } }
 
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
@@ -76,7 +84,8 @@ img { display: block; }
 }
 .loading { color: var(--muted); padding: 32px 0; text-align: center; }
 
-/* Grid poster ala aplikasi: 2 kolom di HP, 6 di desktop. */
+/* Grid poster ala aplikasi: 2 kolom di HP, 6 di desktop — 7 kolom di
+   layar lebar (Netflix menampilkan lebih banyak poster saat ruang ada). */
 .poster-grid {
   display: grid; gap: 12px;
   grid-template-columns: repeat(2, 1fr);
@@ -84,6 +93,8 @@ img { display: block; }
 @media (min-width: 600px) { .poster-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (min-width: 900px) { .poster-grid { grid-template-columns: repeat(5, 1fr); } }
 @media (min-width: 1200px) { .poster-grid { grid-template-columns: repeat(6, 1fr); } }
+@media (min-width: 1600px) { .poster-grid { grid-template-columns: repeat(7, 1fr); } }
+@media (min-width: 2000px) { .poster-grid { grid-template-columns: repeat(8, 1fr); } }
 
 /* Rel horizontal yang bisa digeser (seperti rel aplikasi). */
 .rail {
@@ -92,6 +103,7 @@ img { display: block; }
 }
 .rail > * { flex: 0 0 auto; width: 140px; }
 @media (min-width: 900px) { .rail > * { width: 168px; } }
+@media (min-width: 1600px) { .rail > * { width: 180px; } }
 
 /* Skeleton + reveal berurutan saat scroll (ala aplikasi / Netflix / YouTube).
    Skeleton: blok gelap dengan kilau (shimmer) yang menyapu — sama seperti
@@ -132,6 +144,11 @@ img { display: block; }
 .sk-detail { display: block; }
 .sk-detail-backdrop { width: 100vw; margin-left: calc(50% - 50vw); height: 340px; border-radius: 0; }
 .sk-detail-body { max-width: 720px; margin: 0 auto; padding: 16px; }
+@media (min-width: 1280px) {
+  /* Samakan dengan lebar desktop halaman Detail (27 Nov 2026). */
+  .sk-detail-backdrop { height: 420px; }
+  .sk-detail-body { max-width: 1024px; padding: 16px 48px; }
+}
 .sk-detail-body .sk-line:first-child { margin-top: 0; }
 .sk-btn { display: inline-block; width: 140px; height: 40px; border-radius: 6px; margin: 16px 10px 0 0; }
 

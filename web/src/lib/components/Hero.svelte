@@ -50,6 +50,9 @@
     background: linear-gradient(to right, rgba(20,20,20,.92) 0%, rgba(20,20,20,.55) 55%, rgba(20,20,20,.15) 100%),
       linear-gradient(to top, var(--bg) 0%, transparent 40%);
   }
+  /* Teks hero rata dengan garis pinggir konten (27 Nov 2026): .container
+     di atas sudah memberi padding 4vw di desktop, jadi tidak perlu lagi
+     trik margin-left yang mengikuti lebar 1280px lama. */
   .hero-body { position: relative; padding-top: 72px; padding-bottom: 64px; max-width: 640px; margin-left: 0; }
   .eyebrow { color: var(--red); font-weight: 800; letter-spacing: 2px; font-size: 13px; }
   h1 { margin: 10px 0 4px; font-size: clamp(28px, 5vw, 48px); line-height: 1.05; }
@@ -61,5 +64,4 @@
     display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
   }
   .actions { display: flex; gap: 10px; }
-  @media (min-width: 1280px) { .hero-body { margin-left: max(0px, calc((100vw - 1280px) / 2)); } }
 </style>

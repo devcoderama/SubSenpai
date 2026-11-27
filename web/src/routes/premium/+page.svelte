@@ -555,6 +555,11 @@
 
   .plans { display: grid; gap: 12px; grid-template-columns: repeat(2, 1fr); margin: 20px 0; }
   @media (min-width: 800px) { .plans { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 1280px) {
+    /* Desktop lebar (27 Nov 2026): kartu paket mengisi baris — 5 paket
+       muat berdampingan, bukan 3 kartu raksasa. */
+    .plans { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  }
   .plan { position: relative; text-align: left; color: #fff; cursor: pointer; }
   .plan:hover { border-color: #777; }
   .plan.selected { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
