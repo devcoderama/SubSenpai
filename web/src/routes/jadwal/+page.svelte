@@ -91,11 +91,22 @@
     return it.title_id ? '/judul/' + it.title_id : '/cari?q=' + encodeURIComponent(it.title);
   }
 
+  // "Sudah Rilis" harus dicocokkan tanpa peduli huruf besar/kecil:
+  // parser Anichin mengembalikan apa adanya dari situs sumber —
+  // "sudah rilis" huruf kecil — sementara parser Kuronime sudah
+  // menormalkannya jadi "Sudah Rilis". Aplikasi membandingkan persis
+  // ("==") sehingga baris donghua yang sudah rilis tampil abu-abu
+  // "Jam sudah rilis" di sana; di web kita tampilkan hijau tebal
+  // seperti maksud desainnya.
+  function isReleased(it) {
+    return (it.time || '').trim().toLowerCase() === 'sudah rilis';
+  }
+
   // Teks jam persis seperti aplikasi: "Jam 17:41", "Sudah Rilis"
   // (hijau tebal), "Jadwal acak" untuk "??", tahun apa adanya untuk film.
   function timeText(it) {
     if (tab === 'film') return it.time || '';
-    if (it.time === 'Sudah Rilis') return 'Sudah Rilis';
+    if (isReleased(it)) return 'Sudah Rilis';
     if (it.time === '??') return 'Jadwal acak';
     if (it.time) return 'Jam ' + it.time;
     return '';
@@ -150,7 +161,7 @@
                       <span>Episode {it.episode}</span>
                     {/if}
                     {#if timeText(it)}
-                      <span class:released={it.time === 'Sudah Rilis'}>{timeText(it)}</span>
+                      <span class:released={isReleased(it)}>{timeText(it)}</span>
                     {/if}
                   </div>
                 </div>
@@ -190,7 +201,7 @@
                   <span>Episode {it.episode}</span>
                 {/if}
                 {#if timeText(it)}
-                  <span class:released={it.time === 'Sudah Rilis'}>{timeText(it)}</span>
+                  <span class:released={isReleased(it)}>{timeText(it)}</span>
                 {/if}
               </div>
             </div>
