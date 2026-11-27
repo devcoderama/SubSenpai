@@ -205,11 +205,12 @@ export async function api(path, opts = {}) {
   const attempt = async () => {
     const headers = { 'X-Session-Id': sessionId, 'Content-Type': 'application/json' };
     if (jwt) headers['Authorization'] = 'Bearer ' + jwt;
-    // JANGAN kirim X-Device-Id dulu: backend lama menolaknya di
-    // preflight CORS (Allow-Headers tak memuatnya) sehingga SEMUA
-    // panggilan API diblokir peramban (27 Nov 2026, a380001).
-    // Backend sudah diperbaiki (cors.go) — header ini diaktifkan
-    // lagi sesudah Rams menjalankan install-vps.sh berikutnya.
+    // X-Device-Id AKTIF LAGI (27 Nov 20:16): backend sudah mengizinkan
+    // header ini di preflight CORS (terverifikasi live: Allow-Headers
+    // memuat X-Device-Id) — installer sudah jalan, jadi identitas tamu
+    // kembali stabil lintas ganti IP (laporan + ad-unlock tamu).
+    const deviceId = getDeviceId();
+    if (deviceId) headers['X-Device-Id'] = deviceId;
     const res = await fetchTimeout(API_BASE + path, {
       method: opts.method || 'GET',
       headers,
@@ -369,7 +370,8 @@ export async function uploadFeedImage(file) {
   fd.append('image', file);
   const headers = { 'X-Session-Id': sessionId };
   if (jwt) headers['Authorization'] = 'Bearer ' + jwt;
-  // X-Device-Id tidak dikirim dulu (alasan sama seperti di api()).
+  const deviceId = getDeviceId();
+  if (deviceId) headers['X-Device-Id'] = deviceId;
   const res = await fetchTimeout(API_BASE + '/api/v1/feed/upload', {
     method: 'POST',
     headers,
