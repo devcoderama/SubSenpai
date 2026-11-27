@@ -268,6 +268,10 @@ export const getLiveBrowse = (type, genre, page = 1) =>
 export const getPlans = () => api('/api/v1/plans');
 export const getPaymentMethods = () => api('/api/v1/payment-methods');
 export const getAppConfig = () => api('/api/v1/app-config');
+// Status premium terbaru dari server (sumber kebenaran: premium_until di
+// DB) — dipakai gate iklan: profil tersimpan bisa basi sesudah beli /
+// tukar voucher / klaim trial.
+export const getPremiumStatus = () => api('/api/v1/premium/status');
 
 export const googleLogin = (idToken) =>
   api('/api/v1/auth/google', { method: 'POST', body: { id_token: idToken } });

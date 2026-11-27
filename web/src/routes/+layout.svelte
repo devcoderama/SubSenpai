@@ -1,8 +1,17 @@
 <script>
+  import { onMount } from 'svelte';
   import '../app.css';
   import Navbar from '$lib/components/Navbar.svelte';
   import BottomNav from '$lib/components/BottomNav.svelte';
   import { page } from '$app/stores';
+  import { maybeLoadAds } from '$lib/ads.js';
+
+  // Iklan Monetag hanya untuk non-premium (gate di $lib/ads.js) — tag
+  // dimuat sekali di sini sehingga berlaku di semua halaman, termasuk
+  // Detail (/judul/*) dan Nonton (/nonton/*).
+  onMount(() => {
+    maybeLoadAds();
+  });
 
   // Halaman Detail & Nonton ala aplikasi: layar penuh tanpa navbar
   // atas, footer, maupun navigasi bawah — kembali lewat tombol ←.

@@ -69,3 +69,16 @@ export function logout() {
 export function isPremium(profile) {
   return !!profile?.is_premium;
 }
+
+// Segarkan profil tersimpan (localStorage + store) — dipakai saat status
+// premium berubah di tengah sesi (tukar voucher / bayar / trial) supaya
+// mahkota Premium di navbar + gate iklan langsung konsisten.
+export function setProfile(profile) {
+  try {
+    if (profile) localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  } catch {
+    /* abaikan — mode privat */
+  }
+  stored.profile = profile;
+  user.set(profile);
+}

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { getPlans, getPaymentMethods, checkout, paymentStatus, api, redeemVoucher, getMyVouchers } from '$lib/api.js';
   import { user } from '$lib/auth.js';
+  import { refreshPremium } from '$lib/ads.js';
   import Skeleton from '$lib/components/Skeleton.svelte';
 
   // Tiga kategori seperti di aplikasi Android (PremiumScreen.kt):
@@ -181,6 +182,9 @@
         }
         try {
           premium = await api('/api/v1/premium/status');
+          // Langganan (bukan voucher): akun kini premium -> segarkan profil
+          // tersimpan + hilangkan iklan (muat ulang bila sudah dimuat).
+          if (!isVoucher) refreshPremium();
         } catch {
           /* status lama tetap ditampilkan */
         }
@@ -209,6 +213,8 @@
       trialIcon = 'check';
       trialMsg = 'Uji coba Premium 3 hari aktif! Nikmati semua episode.';
       premium = await api('/api/v1/premium/status');
+      // Akun kini premium -> segarkan profil tersimpan + hilangkan iklan.
+      refreshPremium();
     } catch (e) {
       trialIcon = 'exclamation';
       trialMsg = e.message || 'Uji coba gagal.';
@@ -237,6 +243,8 @@
         (res.days_added ? ' (+' + res.days_added + ' hari).' : '.');
       try {
         premium = await api('/api/v1/premium/status');
+        // Akun kini premium -> segarkan profil tersimpan + hilangkan iklan.
+        refreshPremium();
       } catch {
         /* abaikan */
       }
