@@ -204,6 +204,6 @@
 
 <style>
   .tabs-top { padding-top: 16px; }
-  .tabs { display: flex; gap: 8px; margin: 0 0 16px; overflow-x: auto; }
+  .tabs { display: flex; gap: 8px; margin: 0 0 16px; overflow-x: auto; justify-content: safe center; }
   .more { text-align: center; margin: 24px 0; }
 </style>
