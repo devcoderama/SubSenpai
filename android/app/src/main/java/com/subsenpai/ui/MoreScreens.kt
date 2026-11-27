@@ -64,6 +64,7 @@ fun MoreScreen(
     onOpenLogin: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenWatchlist: () -> Unit,
+    onOpenDevices: () -> Unit,
     onOpenPremium: () -> Unit,
     onOpenFriends: () -> Unit,
     onOpenGroups: () -> Unit,
@@ -141,6 +142,9 @@ fun MoreScreen(
         }
         item {
             MoreRow(R.drawable.ic_bookmark, "Daftar Saya", "Watchlist tersimpan", onOpenWatchlist)
+        }
+        item {
+            MoreRow(R.drawable.ic_phone, "Perangkat", "Perangkat yang login ke akun ini", onOpenDevices)
         }
         item {
             MoreRow(R.drawable.ic_star, "Premium", "Paket & langganan", onOpenPremium)

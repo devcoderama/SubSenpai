@@ -254,6 +254,23 @@ data class RevokedDeviceInfo(
     val deviceName: String?,
 )
 
+/** Satu perangkat yang tercatat untuk akun ini (halaman Perangkat). */
+data class DeviceInfo(
+    val deviceId: String,
+    val deviceName: String?,
+    val lastSeenAt: String?,
+    val createdAt: String?,
+) {
+    companion object {
+        fun fromJson(o: JSONObject) = DeviceInfo(
+            deviceId = o.optString("device_id"),
+            deviceName = o.optString("device_name").ifBlank { null },
+            lastSeenAt = o.optString("last_seen_at").ifBlank { null },
+            createdAt = o.optString("created_at").ifBlank { null },
+        )
+    }
+}
+
 /**
  * Pilah pesan penolakan perangkat dicabut dari server
  * ("perangkat_dicabut:<nama perangkat>") — mengembalikan nama
@@ -436,6 +453,22 @@ class CatalogRepository(
             val arr = o.optJSONArray("items")
             if (arr != null) for (i in 0 until arr.length()) add(TitleCard.fromJson(arr.getJSONObject(i)))
         }
+    }
+
+    // ---------- Perangkat (batas login) ----------
+
+    /** Daftar perangkat aktif akun ini (login wajib). */
+    suspend fun devices(): List<DeviceInfo> {
+        val o = api.get("/api/v1/devices")
+        return buildList {
+            val arr = o.optJSONArray("devices")
+            if (arr != null) for (i in 0 until arr.length()) add(DeviceInfo.fromJson(arr.getJSONObject(i)))
+        }
+    }
+
+    /** Cabut perangkat lain — sesi di perangkat itu berakhir. */
+    suspend fun revokeDevice(deviceId: String) {
+        api.post("/api/v1/devices/revoke", JSONObject().put("device_id", deviceId))
     }
 
     // ---------- Riwayat (Fase 3) ----------

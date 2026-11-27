@@ -463,6 +463,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onOpenWatchlist = { nav.navigate("watchlist") },
+                                onOpenDevices = { nav.navigate("devices") },
                                 onOpenPremium = {
                                     nav.navigate("premium") {
                                         popUpTo("home") { saveState = true }
@@ -597,6 +598,13 @@ class MainActivity : ComponentActivity() {
                                 repo,
                                 onOpenTitle = { nav.navigate("detail/$it") },
                                 onBack = { nav.popBackStack() },
+                            )
+                        }
+                        composable("devices") {
+                            com.subsenpai.ui.DevicesScreen(
+                                repo,
+                                onBack = { nav.popBackStack() },
+                                onNeedLogin = { nav.navigate("login") },
                             )
                         }
                         composable(
