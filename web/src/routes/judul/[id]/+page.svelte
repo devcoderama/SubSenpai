@@ -59,9 +59,20 @@
     else goto('/');
   }
 
+  // Tombol utama (Putar / Buka dengan Iklan): episode terkunci → tampilkan
+  // dialog "Episode Terkunci" dulu (Tonton Iklan / Premium / Nanti Saja),
+  // seperti ketuk episode terkunci di daftar. Sebelum perbaikan ini
+  // (27 Nov 20:13, verifikasi film Elsinore) tombol ini langsung loncat
+  // ke Nonton sehingga dialog tidak pernah muncul di mana pun: film tidak
+  // menampilkan daftar episode (jadi onEpisodeClick tak pernah terpanggil)
+  // dan anime/donghua kini selalu terbuka untuk semua tier.
   function playFirst() {
     if (!episodes.length) return;
-    goto('/nonton/' + episodes[0].id + (episodes[0].locked ? '?title=' + id : ''));
+    if (episodes[0].locked) {
+      lockedEp = episodes[0];
+      return;
+    }
+    goto('/nonton/' + episodes[0].id);
   }
 
   async function shareCopy() {
