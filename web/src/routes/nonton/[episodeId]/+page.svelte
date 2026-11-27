@@ -130,10 +130,10 @@
     <Skeleton kind="player" />
   {:else if error}
     <p class="error">{error}</p>
-    <p><a href="/">← Kembali ke Beranda</a></p>
+    <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Kembali ke Beranda</a></p>
   {:else if locked}
     <div class="card lock">
-      <h1>🔒 Episode ini khusus Premium</h1>
+      <h1><i class="fa-solid fa-lock"></i> Episode ini khusus Premium</h1>
       <p class="muted">
         {#if title}{title.title} — Episode {playback?.episode_no || ''}{/if}
         Anime &amp; donghua bebas ditonton semua episode. Film khusus Premium — atau buka episode
@@ -142,11 +142,11 @@
       <div class="actions">
         <a class="btn" href="/premium">Lihat Premium</a>
         {#if adState === 'idle'}
-          <button class="btn ghost" on:click={startAd}>📺 Buka iklan 15 detik untuk membuka episode ini</button>
+          <button class="btn ghost" on:click={startAd}><i class="fa-solid fa-tv"></i> Buka iklan 15 detik untuk membuka episode ini</button>
         {:else if adState === 'waiting'}
           <button class="btn ghost" disabled>Menunggu iklan… {adLeft} detik</button>
         {:else}
-          <span class="muted">✓ Terbuka! Memuat ulang…</span>
+          <span class="muted"><i class="fa-solid fa-circle-check"></i> Terbuka! Memuat ulang…</span>
         {/if}
       </div>
       {#if adError}<p class="error">{adError}</p>{/if}
@@ -163,16 +163,16 @@
     <Player sources={playback.sources || []} title={title?.title || ''} on:progress={onProgress} />
     <div class="epnav">
       {#if prevEp}
-        <a class="btn ghost" href={'/nonton/' + prevEp.id}>← Ep {prevEp.episode_no}</a>
+        <a class="btn ghost" href={'/nonton/' + prevEp.id}><i class="fa-solid fa-chevron-left"></i> Ep {prevEp.episode_no}</a>
       {:else}
         <span></span>
       {/if}
       {#if title}<a class="btn ghost" href={'/judul/' + title.id}>Semua Episode</a>{/if}
       {#if nextEp}
         {#if nextEp.locked}
-          <a class="btn ghost" href={'/judul/' + (title?.id || '')}>Ep {nextEp.episode_no} 🔒</a>
+          <a class="btn ghost" href={'/judul/' + (title?.id || '')}>Ep {nextEp.episode_no} <i class="fa-solid fa-lock"></i></a>
         {:else}
-          <a class="btn" href={'/nonton/' + nextEp.id}>Ep {nextEp.episode_no} →</a>
+          <a class="btn" href={'/nonton/' + nextEp.id}>Ep {nextEp.episode_no} <i class="fa-solid fa-chevron-right"></i></a>
         {/if}
       {/if}
     </div>

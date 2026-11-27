@@ -110,7 +110,7 @@
         <span class="muted">{rel.size ? fmtBytes(rel.size) : 'APK Android'} · Android 7.0+</span>
         {#if rel.published}<span class="muted">· {fmtDate(rel.published)}</span>{/if}
       </div>
-      <a class="btn big" href={rel.url}>Unduh APK</a>
+      <a class="btn big" href={rel.url}><i class="fa-solid fa-download"></i> Unduh APK</a>
       {#if status === 'fallback'}
         <p class="muted small warn">
           Tidak bisa memeriksa rilis terbaru — memakai tautan cadangan {FALLBACK_VERSION}.

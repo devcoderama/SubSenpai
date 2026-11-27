@@ -21,7 +21,7 @@
       <div class="alt">{item.title_alt}</div>
     {/if}
     <div class="meta">
-      {#if item.rating}<span class="rate">★ {Number(item.rating).toFixed(1)}</span>{/if}
+      {#if item.rating}<span class="rate"><i class="fa-solid fa-star"></i> {Number(item.rating).toFixed(1)}</span>{/if}
       {item.year || ''}
       {#if item.status}• {item.status}{/if}
       {#if item.genres?.length}• {item.genres.join(' • ')}{/if}
@@ -31,9 +31,9 @@
     {/if}
     <div class="actions">
       {#if firstEpisodeId}
-        <a class="btn" href={'/nonton/' + firstEpisodeId}>▶ Nonton</a>
+        <a class="btn" href={'/nonton/' + firstEpisodeId}><i class="fa-solid fa-play"></i> Nonton</a>
       {/if}
-      <a class="btn ghost" href={'/judul/' + item.id}>ⓘ Detail</a>
+      <a class="btn ghost" href={'/judul/' + item.id}><i class="fa-solid fa-circle-info"></i> Detail</a>
     </div>
   </div>
 </section>

@@ -81,7 +81,7 @@
             dibuka langsung sebagai halaman, jadi lolos. Buka di tab baru, atau coba server lain.
           </p>
           <div class="blocked-actions">
-            <button class="btn" on:click={openExternal}>Buka di tab baru ↗</button>
+            <button class="btn" on:click={openExternal}>Buka di tab baru <i class="fa-solid fa-arrow-up-right-from-square"></i></button>
             <button class="btn ghost" on:click={nextSource}>Coba server lain</button>
           </div>
         </div>
@@ -102,7 +102,7 @@
     Server {current + 1} dari {sources.length}
     {#if !isDirect}
       — pemutar embed dari sumber; kalau macet, coba server lain atau
-      <button class="linklike" on:click={openExternal}>buka di tab baru ↗</button>.
+      <button class="linklike" on:click={openExternal}>buka di tab baru <i class="fa-solid fa-arrow-up-right-from-square"></i></button>.
     {/if}
   </p>
 {/if}

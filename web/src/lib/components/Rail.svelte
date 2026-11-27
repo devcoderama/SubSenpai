@@ -11,7 +11,7 @@
   <section class="rail-section" use:reveal>
     <div class="rail-head">
       <h2>{title}</h2>
-      {#if moreHref}<a href={moreHref} class="muted more">Lihat semua ›</a>{/if}
+      {#if moreHref}<a href={moreHref} class="muted more">Lihat semua <i class="fa-solid fa-chevron-right"></i></a>{/if}
     </div>
     <div class="rail">
       {#each items as item (item.id)}
@@ -26,4 +26,5 @@
   .rail-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
   .rail-head h2 { margin: 0; font-size: 19px; }
   .more { font-size: 13px; }
+  .more .fa-chevron-right { font-size: 11px; margin-left: 2px; }
 </style>

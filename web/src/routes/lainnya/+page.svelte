@@ -9,7 +9,7 @@
   {#if $user}
     <div class="card profile">
       <strong>{$user.name || $user.email}</strong>
-      <span class="muted">{$user.email} • {$user.is_premium ? '👑 Premium' : 'Gratis'}</span>
+      <span class="muted">{$user.email} • {#if $user.is_premium}<i class="fa-solid fa-crown"></i> Premium{:else}Gratis{/if}</span>
       <div class="row">
         <a class="btn" href="/premium">Premium</a>
         <button
@@ -32,17 +32,17 @@
   {/if}
 
   <div class="menu">
-    <a href="/premium"><span class="ic">👑</span><span class="lbl">Premium</span><span class="chev">›</span></a>
-    <a href="/jadwal"><span class="ic">🗓️</span><span class="lbl">Jadwal Rilis</span><span class="chev">›</span></a>
-    <a href="/cari"><span class="ic">🔍</span><span class="lbl">Cari &amp; Genre</span><span class="chev">›</span></a>
+    <a href="/premium"><span class="ic"><i class="fa-solid fa-crown"></i></span><span class="lbl">Premium</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
+    <a href="/jadwal"><span class="ic"><i class="fa-solid fa-calendar-days"></i></span><span class="lbl">Jadwal Rilis</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
+    <a href="/cari"><span class="ic"><i class="fa-solid fa-magnifying-glass"></i></span><span class="lbl">Cari &amp; Genre</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
     <a href="https://discord.gg/yJebKEGNh" target="_blank" rel="noreferrer"
-      ><span class="ic">💬</span><span class="lbl">Komunitas Discord</span><span class="chev">›</span></a
+      ><span class="ic"><i class="fa-brands fa-discord"></i></span><span class="lbl">Komunitas Discord</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a
     >
     <a href="https://t.me/subsenpaianime" target="_blank" rel="noreferrer"
-      ><span class="ic">✈️</span><span class="lbl">Grup Telegram</span><span class="chev">›</span></a
+      ><span class="ic"><i class="fa-brands fa-telegram"></i></span><span class="lbl">Grup Telegram</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a
     >
     <a href="/unduh"
-      ><span class="ic">📱</span><span class="lbl">Unduh Aplikasi Android</span><span class="chev">›</span></a
+      ><span class="ic"><i class="fa-solid fa-download"></i></span><span class="lbl">Unduh Aplikasi Android</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a
     >
   </div>
 
@@ -79,7 +79,11 @@
   .menu a:last-child { border-bottom: 0; }
   .menu a:hover { background: var(--panel-2); text-decoration: none; }
   .ic { width: 24px; text-align: center; }
+  .ic .fa-crown { color: var(--gold); }
+  .ic .fa-discord { color: #5865f2; }
+  .ic .fa-telegram { color: #229ed9; }
+  .profile .fa-crown { color: var(--gold); }
   .lbl { flex: 1; }
-  .chev { color: var(--muted); font-size: 18px; }
+  .chev { color: var(--muted); font-size: 14px; }
   .small { font-size: 13px; }
 </style>

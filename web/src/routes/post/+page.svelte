@@ -154,7 +154,7 @@
           {#each CATS.slice(1) as c}<option value={c}>{c[0].toUpperCase() + c.slice(1)}</option>{/each}
         </select>
         <label class="attach" title="Lampirkan gambar/video">
-          📎 <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" on:change={onFile} hidden />
+          <i class="fa-solid fa-paperclip"></i> <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" on:change={onFile} hidden />
         </label>
         <span class="muted count">{body.length}/1000</span>
         <button class="btn" on:click={submitPost} disabled={posting || (!body.trim() && !file)}>

@@ -138,3 +138,7 @@ img { display: block; }
   .reveal { opacity: 1; transform: none; transition: none; }
   .skeleton::after { animation: none; }
 }
+
+/* Font Awesome — ikon di dalam tombol mendapat jarak dari teks. */
+.btn i[class*="fa-"] { margin-right: 7px; }
+.btn i[class*="fa-"]:last-child { margin-right: 0; }

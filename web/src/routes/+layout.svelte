@@ -22,9 +22,9 @@
       Unduh aplikasi Android di
       <a href="/unduh">subsenpai.web.id/unduh</a>
       • Komunitas:
-      <a href="https://discord.gg/yJebKEGNh" target="_blank" rel="noreferrer">Discord</a>
+      <a href="https://discord.gg/yJebKEGNh" target="_blank" rel="noreferrer"><i class="fa-brands fa-discord"></i> Discord</a>
       •
-      <a href="https://t.me/subsenpaianime" target="_blank" rel="noreferrer">Telegram</a>
+      <a href="https://t.me/subsenpaianime" target="_blank" rel="noreferrer"><i class="fa-brands fa-telegram"></i> Telegram</a>
     </p>
   </div>
 </footer>
@@ -36,6 +36,7 @@
   .foot-logo span { color: #fff; }
   footer p { font-size: 13px; line-height: 1.6; }
   .small a { color: #fff; }
+  .small i[class*="fa-"] { margin-right: 4px; }
   @media (max-width: 767px) {
     /* Ruang untuk navigasi bawah yang menempel di layar mobile. */
     footer { padding-bottom: 92px; }

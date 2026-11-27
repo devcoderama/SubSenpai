@@ -71,6 +71,20 @@ episode/riwayat/post, dan infinite scroll (sentinel + skeleton saat
 memuat + retry bila gagal) menggantikan tombol "Muat lagi" di Beranda
 (tab), Cari, dan Post. Commit menyusul di bawah.
 
+**DIPOTONG DULU (27 Nov 2026 17:52 WIB):** Rams memerintahkan chip
+Semua/Film/Anime/Donghua pindah ke ATAS (tepat di bawah navbar, hero di
+bawahnya) agar mirip Beranda aplikasi Android — commit `85cf52d`.
+
+**DIPOTONG DULU (27 Nov 2026 17:53 WIB):** Rams memerintahkan SEMUA
+ikon memakai Font Awesome (bukan emoji) agar terlihat premium.
+Implementasi: `app.html` memuat FA 6.5.2 dari cdnjs (sama seperti
+dashboard admin); seluruh emoji/simbol di `web/src` diganti
+`<i class="fa-solid/fa-regular/fa-brands ...">` (bintang, gembok,
+play, info, mahkota emas, hati, komentar, repost, bookmark, share,
+sampah, chevron, panah, cek, tautan, kalender, cari, TV, unduh,
+paperclip, silang, brand Discord/Telegram) termasuk 5 SVG inline
+BottomNav + SVG cari Navbar. Verifikasi: scan emoji di `web/src` = 0.
+
 1. **Bottom nav mobile — KONFLIK dengan perintah lama.** Spek ini minta
    (Beranda, Cari, Jadwal, Daftar Saya, Akun). Tapi 27 Nov 16:53 WIB
    Rams memerintahkan tab web disamakan persis dengan aplikasi:

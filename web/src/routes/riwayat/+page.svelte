@@ -112,7 +112,7 @@
               <button
                 class="icon-btn"
                 aria-label="Hapus dari riwayat"
-                on:click|preventDefault={() => removeItem(it.episode_id)}>✕</button
+                on:click|preventDefault={() => removeItem(it.episode_id)}><i class="fa-solid fa-xmark"></i></button
               >
             {/if}
           </a>

@@ -25,7 +25,7 @@
       <input type="search" placeholder="Cari judul…" bind:value={q} aria-label="Cari judul" />
     </form>
     <a class="icon-btn search-ic" href="/cari" aria-label="Cari judul">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z" /></svg>
+      <i class="fa-solid fa-magnifying-glass"></i>
     </a>
     {#if $user}
       <div class="userbox">
@@ -40,7 +40,7 @@
           <div class="menu">
             <div class="menu-head">
               <strong>{$user.name || $user.email}</strong>
-              <span class="muted">{$user.is_premium ? '👑 Premium' : 'Gratis'}</span>
+              <span class="muted">{#if $user.is_premium}<i class="fa-solid fa-crown"></i> Premium{:else}Gratis{/if}</span>
             </div>
             <a href="/premium" on:click={() => (showMenu = false)}>Premium</a>
             <button
@@ -117,6 +117,7 @@
       display: flex; align-items: center; justify-content: center;
       margin-left: auto; width: 36px; height: 36px; color: #fff;
     }
-    .search-ic svg { width: 24px; height: 24px; fill: currentColor; }
+    .search-ic i { font-size: 22px; }
   }
+  .menu-head .fa-crown { color: var(--gold); }
 </style>

@@ -44,7 +44,7 @@
     <Skeleton kind="detail" />
   {:else if error}
     <p class="error">{error}</p>
-    <p><a href="/">← Kembali ke Beranda</a></p>
+    <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Kembali ke Beranda</a></p>
   {:else if title}
     <div class="detail">
       <div class="poster">
@@ -57,7 +57,7 @@
         <h1>{title.title}</h1>
         {#if title.title_alt}<div class="alt muted">{title.title_alt}</div>{/if}
         <div class="meta">
-          {#if title.rating}<span class="rate">★ {Number(title.rating).toFixed(1)}</span>{/if}
+          {#if title.rating}<span class="rate"><i class="fa-solid fa-star"></i> {Number(title.rating).toFixed(1)}</span>{/if}
           {title.year || ''}
           {#if title.status}• {title.status}{/if}
           {#if title.season}• Musim {title.season}{/if}
@@ -77,12 +77,14 @@
         <div class="actions">
           {#if episodes.length}
             {#if episodes[0].locked}
-              <a class="btn" href="/premium">🔒 Nonton — Khusus Premium</a>
+              <a class="btn" href="/premium"><i class="fa-solid fa-lock"></i> Nonton — Khusus Premium</a>
             {:else}
-              <a class="btn" href={'/nonton/' + episodes[0].id}>▶ Nonton Episode {episodes[0].episode_no}</a>
+              <a class="btn" href={'/nonton/' + episodes[0].id}><i class="fa-solid fa-play"></i> Nonton Episode {episodes[0].episode_no}</a>
             {/if}
           {/if}
-          <button class="btn ghost" on:click={share}>{copied ? '✓ Tautan disalin' : '🔗 Bagikan'}</button>
+          <button class="btn ghost" on:click={share}>
+            {#if copied}<i class="fa-solid fa-check"></i> Tautan disalin{:else}<i class="fa-solid fa-link"></i> Bagikan{/if}
+          </button>
         </div>
       </div>
     </div>

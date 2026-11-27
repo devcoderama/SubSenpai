@@ -13,7 +13,7 @@
         <div use:reveal={(i % 12) * 45}>
           {#if ep.locked}
             <a class="ep locked" href={'/judul/' + titleId} title="Khusus Premium">
-              <span class="num">🔒 {ep.episode_no}</span>
+              <span class="num"><i class="fa-solid fa-lock"></i> {ep.episode_no}</span>
               <span class="name">{ep.title || 'Episode ' + ep.episode_no}</span>
               <span class="tag">Premium</span>
             </a>

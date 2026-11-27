@@ -132,16 +132,16 @@
 
 <article class="post card">
   {#if post.reposted_by}
-    <p class="repost-line muted">🔁 {post.reposted_by.display_name} me-repost</p>
+    <p class="repost-line muted"><i class="fa-solid fa-retweet"></i> {post.reposted_by.display_name} me-repost</p>
   {/if}
   <div class="head">
     <span class="avatar">{author.display_name ? author.display_name[0].toUpperCase() : 'S'}</span>
     <div class="who">
-      <strong>{author.display_name}{author.is_premium ? ' 👑' : ''}</strong>
+      <strong>{author.display_name}{#if author.is_premium} <i class="fa-solid fa-crown"></i>{/if}</strong>
       <span class="muted">{fmtWhen(post.created_at)}{post.category ? ' • ' + post.category : ''}{post.group_name ? ' • ' + post.group_name : ''}</span>
     </div>
     {#if post.mine}
-      <button class="icon-btn" on:click={remove} aria-label="Hapus postingan">🗑️</button>
+      <button class="icon-btn" on:click={remove} aria-label="Hapus postingan"><i class="fa-solid fa-trash"></i></button>
     {/if}
   </div>
 
@@ -159,21 +159,21 @@
     </div>
   {/if}
   {#if post.title_id}
-    <p><a class="btn ghost small" href={'/judul/' + post.title_id}>Lihat judul terkait ›</a></p>
+    <p><a class="btn ghost small" href={'/judul/' + post.title_id}>Lihat judul terkait <i class="fa-solid fa-chevron-right"></i></a></p>
   {/if}
 
   <div class="actions">
     <button class:on={liked} on:click={toggleLike} disabled={!$user} aria-label="Suka">
-      {liked ? '❤️' : '🤍'} {likeCount}
+      <i class={liked ? 'fa-solid fa-heart' : 'fa-regular fa-heart'}></i> {likeCount}
     </button>
-    <button on:click={toggleComments} aria-label="Komentar">💬 {post.comment_count}</button>
+    <button on:click={toggleComments} aria-label="Komentar"><i class="fa-regular fa-comment"></i> {post.comment_count}</button>
     <button class:on={reposted} on:click={toggleRepost} disabled={!$user} aria-label="Repost">
-      🔁 {repostCount}
+      <i class="fa-solid fa-retweet"></i> {repostCount}
     </button>
     <button class:on={bookmarked} on:click={toggleBookmark} disabled={!$user} aria-label="Bookmark">
-      {bookmarked ? '🔖' : '📑'}
+      <i class={bookmarked ? 'fa-solid fa-bookmark' : 'fa-regular fa-bookmark'}></i>
     </button>
-    <button on:click={doShare} aria-label="Bagikan">↗️ {shareCount}</button>
+    <button on:click={doShare} aria-label="Bagikan"><i class="fa-solid fa-share-nodes"></i> {shareCount}</button>
   </div>
   {#if actionError}<p class="error">{actionError}</p>{/if}
 
@@ -202,6 +202,7 @@
   .head { display: flex; align-items: center; gap: 10px; }
   .who { flex: 1; display: flex; flex-direction: column; gap: 1px; font-size: 14px; }
   .who span { font-size: 12px; }
+  .who .fa-crown { color: var(--gold); }
   .avatar {
     width: 38px; height: 38px; border-radius: 50%;
     background: var(--red); color: #fff; font-weight: 700;
@@ -219,6 +220,7 @@
   .actions button:hover:not(:disabled) { background: var(--panel-2); color: #fff; }
   .actions button:disabled { opacity: 0.45; cursor: default; }
   .actions button.on { color: var(--red); }
+  .actions button i { margin-right: 5px; }
   .comments { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
   .comment { display: flex; flex-direction: column; gap: 2px; font-size: 14px; margin-bottom: 10px; }
   .comment-form { display: flex; gap: 8px; margin-top: 8px; }

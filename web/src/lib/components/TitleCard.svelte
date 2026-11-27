@@ -17,7 +17,7 @@
       <div class="no-poster">SUBSENPAI</div>
     {/if}
     {#if item.rating}
-      <span class="rating">★ {Number(item.rating).toFixed(1)}</span>
+      <span class="rating"><i class="fa-solid fa-star"></i> {Number(item.rating).toFixed(1)}</span>
     {/if}
   </div>
   <div class="meta">

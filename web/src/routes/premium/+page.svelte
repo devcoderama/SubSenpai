@@ -14,6 +14,8 @@
   let payError = '';
   let payment = null;
   let statusMsg = '';
+  let statusIcon = ''; // '' | 'check' | 'exclamation'
+  let trialIcon = ''; // '' | 'check' | 'exclamation'
   let trialMsg = '';
   let trialBusy = false;
 
@@ -77,11 +79,14 @@
       const res = await paymentStatus(payment.session_id);
       const st = res.status || res.payment_status || res.session?.status;
       if (st === 'paid') {
-        statusMsg = '✓ Pembayaran lunas! Premium aktif — muat ulang halaman untuk memperbarui status akunmu.';
+        statusIcon = 'check';
+        statusMsg = 'Pembayaran lunas! Premium aktif — muat ulang halaman untuk memperbarui status akunmu.';
       } else {
+        statusIcon = '';
         statusMsg = 'Status: ' + (st || 'pending') + ' — belum lunas. Coba lagi sesudah membayar.';
       }
     } catch (e) {
+      statusIcon = 'exclamation';
       statusMsg = 'Gagal mengecek: ' + (e.message || 'kesalahan server');
     }
   }
@@ -93,11 +98,14 @@
     }
     trialBusy = true;
     trialMsg = '';
+    trialIcon = '';
     try {
       await api('/api/v1/premium/trial', { method: 'POST' });
-      trialMsg = '✓ Uji coba Premium 3 hari aktif! Nikmati semua episode.';
+      trialIcon = 'check';
+      trialMsg = 'Uji coba Premium 3 hari aktif! Nikmati semua episode.';
       premium = await api('/api/v1/premium/status');
     } catch (e) {
+      trialIcon = 'exclamation';
       trialMsg = e.message || 'Uji coba gagal.';
     } finally {
       trialBusy = false;
@@ -108,7 +116,7 @@
 </script>
 
 <div class="container">
-  <h1>Premium 👑</h1>
+  <h1>Premium <i class="fa-solid fa-crown" style="color: var(--gold)"></i></h1>
   <p class="muted">
     Gratis: semua episode anime &amp; donghua. Premium: semua film tanpa batas, tanpa perlu menonton iklan.
     Pembayaran diproses Tokopay (QRIS) — status dicek langsung ke Tokopay, jadi tidak ada dobel aktivasi.
@@ -116,7 +124,7 @@
 
   {#if $user && premium?.is_premium}
     <p class="card ok">
-      ✓ Akunmu Premium sampai {premium.premium_until
+      <i class="fa-solid fa-circle-check"></i> Akunmu Premium sampai {premium.premium_until
         ? new Date(premium.premium_until).toLocaleDateString('id-ID', {
             day: 'numeric',
             month: 'long',
@@ -131,7 +139,7 @@
         <button class="btn" on:click={claimTrial} disabled={trialBusy}>
           {trialBusy ? 'Memproses…' : 'Klaim Uji Coba 3 Hari'}
         </button>
-        {#if trialMsg}<span>{trialMsg}</span>{/if}
+        {#if trialMsg}<span>{#if trialIcon === 'check'}<i class="fa-solid fa-circle-check"></i>{:else if trialIcon === 'exclamation'}<i class="fa-solid fa-circle-exclamation"></i>{/if} {trialMsg}</span>{/if}
       </div>
     </div>
   {/if}
@@ -192,7 +200,7 @@
         {/if}
         <div class="row">
           <button class="btn ghost" on:click={checkStatus}>Cek Pembayaran</button>
-          {#if statusMsg}<span>{statusMsg}</span>{/if}
+          {#if statusMsg}<span>{#if statusIcon === 'check'}<i class="fa-solid fa-circle-check"></i>{:else if statusIcon === 'exclamation'}<i class="fa-solid fa-circle-exclamation"></i>{/if} {statusMsg}</span>{/if}
         </div>
       </div>
     {/if}
