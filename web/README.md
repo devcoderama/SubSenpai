@@ -38,7 +38,9 @@ Buat satu site Netlify baru dari repo ini:
 
 - Base directory: `web`
 - Build command: `npm run build`
-- Publish directory: `web/build`
+- Publish directory: `build` (relatif terhadap base `web`, jadi mengarah ke
+  `web/build` — jangan tulis `web/build` di sini, Netlify akan mencari
+  `web/web/build` dan deploy gagal)
 
 `netlify.toml` di folder ini sudah berisi pengaturan itu + redirect SPA
 (`/* -> /200.html 200`). CORS backend sudah mengizinkan
