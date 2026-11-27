@@ -157,7 +157,7 @@
     return !!(genre || fYear || fCountry || fNetwork);
   }
   function extraFilterCount() {
-    return [fYear, fCountry, fNetwork].filter(Boolean).length;
+    return [genre, fYear, fCountry, fNetwork].filter(Boolean).length;
   }
   function hasExtraFacets() {
     if (!facets) return false;
@@ -537,6 +537,19 @@
     </div>
     {#if filterOpen}
       <div class="filter-panel">
+        <!-- Genre di dalam panel (28 Nov 2026): semua genre tampil
+             membungkus ke bawah, jadi tidak perlu geser baris chip. -->
+        <div class="filter-genres">
+          <span class="filter-label">Genre</span>
+          <div class="genre-wrap">
+            <button class="genre-chip" class:active={!genre} on:click={() => pickGenre('')}>Semua Genre</button>
+            {#each facets.genres || [] as g}
+              <button class="genre-chip" class:active={genre === g.name} on:click={() => pickGenre(g.name)}
+                >{g.name}</button
+              >
+            {/each}
+          </div>
+        </div>
         <div class="filter-fields">
           {#if facets.years?.length}
             <label
@@ -924,6 +937,11 @@
     background: var(--panel); border: 1px solid var(--border);
     border-radius: 12px; padding: 14px; margin: 4px 0 12px;
   }
+  .filter-genres { margin-bottom: 14px; }
+  .filter-label {
+    display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px;
+  }
+  .genre-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
   .filter-fields { display: flex; flex-wrap: wrap; gap: 12px; }
   .filter-fields label {
     display: flex; flex-direction: column; gap: 6px; flex: 1 1 140px;
