@@ -118,7 +118,6 @@
         <iframe
           title={title || 'Pemutar video'}
           src={src.url}
-          allowfullscreen
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           referrerpolicy="no-referrer"
           bind:this={iframeEl}

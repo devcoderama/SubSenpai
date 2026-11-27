@@ -36,6 +36,22 @@
   let shareOpen = false;
   let serverOpen = false;
   let subOpen = false;
+
+  // Popover Server/Subtitle/Bagikan: position: fixed + posisi dihitung
+  // dari tombol yang diklik (27 Nov 2026). Sebelumnya popover itu
+  // absolute di dalam .actions-row yang overflow-x:auto, sehingga
+  // terpotong tak terlihat — tombol tampak "tidak bisa diklik".
+  let popPos = { top: 0, left: 0 };
+  function togglePop(which, ev) {
+    const r = ev.currentTarget.getBoundingClientRect();
+    popPos = {
+      top: r.bottom + 8,
+      left: Math.max(8, Math.min(r.left, window.innerWidth - 268))
+    };
+    serverOpen = which === 'server' ? !serverOpen : false;
+    subOpen = which === 'sub' ? !subOpen : false;
+    shareOpen = which === 'share' ? !shareOpen : false;
+  }
   let showReport = false;
   let reportReason = 'link_rusak';
   let reportNote = '';
@@ -109,8 +125,13 @@
     clearInterval(adTimer);
     try {
       playback = await getPlayback(epId);
-      if (playback.title_id) {
-        const det = await getTitle(playback.title_id);
+      // Respons playback TIDAK punya title_id di top-level — id judul
+      // ada di dalam playback.episode.title_id. Cek lama
+      // (playback.title_id) selalu undefined, sehingga title/episode/
+      // rekomendasi tak pernah dimuat (27 Nov 2026, laporan Rams).
+      const tid = playback.episode?.title_id || playback.title_id;
+      if (tid) {
+        const det = await getTitle(tid);
         title = det.title || det;
         episodes = det.episodes || [];
         recordWatch(0);
@@ -218,10 +239,10 @@
     if (!playback || !title) return;
     const item = {
       episode_id: epId,
-      title_id: playback.title_id,
+      title_id: playback.episode?.title_id || playback.title_id,
       title: title.title,
       poster_url: title.poster_url,
-      episode_no: playback.episode_no,
+      episode_no: playback.episode?.episode_no,
       position_sec: position
     };
     addLocalHistory(item);
@@ -265,7 +286,7 @@
         <div class="card lock">
           <h1><i class="fa-solid fa-lock"></i> Episode ini khusus Premium</h1>
           <p class="muted">
-            {#if title}{title.title} — Episode {playback?.episode_no || curEp?.episode_no || ''}{/if}
+            {#if title}{title.title} — Episode {playback?.episode?.episode_no || curEp?.episode_no || ''}{/if}
             Anime &amp; donghua bebas ditonton semua episode. Film khusus Premium — atau buka episode
             ini dengan menonton iklan 15 detik. Aturan ini ditegakkan server, sama seperti di aplikasi.
           </p>
@@ -317,8 +338,8 @@
         {#if title}
           <div class="info">
             <h1 class="watch-title">{title.title}</h1>
-            {#if playback.episode_no != null}
-              <div class="ep-sub">Episode {playback.episode_no}{epTitle ? ' — ' + epTitle : ''}</div>
+            {#if playback.episode?.episode_no != null}
+              <div class="ep-sub">Episode {playback.episode.episode_no}{epTitle ? ' — ' + epTitle : ''}</div>
             {/if}
             {#if metaLine}<div class="meta">{metaLine}</div>{/if}
             {#if title.genres?.length}
@@ -332,11 +353,11 @@
         <!-- Bar aksi ala aplikasi: Server / Subtitle / Bagikan / Laporkan. -->
         <div class="actions-row">
           <div class="pop-wrap">
-            <button class="action-btn" on:click={() => { serverOpen = !serverOpen; subOpen = false; shareOpen = false; }}>
+            <button class="action-btn" on:click={(e) => togglePop('server', e)}>
               Server: {sourceLabel}
             </button>
             {#if serverOpen}
-              <div class="pop">
+              <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px">
                 <div class="pop-title">Pilih Server</div>
                 {#each playback.sources || [] as s, i}
                   <button class="pop-row" on:click={() => { current = i; serverOpen = false; }}>
@@ -348,11 +369,11 @@
             {/if}
           </div>
           <div class="pop-wrap">
-            <button class="action-btn" on:click={() => { subOpen = !subOpen; serverOpen = false; shareOpen = false; }}>
+            <button class="action-btn" on:click={(e) => togglePop('sub', e)}>
               {subLabel}
             </button>
             {#if subOpen}
-              <div class="pop">
+              <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px">
                 <div class="pop-title">Subtitle</div>
                 {#if readySubs.length}
                   <button class="pop-row" on:click={() => { selectedSub = null; subOpen = false; }}>
@@ -372,11 +393,11 @@
             {/if}
           </div>
           <div class="pop-wrap">
-            <button class="action-btn" on:click={() => { shareOpen = !shareOpen; serverOpen = false; subOpen = false; }}>
+            <button class="action-btn" on:click={(e) => togglePop('share', e)}>
               Bagikan
             </button>
             {#if shareOpen}
-              <div class="pop">
+              <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px">
                 <button class="pop-row" on:click={() => { shareOpen = false; goto('/post?title=' + title.id); }}>
                   <span>Bagikan ke Post</span>
                 </button>
@@ -493,7 +514,7 @@
   }
   .pop-wrap { position: relative; flex-shrink: 0; }
   .pop {
-    position: absolute; top: calc(100% + 8px); left: 0; z-index: 41;
+    position: fixed; z-index: 41;
     min-width: 240px; max-width: 320px; background: var(--surface);
     border: 1px solid var(--border); border-radius: 12px; padding: 8px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
