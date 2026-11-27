@@ -104,8 +104,8 @@
       <h1>🔒 Episode ini khusus Premium</h1>
       <p class="muted">
         {#if title}{title.title} — Episode {playback?.episode_no || ''}{/if}
-        Akun gratis hanya bisa menonton episode pertama anime/donghua; film dan episode lanjutan
-        khusus Premium. Aturan ini ditegakkan server, sama seperti di aplikasi.
+        Anime &amp; donghua bebas ditonton semua episode. Film khusus Premium — atau buka episode
+        ini dengan menonton iklan 15 detik. Aturan ini ditegakkan server, sama seperti di aplikasi.
       </p>
       <div class="actions">
         <a class="btn" href="/premium">Lihat Premium</a>

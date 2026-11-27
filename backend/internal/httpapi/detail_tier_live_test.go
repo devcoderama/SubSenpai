@@ -166,12 +166,13 @@ func TestDetailTierLive(t *testing.T) {
 		t.Fatalf("locked premium = %v, mau [false false]", locked)
 	}
 
-	// Tamu (kontrol): episode pertama terbuka, lanjutan terkunci.
+	// Tamu (kontrol): anime bebas untuk semua tier (aturan baru
+	// Rams 2026-11-27) — kedua episode terbuka tanpa premium/iklan.
 	tier, locked = getDetail("")
 	if tier != "guest" {
 		t.Fatalf("tier tamu = %q, mau \"guest\"", tier)
 	}
-	if len(locked) != 2 || locked[0] || !locked[1] {
-		t.Fatalf("locked tamu = %v, mau [false true]", locked)
+	if len(locked) != 2 || locked[0] || locked[1] {
+		t.Fatalf("locked tamu = %v, mau [false false]", locked)
 	}
 }

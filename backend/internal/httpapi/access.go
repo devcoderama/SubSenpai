@@ -59,15 +59,16 @@ func deviceKey(r *http.Request) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// watchAllowed: aturan nonton (permintaan Rams 2026-11-22) —
-// premium bebas menonton semua judul & episode; non-premium
-// (akun gratis & tamu) hanya boleh menonton episode PERTAMA
-// anime/donghua; film khusus premium.
+// watchAllowed: aturan nonton (diubah Rams 2026-11-27) —
+// anime & donghua BEBAS untuk semua tier: semua episode tanpa
+// premium dan tanpa iklan. Film khusus premium (atau dibuka lewat
+// iklan — ad-unlock diperiksa di gateEpisode, bukan di sini).
+// isFirst dipertahankan demi kompatibilitas pemanggil.
 func watchAllowed(t tier, titleType string, isFirst bool) bool {
 	if t == tierPremium {
 		return true
 	}
-	return isFirst && (titleType == "anime" || titleType == "donghua")
+	return titleType == "anime" || titleType == "donghua"
 }
 
 // episodeAccessInfo: tipe judul + apakah episode ini episode
@@ -83,11 +84,13 @@ func (a *API) episodeAccessInfo(ctx context.Context, titleID string, episodeNo i
 	return titleType, isFirst, err
 }
 
-// gateEpisode menegakkan aturan nonton untuk satu episode:
-// premium selalu lolos; non-premium hanya episode pertama
-// anime/donghua (film & episode lanjutan khusus premium, ditolak
-// dengan awalan "premium_required:"); tamu ditambah batas SATU
-// episode per perangkat (tercatat di guest_access).
+// gateEpisode menegakkan aturan nonton untuk satu episode
+// (diubah Rams 2026-11-27): anime & donghua BEBAS untuk semua —
+// premium, akun gratis, maupun tamu — tanpa premium, tanpa iklan,
+// dan tanpa batas 1 episode tamu (batas tamu lama ikut dicabut
+// karena aturan "hanya episode pertama" sudah tidak ada).
+// Film khusus premium, atau dibuka lewat iklan (Monetag) untuk
+// pemilik unlock-nya (hasAdUnlock diperiksa sebelum aturan ini).
 func (a *API) gateEpisode(w http.ResponseWriter, r *http.Request, episodeID, titleID string, episodeNo int) bool {
 	// Info akses dibaca lebih dulu: judul yang disembunyikan admin
 	// (atau tidak ada) tidak bisa diputar siapa pun, termasuk premium.
@@ -101,34 +104,12 @@ func (a *API) gateEpisode(w http.ResponseWriter, r *http.Request, episodeID, tit
 		return true
 	}
 	// Episode yang sudah dibuka lewat iklan (Monetag) lolos untuk
-	// pemilik unlock-nya — melewati aturan premium maupun batas tamu.
+	// pemilik unlock-nya.
 	if a.hasAdUnlock(r, episodeID) {
 		return true
 	}
 	if !watchAllowed(t, titleType, isFirst) {
-		writeErr(w, http.StatusForbidden, "premium_required: konten ini khusus Premium — akun gratis hanya bisa menonton episode pertama anime & donghua")
-		return false
-	}
-	if t == tierFree {
-		return true
-	}
-	ctx := r.Context()
-	dk := deviceKey(r)
-	var usedEpisode string
-	err = a.pool.QueryRow(ctx, `
-		select episode_id from guest_access
-		where device_key = $1 and episode_id is not null limit 1`, dk).Scan(&usedEpisode)
-	if err == nil {
-		if usedEpisode == episodeID {
-			return true
-		}
-		writeErr(w, http.StatusForbidden, "batas_tamu: tamu hanya bisa membuka 1 episode — masuk untuk melanjutkan")
-		return false
-	}
-	if _, err := a.pool.Exec(ctx, `
-		insert into guest_access (device_key, title_id, episode_id)
-		values ($1, $2::uuid, $3::uuid)`, dk, titleID, episodeID); err != nil {
-		writeErr(w, http.StatusInternalServerError, "kesalahan server")
+		writeErr(w, http.StatusForbidden, "premium_required: film khusus Premium — atau buka dengan menonton iklan")
 		return false
 	}
 	return true

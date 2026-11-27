@@ -109,7 +109,7 @@
 <div class="container">
   <h1>Premium 👑</h1>
   <p class="muted">
-    Gratis: episode pertama anime &amp; donghua. Premium: semua episode, semua film, tanpa batas.
+    Gratis: semua episode anime &amp; donghua. Premium: semua film tanpa batas, tanpa perlu menonton iklan.
     Pembayaran diproses Tokopay (QRIS) — status dicek langsung ke Tokopay, jadi tidak ada dobel aktivasi.
   </p>
 
