@@ -602,17 +602,29 @@
     if (restoringScroll) return;
     homeCache.scroll[tab] = window.scrollY;
   }
+  // DEBUG SEMENTARA (28 Nov 2026): panel kecil untuk mendiagnosis
+  // kenapa pemulihan scroll pindah tab tidak jalan padahal kembalian
+  // tombol Back bekerja. HAPUS sesudah diagnosis selesai.
+  let dbgLines = [];
+  function dbg(msg) {
+    const t = new Date().toISOString().slice(11, 19);
+    dbgLines = [...dbgLines.slice(-7), t + ' ' + msg];
+  }
+
   async function restoreScroll(y) {
     const target = y ?? (homeCache.scroll[tab] || 0);
+    dbg('restore target=' + target + ' tab=' + tab + ' scrollH=' + document.documentElement.scrollHeight);
     restoringScroll = true;
     await tick();
     window.scrollTo(0, target);
     const landed = window.scrollY;
+    dbg('restore landed=' + landed + ' scrollH=' + document.documentElement.scrollHeight + ' y=' + window.scrollY);
     restoringScroll = false;
     // Bila tata letak di atas viewport masih berubah sesudah scroll
     // pertama (mis. hero berganti slide), coba sekali lagi — kecuali
     // pengguna sudah menggulir sendiri.
     await new Promise((r) => setTimeout(r, 250));
+    dbg('restore+250ms y=' + window.scrollY + ' scrollH=' + document.documentElement.scrollHeight);
     if (window.scrollY === landed && landed < target - 50 && document.documentElement.scrollHeight > target) {
       window.scrollTo(0, target);
     }
@@ -637,6 +649,7 @@
       s.searchResults = searchResults;
       s.searchCursor = searchCursor;
     }
+    dbg('stash ' + t + ' grid=' + s.grid.length + ' listsFor=' + listsFor + ' y=' + window.scrollY);
   }
   function applyTabState(t) {
     const s = homeCache.tabs[t];
@@ -678,6 +691,7 @@
     const targetY = homeCache.scroll[t] || 0;
     saveScroll();
     stashTabState(tab);
+    dbg('setTab ' + tab + '->' + t + ' targetY=' + targetY + ' y=' + window.scrollY + ' scrollCache=' + JSON.stringify(homeCache.scroll));
     tab = t;
     filterOpen = false;
     loadFacets(t);
@@ -692,6 +706,7 @@
       // Tab ini sudah pernah dimuat: pulihkan tanpa muat ulang.
       applyTabState(t);
       loading = false;
+      dbg('setTab cached grid=' + grid.length + ' listsFor=' + listsFor + ' filterMode=' + filterMode);
       if (searchMode) {
         if (searchText !== s.searchText) runSearch(searchText).then(() => restoreScroll(targetY));
         else restoreScroll(targetY);
@@ -771,6 +786,10 @@
     {/each}
   </div>
 </div>
+
+{#if dbgLines.length}
+  <pre class="dbg">{dbgLines.join('\n')}</pre>
+{/if}
 
 {#if !searchMode && tab && facets}
   <!-- Baris filter genre (28 Nov 2026, cerminan aplikasi): Filter +
@@ -1252,6 +1271,13 @@
   }
   .filter-actions { display: flex; gap: 8px; margin-top: 12px; }
   .results-title { font-size: 18px; font-weight: 700; margin: 8px 0 14px; }
+  /* Panel debug sementara (28 Nov 2026) — HAPUS bersama dbg(). */
+  .dbg {
+    position: fixed; left: 8px; bottom: 8px; z-index: 999;
+    background: rgba(0, 0, 0, 0.85); color: #4ade80; font-size: 10px;
+    line-height: 1.5; padding: 6px 8px; margin: 0; max-width: 94vw;
+    white-space: pre-wrap; word-break: break-all; pointer-events: none;
+  }
   @media (prefers-reduced-motion: reduce) {
     .hero-slide { transition: none; }
   }
