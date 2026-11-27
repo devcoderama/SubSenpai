@@ -67,6 +67,9 @@ img { display: block; }
 }
 
 .muted { color: var(--muted); }
+/* Baris jumlah hasil pencarian kontekstual navbar (27 Nov 2026). */
+.search-note { margin: 0 0 12px; font-size: 14px; }
+.search-results { padding-top: 4px; padding-bottom: 32px; }
 .error {
   background: #3d0a0d; border: 1px solid #7a1f24; color: #ffb4b8;
   border-radius: 8px; padding: 12px 14px; font-size: 14px;

@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { user } from '$lib/auth.js';
+  import { searchQuery } from '$lib/search.js';
   import { API_BASE, getHistory } from '$lib/api.js';
   import { getLocalHistory, removeLocalHistory, clearLocalHistory, fmtPosition, fmtWhen } from '$lib/history.js';
   import Skeleton from '$lib/components/Skeleton.svelte';
@@ -10,6 +11,12 @@
   let loading = true;
   let error = '';
   let fromServer = false;
+
+  // Pencarian kontekstual navbar (27 Nov 2026): filter riwayat yang sudah
+  // dimuat (maks 50 dari server / lokal).
+  $: searchQ = $searchQuery || '';
+  $: qnorm = searchQ.trim().toLowerCase();
+  $: shownItems = qnorm ? items.filter((it) => (it.title || '').toLowerCase().includes(qnorm)) : items;
 
   function poster(u) {
     if (!u) return '';
@@ -63,6 +70,9 @@
 
 <div class="container page">
   <h1>Riwayat</h1>
+  {#if qnorm && !loading}
+    <p class="muted search-note">{shownItems.length} riwayat untuk “{searchQ.trim()}”</p>
+  {/if}
   {#if !fromServer && items.length}
     <div class="row-head">
       <span class="muted">Disimpan di perangkat ini.</span>
@@ -74,21 +84,26 @@
     <Skeleton kind="row" count={6} />
   {:else if error}
     <p class="error">{error}</p>
-  {:else if !items.length}
+  {:else if !shownItems.length}
     <div class="card empty">
-      <strong>Belum ada riwayat tontonan.</strong>
-      <span class="muted">
-        {#if $user}
-          Episode yang kamu tonton akan muncul di sini.
-        {:else}
-          Masuk untuk menyimpan riwayat di semua perangkat — atau tonton dulu, riwayat tamu tersimpan di perangkat ini.
-        {/if}
-      </span>
-      {#if !$user}<div class="row"><a class="btn" href="/masuk">Masuk dengan Google</a></div>{/if}
+      {#if qnorm}
+        <strong>Tidak ada riwayat untuk “{searchQ.trim()}”.</strong>
+        <span class="muted">Coba kata kunci lain.</span>
+      {:else}
+        <strong>Belum ada riwayat tontonan.</strong>
+        <span class="muted">
+          {#if $user}
+            Episode yang kamu tonton akan muncul di sini.
+          {:else}
+            Masuk untuk menyimpan riwayat di semua perangkat — atau tonton dulu, riwayat tamu tersimpan di perangkat ini.
+          {/if}
+        </span>
+        {#if !$user}<div class="row"><a class="btn" href="/masuk">Masuk dengan Google</a></div>{/if}
+      {/if}
     </div>
   {:else}
     <div class="list">
-      {#each items as it, i (it.episode_id)}
+      {#each shownItems as it, i (it.episode_id)}
         <div use:reveal={(i % 10) * 40}>
           <a class="row card" href={'/nonton/' + it.episode_id}>
             <div class="thumb">

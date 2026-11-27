@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { getTitles, getTitle, getHome, getHistory } from '$lib/api.js';
   import { user } from '$lib/auth.js';
+  import { searchQuery } from '$lib/search.js';
   import { getLocalHistory, fmtWhen } from '$lib/history.js';
   import Hero from '$lib/components/Hero.svelte';
   import Rail from '$lib/components/Rail.svelte';
@@ -37,6 +38,82 @@
   let moreError = '';
   let ioSupported = true;
   let continueWatching = [];
+
+  // Pencarian kontekstual navbar (27 Nov 2026): kata kunci dari navbar
+  // memfilter Beranda di tempat — hasil cari (API, dalam jenis/chip aktif)
+  // menggantikan hero + rel + grid selama kata kunci terisi. Ganti chip
+  // saat mencari = cari dalam jenis baru; hapus kata kunci = kembali ke
+  // tampilan tab normal.
+  let searchMode = false;
+  let searchText = '';
+  let searchResults = [];
+  let searchCursor = '';
+  let searchLoading = false;
+  let searchLoadingMore = false;
+  let searchMoreError = '';
+  let searchTimer = null;
+  let searchSeq = 0;
+
+  $: if ($searchQuery !== undefined) onSearchQuery($searchQuery);
+
+  function onSearchQuery(q) {
+    clearTimeout(searchTimer);
+    const query = (q || '').trim();
+    if (!query) {
+      searchMode = false;
+      searchText = '';
+      searchResults = [];
+      searchCursor = '';
+      searchMoreError = '';
+      restartHeroTimer();
+      return;
+    }
+    searchText = query;
+    if (!searchMode) {
+      searchMode = true;
+      stopHeroTimer();
+    }
+    // Bersihkan hasil lama + tampilkan skeleton langsung (bukan sesudah
+    // jeda ketik) supaya tidak berkedip.
+    searchResults = [];
+    searchCursor = '';
+    searchLoading = true;
+    searchTimer = setTimeout(() => runSearch(query), 300);
+  }
+
+  async function runSearch(query) {
+    const seq = ++searchSeq;
+    searchLoading = true;
+    searchMoreError = '';
+    try {
+      const res = await getTitles({ type: tab, q: query });
+      if (seq !== searchSeq) return;
+      searchResults = res.items || [];
+      searchCursor = res.next_cursor || '';
+    } catch (e) {
+      if (seq !== searchSeq) return;
+      searchResults = [];
+      searchCursor = '';
+      searchMoreError = e.message || 'Pencarian gagal.';
+    } finally {
+      if (seq === searchSeq) searchLoading = false;
+    }
+  }
+
+  async function loadMoreSearch() {
+    if (!searchCursor || searchLoadingMore) return;
+    searchLoadingMore = true;
+    searchMoreError = '';
+    try {
+      const res = await getTitles({ type: tab, q: searchText, cursor: searchCursor });
+      searchResults = [...searchResults, ...(res.items || [])];
+      searchCursor = res.next_cursor || '';
+    } catch (e) {
+      searchMoreError = e.message || 'Gagal memuat lagi.';
+    } finally {
+      searchLoadingMore = false;
+    }
+  }
 
   // Lanjutkan Menonton (seperti aplikasi): server bila masuk, lokal bila tamu.
   async function loadContinue() {
@@ -181,7 +258,9 @@
 
   function setTab(t) {
     tab = t;
-    loadTab(t);
+    // Ganti chip saat sedang mencari = cari dalam jenis baru.
+    if (searchMode) runSearch(searchText);
+    else loadTab(t);
   }
 
   onMount(() => {
@@ -220,6 +299,55 @@
       <div class="poster-grid"><Skeleton kind="card" count={12} /></div>
     </div>
   {/if}
+{:else if searchMode}
+  <!-- Hasil cari navbar: menggantikan hero + rel + grid selama mencari. -->
+  <div class="container search-results">
+    <p class="muted">
+      {searchLoading
+        ? 'Mencari…'
+        : searchResults.length + ' judul ditemukan untuk “' + searchText + '”'}{tab && !searchLoading
+        ? ' · ' + (TABS.find((t) => t.id === tab)?.label || '')
+        : ''}
+    </p>
+    {#if searchMoreError}
+      <p class="error">{searchMoreError}</p>
+    {/if}
+    {#if searchLoading}
+      <div class="poster-grid"><Skeleton kind="card" count={12} /></div>
+    {:else}
+      <div class="poster-grid">
+        {#each searchResults as item, i (item.id)}
+          <div use:reveal={(i % 12) * 45}><TitleCard {item} /></div>
+        {/each}
+      </div>
+      {#if !searchResults.length && !searchMoreError}
+        <p class="muted">Tidak ada judul untuk “{searchText}”. Coba kata kunci lain.</p>
+      {/if}
+      {#if searchCursor}
+        <div
+          class="sentinel"
+          use:infiniteScroll={{ enabled: !!searchCursor && !searchLoadingMore && !searchMoreError, onLoad: loadMoreSearch }}
+        ></div>
+        {#if searchLoadingMore}
+          <p class="load-more-note"><span class="bar skeleton"></span>Memuat lagi…</p>
+        {:else if searchMoreError}
+          <div class="more">
+            <button
+              class="btn ghost"
+              on:click={() => {
+                searchMoreError = '';
+                loadMoreSearch();
+              }}>Coba lagi</button
+            >
+          </div>
+        {:else if !ioSupported}
+          <div class="more">
+            <button class="btn ghost" on:click={loadMoreSearch}>Muat lagi</button>
+          </div>
+        {/if}
+      {/if}
+    {/if}
+  </div>
 {:else}
   {#if heroItems.length}
     <div

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { user } from '$lib/auth.js';
+  import { searchQuery } from '$lib/search.js';
   import { getFeed, getTitle, createPost, uploadFeedImage } from '$lib/api.js';
   import PostCard from '$lib/components/PostCard.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
@@ -48,6 +49,22 @@
     }
   }
 
+  // Pencarian kontekstual navbar (27 Nov 2026): kata kunci dari navbar
+  // memuat ulang feed dengan q (API feed mendukung q). Ganti tab/kategori
+  // saat mencari = cari dalam tab/kategori baru (load memakai searchQ).
+  let searchQ = '';
+  let searchTimer = null;
+  $: if ($searchQuery !== undefined) onSearchQuery($searchQuery);
+  function onSearchQuery(q) {
+    const query = (q || '').trim();
+    if (query === searchQ) return;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      searchQ = query;
+      load(true);
+    }, 300);
+  }
+
   async function load(reset = true) {
     if (reset) {
       loading = true;
@@ -60,6 +77,7 @@
       const res = await getFeed({
         tab,
         category: category === 'semua' ? '' : category,
+        q: searchQ,
         cursor: reset ? '' : nextCursor
       });
       const items = res.items || [];
@@ -213,12 +231,18 @@
       {/each}
     </div>
 
+    {#if searchQ && !loading}
+      <p class="muted search-note">{posts.length} postingan untuk “{searchQ}”</p>
+    {/if}
+
     {#if loading}
       <Skeleton kind="post" count={3} />
     {:else if error}
       <p class="error">{error}</p>
     {:else if !posts.length}
-      <p class="muted">Belum ada postingan di sini.</p>
+      <p class="muted">
+        {searchQ ? 'Tidak ada postingan untuk “' + searchQ + '”. Coba kata kunci lain.' : 'Belum ada postingan di sini.'}
+      </p>
     {:else}
       {#each posts as post, i (post.id)}
         <div use:reveal={(i % 10) * 40}><PostCard {post} onDelete={removePost} /></div>

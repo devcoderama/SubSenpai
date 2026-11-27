@@ -113,7 +113,8 @@
 <div class="container">
   <h1>Cari &amp; Genre</h1>
   <form class="searchbar" on:submit|preventDefault={search}>
-    <input type="search" placeholder="Cari anime, donghua, film…" bind:value={q} />
+    <!-- id dipakai navbar: ikon cari di /cari fokus ke kolom ini -->
+    <input id="cari-input" type="search" placeholder="Cari anime, donghua, film…" bind:value={q} />
     <button class="btn" type="submit">Cari</button>
   </form>
 

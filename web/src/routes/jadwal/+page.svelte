@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { getSchedule, posterUrl } from '$lib/api.js';
+  import { searchQuery } from '$lib/search.js';
   import TitleCard from '$lib/components/TitleCard.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { reveal } from '$lib/reveal.js';
@@ -16,6 +17,23 @@
   let error = '';
   let groups = [];
   let films = [];
+
+  // Pencarian kontekstual navbar (27 Nov 2026): filter data jadwal yang
+  // sudah dimuat — semua jadwal seminggu sudah di tangan, tanpa API baru.
+  // Ganti tab saat mencari = cari dalam jenis baru.
+  $: searchQ = $searchQuery || '';
+  $: qnorm = searchQ.trim().toLowerCase();
+  $: filteredGroups = qnorm
+    ? groups
+        .map((g) => ({
+          ...g,
+          items: (g.items || []).filter((it) => (it.title || '').toLowerCase().includes(qnorm))
+        }))
+        .filter((g) => g.items.length)
+    : groups;
+  $: filteredFilms = qnorm ? films.filter((it) => (it.title || '').toLowerCase().includes(qnorm)) : films;
+  $: searchCount =
+    tab === 'film' ? filteredFilms.length : filteredGroups.reduce((n, g) => n + (g.items || []).length, 0);
 
   async function load(t) {
     loading = true;
@@ -56,9 +74,15 @@
     <Skeleton kind="row" count={8} />
   {:else if error}
     <p class="error">{error}</p>
-  {:else if tab === 'film'}
+  {:else}
+    {#if qnorm}
+      <p class="muted search-note">{searchCount} jadwal untuk “{searchQ.trim()}”</p>
+    {/if}
+  {/if}
+  {#if !loading && !error}
+  {#if tab === 'film'}
     <div class="poster-grid">
-      {#each films as item, i (item.title_id || item.slug)}
+      {#each filteredFilms as item, i (item.title_id || item.slug)}
         <div use:reveal={(i % 12) * 45}>
           <TitleCard
             item={{
@@ -72,9 +96,13 @@
         </div>
       {/each}
     </div>
-    {#if !films.length}<p class="muted">Belum ada film terbaru.</p>{/if}
+    {#if !filteredFilms.length}
+      <p class="muted">
+        {qnorm ? 'Tidak ada film untuk “' + searchQ.trim() + '”. Coba kata kunci lain.' : 'Belum ada film terbaru.'}
+      </p>
+    {/if}
   {:else}
-    {#each groups as g, gi (g.day || g.name)}
+    {#each filteredGroups as g, gi (g.day || g.name)}
       <section class="day" use:reveal={gi * 60}>
         <h2>{g.day || g.name}</h2>
         <div class="items">
@@ -94,7 +122,14 @@
         </div>
       </section>
     {/each}
-    {#if !groups.length}<p class="muted">Jadwal belum tersedia — coba lagi nanti.</p>{/if}
+    {#if !filteredGroups.length}
+      <p class="muted">
+        {qnorm
+          ? 'Tidak ada jadwal untuk “' + searchQ.trim() + '”. Coba kata kunci lain.'
+          : 'Jadwal belum tersedia — coba lagi nanti.'}
+      </p>
+    {/if}
+  {/if}
   {/if}
 </div>
 

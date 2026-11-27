@@ -1,13 +1,72 @@
 <script>
+  import { tick } from 'svelte';
   import { user, logout } from '$lib/auth.js';
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
+  import { searchOpen, searchQuery, closeSearch, hideSearchRow, toggleSearch } from '$lib/search.js';
 
-  let q = '';
   let showMenu = false;
 
+  // Cakupan pencarian kontekstual (27 Nov 2026): di 4 halaman daftar,
+  // tombol cari memfilter halaman itu sendiri; di halaman lain, cari
+  // tetap membuka /cari seperti dulu.
+  $: path = $page.url.pathname;
+  $: scope =
+    path === '/'
+      ? 'beranda'
+      : path === '/post'
+        ? 'post'
+        : path === '/jadwal'
+          ? 'jadwal'
+          : path === '/riwayat'
+            ? 'riwayat'
+            : null;
+  $: placeholder =
+    scope === 'beranda'
+      ? 'Cari judul di Beranda…'
+      : scope === 'post'
+        ? 'Cari postingan…'
+        : scope === 'jadwal'
+          ? 'Cari jadwal…'
+          : scope === 'riwayat'
+            ? 'Cari riwayat…'
+            : 'Cari judul…';
+
+  // Pindah halaman -> bersihkan pencarian supaya halaman baru tampil normal.
+  let lastPath = '';
+  $: if (path !== lastPath) {
+    lastPath = path;
+    closeSearch();
+  }
+
+  // Enter di kolom cari navbar:
+  // - halaman kontekstual: hasil sudah difilter live saat mengetik — Enter
+  //   hanya menutup bilah (kata kunci tetap, hasil tetap terfilter);
+  // - halaman lain: buka /cari dengan kata kunci itu.
   function search(e) {
     e.preventDefault();
-    goto('/cari' + (q.trim() ? '?q=' + encodeURIComponent(q.trim()) : ''));
+    const q = ($searchQuery || '').trim();
+    if (scope) {
+      hideSearchRow();
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      return;
+    }
+    goto('/cari' + (q ? '?q=' + encodeURIComponent(q) : ''));
+  }
+
+  // Ikon kaca pembesar (mobile): di /cari fokus ke kolom cari halaman itu
+  // (sudah ada di sana); di halaman lain buka/tutup bilah cari navbar.
+  async function onSearchIcon() {
+    if (path === '/cari') {
+      document.getElementById('cari-input')?.focus();
+      window.scrollTo({ top: 0 });
+      return;
+    }
+    toggleSearch();
+    if ($searchOpen) {
+      await tick();
+      document.getElementById('nav-search-input')?.focus();
+    }
   }
 </script>
 
@@ -22,11 +81,16 @@
       <a href="/unduh">Unduh</a>
     </nav>
     <form class="search" on:submit={search}>
-      <input type="search" placeholder="Cari judul…" bind:value={q} aria-label="Cari judul" />
+      <input
+        type="search"
+        placeholder={placeholder}
+        bind:value={$searchQuery}
+        aria-label="Cari"
+      />
     </form>
-    <a class="icon-btn search-ic" href="/cari" aria-label="Cari judul">
+    <button class="icon-btn search-ic" on:click={onSearchIcon} aria-label="Cari">
       <i class="fa-solid fa-magnifying-glass"></i>
-    </a>
+    </button>
     {#if $user}
       <div class="userbox">
         <button class="avatar" on:click={() => (showMenu = !showMenu)} aria-label="Menu pengguna">
@@ -57,6 +121,29 @@
       <a href="/masuk" class="btn">Masuk</a>
     {/if}
   </div>
+  {#if $searchOpen}
+    <div class="container search-row">
+      <form on:submit={search}>
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input
+          id="nav-search-input"
+          type="search"
+          placeholder={placeholder}
+          bind:value={$searchQuery}
+          aria-label="Cari"
+        />
+        {#if $searchQuery}
+          <button
+            type="button"
+            class="row-clear"
+            on:click={() => searchQuery.set('')}
+            aria-label="Bersihkan pencarian"><i class="fa-solid fa-xmark"></i></button
+          >
+        {/if}
+      </form>
+      <button class="row-cancel" on:click={closeSearch}>Batal</button>
+    </div>
+  {/if}
 </header>
 
 <style>
@@ -108,6 +195,25 @@
   }
   .menu a:hover, .menu button:hover { background: var(--panel-2); text-decoration: none; }
   .search-ic { display: none; }
+  /* Bilah cari yang muncul saat ikon kaca pembesar diketuk (27 Nov 2026). */
+  .search-row {
+    display: flex; align-items: center; gap: 10px;
+    padding-top: 0; padding-bottom: 10px;
+  }
+  .search-row form {
+    flex: 1; display: flex; align-items: center; gap: 8px;
+    background: rgba(0,0,0,.6); border: 1px solid #555; border-radius: 8px;
+    padding: 0 12px;
+  }
+  .search-row form:focus-within { border-color: #fff; }
+  .search-row form i { color: var(--muted); font-size: 15px; }
+  .search-row input {
+    flex: 1; min-width: 0; background: none; border: 0; color: #fff;
+    padding: 10px 0; font-size: 15px;
+  }
+  .search-row input:focus { outline: none; }
+  .row-clear { background: none; border: 0; color: var(--muted); font-size: 15px; padding: 4px; }
+  .row-cancel { background: none; border: 0; color: #fff; font-size: 14px; padding: 6px 2px; }
   @media (max-width: 767px) {
     /* Mobile: tautan & kolom cari pindah ke navigasi bawah (BottomNav);
        yang tersisa di bar atas hanya logo, ikon cari, dan akun. */
