@@ -331,13 +331,24 @@
           return true;
         })
         .slice(0, 12)
-        .map((it) => ({
-          id: it.title_id,
-          poster_url: it.poster_url,
-          title: it.title,
-          sub: 'Episode ' + it.episode_no + ' • ' + fmtWhen(it.updated_at),
-          href: '/nonton/' + it.episode_id
-        }));
+        .map((it) => {
+          // Durasi hanya ada bila sudah dipelajari dari video langsung
+          // (durasi episode tak ada di API); item server menumpang ke
+          // catatan lokal perangkat ini bila ada.
+          const pos = it.position_sec || 0;
+          const dur =
+            it.duration_sec ||
+            getLocalHistory().find((x) => x.episode_id === it.episode_id)?.duration_sec ||
+            0;
+          return {
+            id: it.title_id,
+            poster_url: it.poster_url,
+            title: it.title,
+            sub: 'Episode ' + it.episode_no + ' • ' + fmtWhen(it.updated_at),
+            href: '/nonton/' + it.episode_id,
+            progress: pos > 0 && dur > 0 ? Math.min(1, pos / dur) : null
+          };
+        });
       homeCache.continueWatching = continueWatching;
     } catch {
       continueWatching = [];

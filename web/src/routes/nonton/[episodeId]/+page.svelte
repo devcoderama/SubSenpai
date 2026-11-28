@@ -3,16 +3,17 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import {
-    getPlayback, getTitle, getTitles,
+    getPlayback, getTitle, getTitles, getHistory,
     adUnlockStart, adUnlockComplete, isPremiumRequired,
     reportHistory, createReport
   } from '$lib/api.js';
   import { user } from '$lib/auth.js';
-  import { addLocalHistory, updateLocalPosition } from '$lib/history.js';
+  import { addLocalHistory, updateLocalPosition, getLocalHistory, fmtPosition } from '$lib/history.js';
   import Player from '$lib/components/Player.svelte';
   import EpisodeGrid from '$lib/components/EpisodeGrid.svelte';
   import Rail from '$lib/components/Rail.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import { toastInfo } from '$lib/toast.js';
 
   const AD_URL = 'https://uplcm.com/4/12330317';
   const REPORT_REASONS = [
@@ -27,6 +28,7 @@
   let error = '';
   let locked = false;
   let playback = null;
+  let resumeAt = 0; // posisi tersimpan untuk video langsung (0 = mulai dari awal)
   let episodes = [];
   let title = null;
   let recommendations = [];
@@ -215,6 +217,7 @@
     error = '';
     locked = false;
     playback = null;
+    resumeAt = 0;
     current = 0;
     selectedSub = null;
     descExpanded = false;
@@ -233,7 +236,8 @@
         const det = await getTitle(tid);
         title = det.title || det;
         episodes = det.episodes || [];
-        recordWatch(0);
+        resumeAt = await resolveResume();
+        recordWatch(resumeAt);
         loadRecommendations();
       }
     } catch (e) {
@@ -370,10 +374,15 @@
 
   // Catat ke riwayat: server bila masuk, lokal selalu (untuk tamu).
   // Kegagalan pencatatan tidak boleh mengganggu pemutaran.
+  // PENTING (28 Nov 2026): jangan pernah mencatat 0 di sini — panggilan
+  // lama recordWatch(0) menimpa posisi tersimpan sehingga resume tak
+  // pernah punya data. Posisi yang dicatat = posisi resume yang baru
+  // dihitung; durasi lama (bila sudah dipelajari) ikut dipertahankan.
   let lastSavedPos = -1;
   let lastSavedAt = 0;
   function recordWatch(position) {
     if (!playback || !title) return;
+    const prev = getLocalHistory().find((x) => x.episode_id === epId);
     const item = {
       episode_id: epId,
       title_id: playback.episode?.title_id || playback.title_id,
@@ -382,10 +391,31 @@
       episode_no: playback.episode?.episode_no,
       position_sec: position
     };
+    if (prev?.duration_sec > 0) item.duration_sec = prev.duration_sec;
     addLocalHistory(item);
     if ($user) {
       reportHistory(epId, position).catch(() => {});
     }
+  }
+
+  // Posisi tersimpan untuk episode ini: lokal dulu (perangkat ini),
+  // lalu server bila masuk dan tak ada catatan lokal. Hanya video
+  // langsung yang bisa di-seek; iframe tak pernah melaporkan posisi.
+  async function resolveResume() {
+    let pos = getLocalHistory().find((x) => x.episode_id === epId)?.position_sec || 0;
+    if (!pos && $user) {
+      try {
+        const res = await getHistory(50);
+        pos = (res.items || []).find((x) => x.episode_id === epId)?.position_sec || 0;
+      } catch {
+        /* abaikan — mulai dari awal */
+      }
+    }
+    return pos > 5 ? pos : 0;
+  }
+
+  function onResumed(e) {
+    toastInfo('Melanjutkan dari ' + fmtPosition(e.detail?.position || 0));
   }
   function onProgress(e) {
     const pos = e.detail?.position || 0;
@@ -393,7 +423,7 @@
     if (pos - lastSavedPos < 10 && now - lastSavedAt < 15000) return;
     lastSavedPos = pos;
     lastSavedAt = now;
-    updateLocalPosition(epId, pos);
+    updateLocalPosition(epId, pos, e.detail?.duration || 0);
     if ($user) reportHistory(epId, pos).catch(() => {});
   }
 </script>
@@ -473,7 +503,9 @@
           subtitles={playback.subtitles || []}
           bind:selectedSub
           title={title?.title || ''}
+          resumeAt={resumeAt}
           on:progress={onProgress}
+          on:resumed={onResumed}
         />
       </div>
 

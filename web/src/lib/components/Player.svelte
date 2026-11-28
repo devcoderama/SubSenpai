@@ -9,12 +9,14 @@
   export let title = '';
   export let subtitles = /** @type {{ lang: string, file_url: string, status: string }[]} */ ([]); // subtitle siap pakai {lang, file_url, status}
   export let selectedSub = /** @type {string | null} */ (null); // lang subtitle terpilih, atau null
+  export let resumeAt = 0; // detik — posisi tersimpan untuk video langsung (iframe tak bisa di-seek)
 
   const dispatch = createEventDispatcher();
   let videoEl = null;
   let iframeEl = null;
   let blocked = false;
   let autoAdvanced = false;
+  let resumed = false; // seek resume sudah dilakukan sekali per episode
 
   $: src = sources?.[current];
   $: isDirect = !!src?.url && /\.(mp4|m3u8|webm)(\?|$)/i.test(src.url);
@@ -26,6 +28,7 @@
   $: if (sources) {
     current = 0;
     autoAdvanced = false;
+    resumed = false;
   }
   // Ganti server -> kartu blokir ikut direset.
   $: if (src?.url) blocked = false;
@@ -46,9 +49,28 @@
   }
   $: if (videoEl && selectedSub !== undefined) applySubTrack();
 
-  // Posisi video langsung dilaporkan ke halaman Nonton untuk riwayat.
+  // Posisi video langsung dilaporkan ke halaman Nonton untuk riwayat,
+  // beserta durasi video (satu-satunya sumber durasi yang pasti —
+  // episode.duration_sec di API selalu kosong).
   function onTime(e) {
-    dispatch('progress', { position: e.target.currentTime || 0 });
+    dispatch('progress', { position: e.target.currentTime || 0, duration: e.target.duration || 0 });
+  }
+
+  // Seek sekali ke posisi tersimpan saat metadata video langsung termuat.
+  // Tak berlaku untuk iframe (lintas-origin tak bisa di-seek).
+  function seekResume() {
+    if (resumed || !videoEl) return;
+    const dur = videoEl.duration;
+    if (resumeAt > 5 && (!Number.isFinite(dur) || resumeAt < dur - 10)) {
+      videoEl.currentTime = resumeAt;
+      resumed = true;
+      dispatch('resumed', { position: resumeAt });
+    }
+  }
+
+  function onMeta() {
+    applySubTrack();
+    seekResume();
   }
 
   // Server diblokir: buka langsung di situs sumber — di TAB YANG SAMA
@@ -93,7 +115,7 @@
           playsinline
           bind:this={videoEl}
           on:timeupdate={onTime}
-          on:loadedmetadata={applySubTrack}
+          on:loadedmetadata={onMeta}
         >
           {#each readySubs as s}
             <track

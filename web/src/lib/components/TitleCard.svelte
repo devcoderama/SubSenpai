@@ -8,6 +8,7 @@
   export let item;
   export let href = null;
   export let sub = null;
+  export let progress = null; // 0..1 — bar progres Lanjutkan Menonton (null = tak ada data)
 
   $: link = href || '/judul/' + item.id;
   $: detailHref = '/judul/' + item.id;
@@ -87,6 +88,9 @@
         </a>
       </div>
     </div>
+    {#if progress != null && progress > 0}
+      <div class="progress" aria-hidden="true"><span style="width: {Math.min(100, progress * 100)}%"></span></div>
+    {/if}
   </div>
   <div class="meta">
     <a class="title" href={link}>{item.title}</a>
@@ -109,6 +113,8 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); z-index: 5;
   }
   .poster-wrap { position: relative; }
+  .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, 0.3); z-index: 4; pointer-events: none; overflow: hidden; }
+  .progress span { display: block; height: 100%; background: var(--red); }
   .poster {
     display: block; position: relative; aspect-ratio: 2 / 3;
     background: #000; overflow: hidden;

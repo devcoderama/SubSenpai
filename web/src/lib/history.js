@@ -21,7 +21,9 @@ function save(list) {
   }
 }
 
-// item: {episode_id, title_id, title, poster_url, episode_no, position_sec}
+// item: {episode_id, title_id, title, poster_url, episode_no, position_sec, duration_sec}
+// duration_sec dipelajari dari elemen <video> saat video langsung diputar
+// (durasi episode TIDAK ada di API — episode.duration_sec selalu kosong).
 export function addLocalHistory(item) {
   if (!item?.episode_id) return;
   const list = getLocalHistory().filter((x) => x.episode_id !== item.episode_id);
@@ -33,11 +35,12 @@ export function addLocalHistory(item) {
   save(list);
 }
 
-export function updateLocalPosition(episodeId, positionSec) {
+export function updateLocalPosition(episodeId, positionSec, durationSec) {
   const list = getLocalHistory();
   const it = list.find((x) => x.episode_id === episodeId);
   if (!it) return;
   it.position_sec = Math.floor(positionSec);
+  if (durationSec > 0 && Number.isFinite(durationSec)) it.duration_sec = Math.floor(durationSec);
   it.updated_at = new Date().toISOString();
   save(list);
 }

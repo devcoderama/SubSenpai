@@ -30,6 +30,7 @@
     try {
       if ($user) {
         const res = await getHistory(50);
+        const localByEp = new Map(getLocalHistory().map((x) => [x.episode_id, x.duration_sec || 0]));
         items = (res.items || []).map((it) => ({
           episode_id: it.episode_id,
           title_id: it.title_id,
@@ -37,6 +38,7 @@
           poster_url: it.poster_url,
           episode_no: it.episode_no,
           position_sec: it.position_sec || 0,
+          duration_sec: it.duration_sec || localByEp.get(it.episode_id) || 0,
           updated_at: it.updated_at
         }));
         fromServer = true;
@@ -119,8 +121,8 @@
               <span class="muted">
                 {fmtWhen(it.updated_at)}{it.position_sec > 0 ? ' • Lanjut ' + fmtPosition(it.position_sec) : ''}
               </span>
-              {#if it.position_sec > 0}
-                <span class="bar"><span style="width: {Math.min(100, (it.position_sec / 1500) * 100)}%"></span></span>
+              {#if it.position_sec > 0 && it.duration_sec > 0}
+                <span class="bar"><span style="width: {Math.min(100, (it.position_sec / it.duration_sec) * 100)}%"></span></span>
               {/if}
             </div>
             {#if !fromServer}

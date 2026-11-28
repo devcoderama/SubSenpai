@@ -15,7 +15,7 @@
     </div>
     <div class="rail">
       {#each items as item (item.id)}
-        <TitleCard {item} href={item.href || null} sub={item.sub || null} />
+        <TitleCard {item} href={item.href || null} sub={item.sub || null} progress={item.progress ?? null} />
       {/each}
     </div>
   </section>
