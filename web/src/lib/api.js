@@ -309,6 +309,21 @@ export const getLiveBrowse = (type, genre, page = 1, opts = {}) => {
   return api(`/api/v1/live-browse?${p.toString()}`);
 };
 
+/* ================= TV Langsung (IPTV, 28 Nov 2026) ================= */
+// GET /api/v1/tv/channels?category=&country=&stability= → {items:
+// [{id, name, slug, logo_url, stream_url, country, category, quality,
+// stability, source, http_referer?, http_user_agent?}]} — publik,
+// gratis semua tier. stability 'bagus' = stream resmi HTTPS
+// terverifikasi; 'tidak stabil' = restream IP / belum terverifikasi.
+export const getTVChannels = (params = {}) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== '' && v != null) q.set(k, String(v));
+  const s = q.toString();
+  return api('/api/v1/tv/channels' + (s ? '?' + s : ''));
+};
+
+export const getTVChannel = (id) => api('/api/v1/tv/channels/' + encodeURIComponent(id));
+
 // Impor satu judul hasil telusur live ke katalog (cermin
 // Models.importTitle aplikasi); mengembalikan {id, slug, created}.
 export const importTitle = (type, item, genre = '') =>

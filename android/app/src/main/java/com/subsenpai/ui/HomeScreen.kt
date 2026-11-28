@@ -114,6 +114,8 @@ class HomeSession {
     /** Rel Ongoing per jenis (anime/donghua) — 28 Nov 2026. */
     val ongoing = mutableStateOf<Map<String, List<TitleCard>>>(emptyMap())
     val homeLive = mutableStateOf<Map<String, List<CatalogRepository.LiveBrowseItem>>>(emptyMap())
+    /** Kanal TV Langsung aktif (IPTV, 28 Nov 2026) — dimuat di latar. */
+    val tvChannels = mutableStateOf<List<CatalogRepository.TVChannel>>(emptyList())
     val lanjut = mutableStateOf<List<WatchHistoryItem>>(emptyList())
     val reloadKey = mutableStateOf(0)
     val type = mutableStateOf<String?>(null)
@@ -219,6 +221,8 @@ fun HomeScreen(
     onOpenHistory: () -> Unit = {},
     onOpenNotices: () -> Unit = {},
     onOpenPremium: () -> Unit = {},
+    onOpenTV: () -> Unit = {},
+    onOpenChannel: (CatalogRepository.TVChannel) -> Unit = {},
     onFatalChange: (Boolean) -> Unit = {},
 ) {
     val homeContext = LocalContext.current
@@ -237,6 +241,7 @@ fun HomeScreen(
     // Rams 2026-11-23). Bila sumber kosong/gagal, baris katalog
     // (perType) yang tampil seperti sebelumnya.
     var homeLive by session.homeLive
+    var tvChannels by session.tvChannels
     var hasil by tab.hasil
     var lanjut by session.lanjut
     var error by remember { mutableStateOf<String?>(null) }
@@ -472,6 +477,15 @@ fun HomeScreen(
             }
         }
         homeLive = liveLoaded
+        // Kanal TV Langsung dimuat di latar (tidak menahan Beranda):
+        // rel muncul saat siap; gagal = rel tidak tampil.
+        scope.launch {
+            try {
+                tvChannels = repo.tvChannels()
+            } catch (e: Exception) {
+                // Rel TV dilewati bila gagal.
+            }
+        }
     }
     // Penghitung 10 detik untuk tombol "Coba lagi": mulai tiap kali
     // muat Beranda dimulai (homeLoaded false), batal bila muat
@@ -957,6 +971,23 @@ fun HomeScreen(
                 if (seriesPopuler.isNotEmpty()) {
                     item { SectionTitle("Serial TV Populer", onSeeAll = { openBrowse("series", null, null) }) }
                     item { PosterRow(seriesPopuler.take(12), onOpenTitle) }
+                }
+                // Rel TV Langsung (IPTV, 28 Nov 2026): kartu kanal
+                // horizontal + "Lihat semua" ke layar TV.
+                if (tvChannels.isNotEmpty()) {
+                    item { SectionTitle("TV Langsung", onSeeAll = onOpenTV) }
+                    item {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        ) {
+                            items(tvChannels.take(12)) { ch ->
+                                Box(Modifier.width(160.dp)) {
+                                    TVChannelCard(ch, onOpenChannel, Modifier.fillMaxWidth())
+                                }
+                            }
+                        }
+                    }
                 }
                 item { Spacer(Modifier.height(24.dp)) }
             }

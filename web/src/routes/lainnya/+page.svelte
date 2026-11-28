@@ -95,6 +95,7 @@
     <a href={$user ? '/riwayat-transaksi' : '/masuk'}><span class="ic"><i class="fa-solid fa-receipt"></i></span><span class="lbl">Riwayat Transaksi</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
     <a href={$user ? '/undang-teman' : '/masuk'}><span class="ic"><i class="fa-solid fa-user-plus"></i></span><span class="lbl">Undang Teman</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
     <a href="/jadwal"><span class="ic"><i class="fa-solid fa-calendar-days"></i></span><span class="lbl">Jadwal Rilis</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
+    <a href="/tv"><span class="ic"><i class="fa-solid fa-tv"></i></span><span class="lbl">TV Langsung</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
     <a href="/cari"><span class="ic"><i class="fa-solid fa-magnifying-glass"></i></span><span class="lbl">Cari &amp; Genre</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
     <a href="https://discord.gg/yJebKEGNh" rel="noreferrer"
       ><span class="ic"><i class="fa-brands fa-discord"></i></span><span class="lbl">Komunitas Discord</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a

@@ -21,6 +21,7 @@ export const homeCache = {
   trending: [],
   filmYear: [], animeYear: [], donghuaYear: [], seriesYear: [],
   filmPopuler: [], seriesPopuler: [],
+  tvChannels: [],
   animeOngoing: [], donghuaOngoing: [],
   heroItems: [],
   continueWatching: [],

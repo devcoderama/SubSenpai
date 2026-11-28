@@ -116,6 +116,9 @@ func (a *API) Router() http.Handler {
 		// hasil telusur ke katalog (impor memakai auth opsional,
 		// sama seperti detail judul).
 		r.Get("/api/v1/live-browse", a.handleLiveBrowse)
+		// TV Langsung (IPTV): daftar kanal + detail kanal, tamu boleh.
+		r.Get("/api/v1/tv/channels", a.handleTVChannels)
+		r.Get("/api/v1/tv/channels/{id}", a.handleTVChannel)
 		r.With(a.authn.Optional).Post("/api/v1/titles/import", a.handleTitleImport)
 		// Detail memakai auth OPSIONAL: tanpa ini FromContext selalu
 		// nil → semua penonton dianggap tamu → episode pengguna

@@ -72,6 +72,7 @@ fun MoreScreen(
     onOpenTransactions: () -> Unit,
     onOpenMyVouchers: () -> Unit,
     onOpenReferral: () -> Unit,
+    onOpenTV: () -> Unit,
 ) {
     val context = LocalContext.current
     val auth = remember { AuthStore(context) }
@@ -143,6 +144,9 @@ fun MoreScreen(
         }
         item {
             MoreRow(R.drawable.ic_bookmark, "Daftar Saya", "Watchlist tersimpan", onOpenWatchlist)
+        }
+        item {
+            MoreRow(R.drawable.ic_play, "TV Langsung", "Siaran TV lokal & luar, langsung", onOpenTV)
         }
         item {
             MoreRow(R.drawable.ic_phone, "Perangkat", "Perangkat yang login ke akun ini", onOpenDevices)

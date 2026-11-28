@@ -136,6 +136,27 @@ func main() {
 			}
 		}
 	}()
+	// Ticker health-check kanal TV: probe tiap stream tiap 30 menit;
+	// 3x gagal beruntun kanal disembunyikan otomatis sampai hidup
+	// lagi. Sekali jalan di awal supaya data kesehatan seed langsung
+	// terisi (bukan menunggu 30 menit pertama).
+	go func() {
+		tvTicker := time.NewTicker(30 * time.Minute)
+		defer tvTicker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tvTicker.C:
+				if err := jobs.CheckTVChannels(ctx, pool); err != nil {
+					log.Printf("tv health: %v", err)
+				}
+			}
+		}
+	}()
+	if err := jobs.CheckTVChannels(ctx, pool); err != nil {
+		log.Printf("tv health awal: %v", err)
+	}
 	runSources()
 	trendTicker := time.NewTicker(time.Hour)
 	defer trendTicker.Stop()

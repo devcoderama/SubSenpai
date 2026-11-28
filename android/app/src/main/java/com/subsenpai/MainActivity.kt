@@ -471,6 +471,8 @@ class MainActivity : ComponentActivity() {
                                         restoreState = true
                                     }
                                 },
+                                onOpenTV = { nav.navigate("tv") },
+                                onOpenChannel = { nav.navigate("tvplayer/${it.slug}") },
                                 onFatalChange = { homeFatal = it },
                             )
                         }
@@ -499,6 +501,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenTransactions = { nav.navigate("transactions") },
                                 onOpenMyVouchers = { nav.navigate("myvouchers") },
                                 onOpenReferral = { nav.navigate("referral") },
+                                onOpenTV = { nav.navigate("tv") },
                             )
                         }
                         composable("schedule") {
@@ -639,6 +642,23 @@ class MainActivity : ComponentActivity() {
                                 repo,
                                 onBack = { nav.popBackStack() },
                                 onNeedLogin = { nav.navigate("login") },
+                            )
+                        }
+                        composable("tv") {
+                            com.subsenpai.ui.TVScreen(
+                                repo,
+                                onBack = { nav.popBackStack() },
+                                onOpenChannel = { nav.navigate("tvplayer/${it.slug}") },
+                            )
+                        }
+                        composable(
+                            "tvplayer/{slug}",
+                            arguments = listOf(navArgument("slug") { type = NavType.StringType }),
+                        ) { entry ->
+                            com.subsenpai.player.TVPlayerScreen(
+                                repo,
+                                entry.arguments!!.getString("slug")!!,
+                                onBack = { nav.popBackStack() },
                             )
                         }
                         composable(

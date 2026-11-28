@@ -856,6 +856,45 @@ class CatalogRepository(
     )
 
     /**
+     * Satu kanal TV Langsung (IPTV, migrasi 0029): stream HLS yang
+     * diputar langsung dari perangkat ke sumber — VPS tidak mem-proxy
+     * video. stability 'bagus' = stream resmi + HTTPS + terverifikasi
+     * hidup; 'tidak stabil' = restream IP mentah / belum terverifikasi.
+     * httpReferer/httpUserAgent wajib dikirim saat memutar bila ada.
+     */
+    data class TVChannel(
+        val id: String,
+        val name: String,
+        val slug: String,
+        val logoUrl: String?,
+        val streamUrl: String,
+        val country: String,
+        val category: String,
+        val quality: String?,
+        val stability: String,
+        val source: String,
+        val httpReferer: String?,
+        val httpUserAgent: String?,
+    ) {
+        companion object {
+            fun fromJson(o: JSONObject) = TVChannel(
+                id = o.getString("id"),
+                name = o.getString("name"),
+                slug = o.getString("slug"),
+                logoUrl = o.optString("logo_url").ifBlank { null },
+                streamUrl = o.getString("stream_url"),
+                country = o.optString("country", "ID"),
+                category = o.optString("category", "Nasional"),
+                quality = o.optString("quality").ifBlank { null },
+                stability = o.optString("stability", "bagus"),
+                source = o.optString("source", "resmi"),
+                httpReferer = o.optString("http_referer").ifBlank { null },
+                httpUserAgent = o.optString("http_user_agent").ifBlank { null },
+            )
+        }
+    }
+
+    /**
      * Telusur genre LANGSUNG dari situs sumber (pilihan filter
      * sebanyak di web sumbernya). Mengembalikan (nama sumber,
      * masih ada halaman berikutnya, daftar judul).
@@ -899,6 +938,41 @@ class CatalogRepository(
             .put("genres", JSONArray(item.genres))
         if (!genre.isNullOrBlank()) body.put("genre", genre)
         return api.post("/api/v1/titles/import", body).getString("id")
+    }
+
+    /**
+     * Daftar kanal TV Langsung yang aktif (health-check server
+     * menyembunyikan yang mati 3x beruntun). Publik tanpa login,
+     * gratis semua tier. Saringan opsional per kategori / negara /
+     * stabilitas — tanpa saringan, semua kanal aktif.
+     */
+    suspend fun tvChannels(
+        category: String? = null,
+        country: String? = null,
+        stability: String? = null,
+    ): List<TVChannel> {
+        val path = StringBuilder("/api/v1/tv/channels")
+        var first = true
+        fun add(key: String, value: String?) {
+            if (value.isNullOrBlank()) return
+            path.append(if (first) "?" else "&").append(key).append("=")
+                .append(java.net.URLEncoder.encode(value, "UTF-8"))
+            first = false
+        }
+        add("category", category)
+        add("country", country)
+        add("stability", stability)
+        val o = api.get(path.toString())
+        return buildList {
+            val arr = o.optJSONArray("items")
+            if (arr != null) for (i in 0 until arr.length()) add(TVChannel.fromJson(arr.getJSONObject(i)))
+        }
+    }
+
+    /** Satu kanal TV Langsung per slug (atau id UUID). */
+    suspend fun tvChannel(slug: String): TVChannel {
+        val o = api.get("/api/v1/tv/channels/$slug")
+        return TVChannel.fromJson(o.getJSONObject("channel"))
     }
 
     /** Daftar genre yang ada di katalog untuk satu tipe (chip filter). */

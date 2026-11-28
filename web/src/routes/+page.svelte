@@ -5,7 +5,7 @@
   import { goto } from '$app/navigation';
   import {
     getTitles, getTitle, getHome, getHistory,
-    getFilters
+    getFilters, getTVChannels
   } from '$lib/api.js';
   import { wlMap, wlPending, ensureWl, toggleWl } from '$lib/watchlist.js';
   import { toastError } from '$lib/toast.js';
@@ -16,6 +16,7 @@
   import Hero from '$lib/components/Hero.svelte';
   import Top10Rail from '$lib/components/Top10Rail.svelte';
   import Rail from '$lib/components/Rail.svelte';
+  import TVRail from '$lib/components/TVRail.svelte';
   import TitleCard from '$lib/components/TitleCard.svelte';
   import LiveBrowseSection from '$lib/components/LiveBrowseSection.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
@@ -46,6 +47,7 @@
   let filmPopuler = []; // film dari trending 24 jam (Film Populer)
   let seriesYear = []; // serial TV tahun berjalan (Serial TV Terbaru)
   let seriesPopuler = []; // serial TV dari trending 24 jam (Serial TV Populer)
+  let tvChannels = []; // kanal TV Langsung (rel TV Langsung, 28 Nov 2026)
   let animeOngoing = []; // anime berstatus ongoing (dimuat di latar)
   let donghuaOngoing = []; // donghua berstatus ongoing (dimuat di latar)
   let heroTimer = null;
@@ -198,6 +200,7 @@
     filmPopuler = homeCache.filmPopuler;
     seriesYear = homeCache.seriesYear;
     seriesPopuler = homeCache.seriesPopuler;
+    tvChannels = homeCache.tvChannels;
     animeOngoing = homeCache.animeOngoing;
     donghuaOngoing = homeCache.donghuaOngoing;
     heroItems = homeCache.heroItems;
@@ -475,7 +478,7 @@
       if (t === '') {
         // Rel dimuat terpisah: satu jenis yang gagal tidak boleh
         // mengosongkan seluruh Beranda.
-        const [a, d, f, s, h, fy, ay, dy, sy] = await Promise.allSettled([
+        const [a, d, f, s, h, fy, ay, dy, sy, tv] = await Promise.allSettled([
           getTitles({ type: 'anime' }),
           getTitles({ type: 'donghua' }),
           getTitles({ type: 'film' }),
@@ -484,7 +487,8 @@
           getTitles({ type: 'film', year: THIS_YEAR }),
           getTitles({ type: 'anime', year: THIS_YEAR }),
           getTitles({ type: 'donghua', year: THIS_YEAR }),
-          getTitles({ type: 'series', year: THIS_YEAR })
+          getTitles({ type: 'series', year: THIS_YEAR }),
+          getTVChannels()
         ]);
         if (seq !== loadTabSeq || tab !== t) return;
         rails = {
@@ -502,6 +506,9 @@
         animeYear = ay.status === 'fulfilled' ? ay.value.items || [] : [];
         donghuaYear = dy.status === 'fulfilled' ? dy.value.items || [] : [];
         seriesYear = sy.status === 'fulfilled' ? sy.value.items || [] : [];
+        // TV Langsung: gagal tidak boleh mengosongkan Beranda —
+        // rel-nya hilang saja, seperti rel lain yang gagal.
+        tvChannels = tv.status === 'fulfilled' ? tv.value.items || [] : [];
         filmPopuler = trending.filter((x) => x.type === 'film');
         seriesPopuler = trending.filter((x) => x.type === 'series');
         // Ongoing dimuat di latar (tidak menahan skeleton): rel muncul
@@ -664,6 +671,7 @@
     homeCache.filmPopuler = filmPopuler;
     homeCache.seriesYear = seriesYear;
     homeCache.seriesPopuler = seriesPopuler;
+    homeCache.tvChannels = tvChannels;
     homeCache.animeOngoing = animeOngoing;
     homeCache.donghuaOngoing = donghuaOngoing;
     homeCache.heroItems = heroItems;
@@ -1036,6 +1044,8 @@
       {#if seriesPopuler.length}
         <Rail title="Serial TV Populer" items={seriesPopuler.slice(0, 12)} moreHref="/cari?type=series" />
       {/if}
+      <!-- TV Langsung (28 Nov 2026): rel kanal live, sesudah Serial TV. -->
+      <TVRail channels={tvChannels} />
       <Rail title="Anime" items={rails.anime.slice(0, 12)} moreHref="/cari?type=anime" />
       {#if animeOngoing.length}
         <Rail
