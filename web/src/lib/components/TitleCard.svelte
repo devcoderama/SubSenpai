@@ -1,6 +1,7 @@
 <script>
   import { goto } from '$app/navigation';
-  import { posterUrl, getTitle, checkWatchlist, addWatchlist, removeWatchlist } from '$lib/api.js';
+  import { posterUrl, getTitle } from '$lib/api.js';
+  import { wlMap, wlPending, ensureWl, toggleWl } from '$lib/watchlist.js';
   import { user } from '$lib/auth.js';
 
   export let item;
@@ -11,39 +12,21 @@
   $: detailHref = '/judul/' + item.id;
   $: typeLabel = item.type === 'donghua' ? 'Donghua' : item.type === 'anime' ? 'Anime' : 'Film';
 
-  // Status Daftar Saya: dicek malas sekali saat kartu pertama di-hover
-  // (desktop) — 1 panggilan per kartu yang benar-benar disentuh, bukan
-  // per kartu di rel. Tamu tidak dicek (tombol -> /masuk).
-  let wlState = null;
-  let wlChecking = false;
-  let wlBusy = false;
+  // Status Daftar Saya mengikuti store bersama ($lib/watchlist.js):
+  // satu judul di beberapa rel memakai state yang sama — toggle di satu
+  // kartu langsung tercermin di duplikatnya (28 Nov 2026). Tamu melihat
+  // tombol sebagai belum tersimpan (tombol -> /masuk).
+  $: wlState = $user ? $wlMap[item.id] : undefined;
+  $: wlBusy = !!$wlPending[item.id];
   let playBusy = false;
-
-  async function ensureWlState() {
-    if (wlState !== null || wlChecking || !$user) return;
-    wlChecking = true;
-    try {
-      const c = await checkWatchlist(item.id);
-      wlState = !!c?.in_watchlist;
-    } catch {
-      wlState = null;
-    } finally {
-      wlChecking = false;
-    }
-  }
 
   async function toggleWatchlist() {
     if (!$user) { goto('/masuk'); return; }
     if (wlBusy) return;
-    if (wlState === null) await ensureWlState();
-    wlBusy = true;
     try {
-      if (wlState) { await removeWatchlist(item.id); wlState = false; }
-      else { await addWatchlist(item.id); wlState = true; }
+      await toggleWl(item.id);
     } catch {
-      // Gagal: state tidak berubah (umpan balik toast menyusul di #4).
-    } finally {
-      wlBusy = false;
+      // Gagal: store tidak berubah (umpan balik toast menyusul di #4).
     }
   }
 
@@ -69,7 +52,7 @@
 
 <div class="card">
   <div class="poster-wrap">
-    <a class="poster" href={link} on:mouseenter={ensureWlState}>
+    <a class="poster" href={link} on:mouseenter={() => ensureWl(item.id)}>
       {#if item.poster_url}
         <img src={posterUrl(item.poster_url)} alt={item.title} loading="lazy" />
       {:else}
@@ -91,7 +74,7 @@
           class="mini"
           class:active={wlState}
           on:click={toggleWatchlist}
-          disabled={wlBusy || wlChecking}
+          disabled={wlBusy}
           aria-pressed={wlState}
           aria-label={wlState ? 'Hapus dari Daftar Saya' : 'Simpan ke Daftar Saya'}
         >

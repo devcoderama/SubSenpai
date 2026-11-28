@@ -3,8 +3,9 @@
   import { goto } from '$app/navigation';
   import {
     getTitles, getTitle, getHome, getHistory,
-    checkWatchlist, addWatchlist, removeWatchlist, getFilters
+    getFilters
   } from '$lib/api.js';
+  import { wlMap, wlPending, ensureWl, toggleWl } from '$lib/watchlist.js';
   import { homeCache } from '$lib/homeCache.js';
   import { user, isPremium } from '$lib/auth.js';
   import { searchQuery } from '$lib/search.js';
@@ -46,13 +47,10 @@
   let reduceMotion = false;
   const HERO_MS = 6000;
   const heroDetailCache = new Map();
-  // Toggle Daftar Saya di hero (27 Nov 2026): mengikuti judul yang
-  // sedang tampil, seperti Hero aplikasi (LaunchedEffect hero.id).
-  let heroInWatchlist = false;
-  let heroWlBusy = false;
+  // Toggle Daftar Saya di hero: status mengikuti store bersama
+  // ($lib/watchlist.js) — sama seperti kartu, supaya simpan dari hero
+  // langsung tercermin di rel dan sebaliknya (28 Nov 2026).
   let heroWlError = '';
-  let heroWlFor = '';
-  let heroWlLogged = false;
   let rails = { anime: [], donghua: [], film: [] };
   let grid = [];
   let nextCursor = '';
@@ -389,55 +387,28 @@
     if (manual) restartHeroTimer();
   }
 
-  // Status Daftar Saya dibaca ulang tiap hero berganti (dan saat status
-  // login berubah); tamu tidak dicek — ketuk langsung ke /masuk.
+  // Status Daftar Saya hero mengikuti store bersama (28 Nov 2026):
+  // prefetch saat slide berganti / login berubah; tiap slide membaca
+  // $wlMap[id]-nya sendiri lewat prop di bawah.
   $: {
     const hid = heroItems[heroIdx]?.title?.id;
-    const logged = !!$user;
-    if (hid && (hid !== heroWlFor || logged !== heroWlLogged)) {
-      heroWlFor = hid;
-      heroWlLogged = logged;
-      heroInWatchlist = false;
-      heroWlError = '';
-      if (logged) refreshHeroWatchlist(hid);
-    } else if (!hid) {
-      heroWlFor = '';
-      heroWlLogged = logged;
-    }
+    if (hid && $user) ensureWl(hid);
   }
 
-  async function refreshHeroWatchlist(id) {
-    try {
-      const c = await checkWatchlist(id);
-      if (heroWlFor === id) heroInWatchlist = !!c.in_watchlist;
-    } catch {
-      /* abaikan — tombol tetap bisa diketuk, seperti Detail */
-    }
-  }
-
-  // Sama seperti toggleWatchlist di Detail: tamu -> /masuk, sibuk
-  // dikunci, sudah tersimpan -> hapus.
+  // Sama seperti toggleWatchlist di Detail: tamu -> /masuk; gagal ->
+  // pesan error di bawah tombol hero.
   async function toggleHeroWatchlist() {
     if (!$user) {
       goto('/masuk');
       return;
     }
     const id = heroItems[heroIdx]?.title?.id;
-    if (!id || heroWlBusy) return;
-    heroWlBusy = true;
+    if (!id || $wlPending[id]) return;
     heroWlError = '';
     try {
-      if (heroInWatchlist) {
-        await removeWatchlist(id);
-        heroInWatchlist = false;
-      } else {
-        await addWatchlist(id);
-        heroInWatchlist = true;
-      }
+      await toggleWl(id);
     } catch (e) {
       heroWlError = e.message || 'Gagal mengubah Daftar Saya.';
-    } finally {
-      heroWlBusy = false;
     }
   }
 
@@ -949,8 +920,8 @@
           <Hero
             item={h.title}
             firstEpisodeId={h.firstEp}
-            inWatchlist={heroInWatchlist}
-            wlBusy={heroWlBusy}
+            inWatchlist={$user ? $wlMap[h.title.id] : undefined}
+            wlBusy={!!$wlPending[h.title.id]}
             wlError={heroWlError}
             onToggleWatchlist={toggleHeroWatchlist}
           />
