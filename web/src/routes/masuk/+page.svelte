@@ -119,9 +119,9 @@
     {/if}
     <p class="muted small">
       Dengan masuk, kamu menyetujui
-      <a href="https://www.subsenpai.web.id/terms.html" rel="noreferrer">Ketentuan</a>
+      <a href="/terms">Ketentuan</a>
       dan
-      <a href="https://www.subsenpai.web.id/privacy.html" rel="noreferrer">Kebijakan Privasi</a>
+      <a href="/privacy">Kebijakan Privasi</a>
       SubSenpai.
     </p>
   </div>

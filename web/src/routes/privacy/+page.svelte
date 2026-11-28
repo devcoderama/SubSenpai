@@ -1,0 +1,105 @@
+<svelte:head><title>Kebijakan Privasi — SubSenpai</title></svelte:head>
+
+<div class="container legal">
+  <a class="back" href="/" on:click|preventDefault={() => history.back()}>← Kembali</a>
+  <div class="brand">SUB<span>SENPAI</span></div>
+  <h1>Kebijakan Privasi</h1>
+  <p class="date">Terakhir diperbarui: 28 November 2026</p>
+
+  <p>
+    SubSenpai adalah aplikasi Android dan web untuk menonton anime, donghua, dan film. Kebijakan
+    ini menjelaskan data apa yang kami kumpulkan saat kamu memakai SubSenpai, bagaimana data itu
+    digunakan, dan pilihan yang kamu miliki.
+  </p>
+
+  <h2>Data yang kami kumpulkan</h2>
+  <ul>
+    <li>
+      <strong>Data akun Google.</strong> Saat kamu masuk dengan Google, kami menerima nama, alamat
+      email, dan foto profil dari akun Google-mu. Data ini dipakai untuk membuat dan mengenali akun
+      SubSenpai-mu. Kami tidak pernah menerima kata sandi Google-mu.
+    </li>
+    <li>
+      <strong>Aktivitas di aplikasi.</strong> Daftar tontonan (watchlist), riwayat tonton, penilaian,
+      serta pesan yang kamu kirim di fitur chat dan komentar disimpan di server kami agar fitur-fitur
+      tersebut berfungsi dan tersinkron di perangkatmu.
+    </li>
+    <li>
+      <strong>Identitas perangkat.</strong> Untuk batas perangkat akun (maks 1 perangkat untuk akun
+      gratis, 2 perangkat untuk Premium) dan keamanan sesi, kami menyimpan pengenal perangkat dalam
+      bentuk hash (bukan nomor seri perangkat).
+    </li>
+    <li>
+      <strong>Data pembayaran.</strong> Pembayaran langganan diproses oleh penyedia gerbang pembayaran
+      (saat ini Tokopay). Kami menyimpan catatan status langganan dan referensi transaksi, tetapi
+      tidak menyimpan nomor kartu, kredensial e-wallet, atau data perbankanmu — data tersebut diproses
+      langsung oleh penyedia pembayaran.
+    </li>
+    <li>
+      <strong>Gambar yang kamu unggah.</strong> Gambar yang kamu kirim di chat disimpan melalui layanan
+      penyimpanan gambar pihak ketiga (ImgBB) dan ditautkan dari pesanmu.
+    </li>
+  </ul>
+
+  <h2>Bagaimana data digunakan</h2>
+  <ul>
+    <li>Menjalankan layanan: login, katalog, pemutar, watchlist, dan riwayat.</li>
+    <li>Mengelola status langganan premium dan voucher.</li>
+    <li>Menjaga keamanan dan mencegah penyalahgunaan (spam, tautan promosi di chat, akun bot).</li>
+    <li>Memahami penggunaan secara agregat untuk memperbaiki aplikasi.</li>
+  </ul>
+  <p>Kami <strong>tidak menjual</strong> data pribadimu kepada siapa pun.</p>
+
+  <h2>Berbagi data dengan pihak ketiga</h2>
+  <ul>
+    <li><strong>Google</strong> — untuk proses masuk (Sign-In) sesuai kebijakan Google.</li>
+    <li><strong>Tokopay</strong> — untuk memproses pembayaran langganan.</li>
+    <li><strong>ImgBB</strong> — untuk menyimpan gambar chat yang kamu unggah.</li>
+    <li>
+      <strong>Monetag</strong> — untuk menampilkan iklan di web bagi pengguna tamu dan gratis;
+      pengguna Premium tidak dimuatkan iklan sama sekali.
+    </li>
+  </ul>
+  <p>Di luar itu, data hanya dibagikan bila diwajibkan oleh hukum yang berlaku.</p>
+
+  <h2>Penyimpanan dan penghapusan</h2>
+  <p>
+    Data akun disimpan selama akunmu aktif. Kamu dapat meminta penghapusan akun beserta data terkait
+    (profil, watchlist, riwayat) dengan menghubungi kami melalui kanal kontak di bawah; permintaan
+    diproses paling lambat 30 hari.
+  </p>
+
+  <h2>Anak-anak</h2>
+  <p>
+    SubSenpai tidak ditujukan untuk anak di bawah 13 tahun. Konten dewasa di katalog disembunyikan
+    secara bawaan dan dapat diatur di profil.
+  </p>
+
+  <h2>Perubahan kebijakan</h2>
+  <p>
+    Bila kebijakan ini berubah secara material, perubahan akan diumumkan di aplikasi atau di halaman
+    ini beserta tanggal pembaruannya.
+  </p>
+
+  <h2>Kontak</h2>
+  <p>
+    Pertanyaan soal privasi dapat disampaikan kepada pengelola SubSenpai melalui aplikasi atau web
+    (menu Lainnya).
+  </p>
+
+  <footer>SubSenpai — <a href="/">Beranda</a> · <a href="/terms">Syarat Layanan</a></footer>
+</div>
+
+<style>
+  .legal { max-width: 720px; padding-top: 32px; padding-bottom: 64px; line-height: 1.65; }
+  .back { display: inline-block; margin-bottom: 20px; color: var(--muted); font-size: 14px; }
+  .back:hover { color: #fff; }
+  .brand { color: var(--red); font-weight: 800; letter-spacing: 2px; font-size: 20px; }
+  .brand span { color: #fff; }
+  h1 { font-size: 28px; margin: 12px 0 4px; }
+  h2 { font-size: 18px; margin: 28px 0 6px; color: #fff; }
+  p, li { color: #c9c9c9; font-size: 15px; }
+  .date { color: var(--muted); font-size: 13px; }
+  a { color: #ff5a52; }
+  footer { margin-top: 40px; border-top: 1px solid var(--border); padding-top: 16px; font-size: 13px; color: var(--muted); }
+</style>

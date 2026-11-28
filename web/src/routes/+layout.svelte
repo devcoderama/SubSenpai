@@ -98,6 +98,11 @@
         sumber masing-masing; SubSenpai tidak menyimpan video di server sendiri.
       </p>
       <p class="muted small">
+        <a href="/terms">Ketentuan</a>
+        •
+        <a href="/privacy">Kebijakan Privasi</a>
+      </p>
+      <p class="muted small">
         Unduh aplikasi Android di
         <a href="/unduh">subsenpai.web.id/unduh</a>
         • Komunitas:
