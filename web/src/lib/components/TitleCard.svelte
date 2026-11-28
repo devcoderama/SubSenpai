@@ -10,6 +10,8 @@
   export let sub = null;
   export let progress = null; // 0..1 — bar progres Lanjutkan Menonton (null = tak ada data)
 
+  $: progressPct = progress != null && progress > 0 ? Math.min(100, progress * 100) : 0;
+
   $: link = href || '/judul/' + item.id;
   $: detailHref = '/judul/' + item.id;
   $: typeLabel = item.type === 'donghua' ? 'Donghua' : item.type === 'anime' ? 'Anime' : 'Film';
@@ -88,8 +90,8 @@
         </a>
       </div>
     </div>
-    {#if progress != null && progress > 0}
-      <div class="progress" aria-hidden="true"><span style="width: {Math.min(100, progress * 100)}%"></span></div>
+    {#if progressPct > 0}
+      <div class="progress" aria-hidden="true"><span style="width: {progressPct}%"></span></div>
     {/if}
   </div>
   <div class="meta">
