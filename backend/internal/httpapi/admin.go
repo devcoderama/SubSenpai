@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -695,6 +696,42 @@ func validPlanID(id string) bool {
 		}
 	}
 	return true
+}
+
+// handleAdminPlanDelete: hapus paket premium. Ditolak bila masih ada
+// pelanggan dengan langganan aktif di paket itu — nonaktifkan saja
+// (is_active=false) supaya paket hilang dari toko tanpa mengganggu
+// pelanggan yang sudah bayar. Premium yang sudah aktif tidak dicabut.
+func (a *API) handleAdminPlanDelete(w http.ResponseWriter, r *http.Request) {
+	p, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+	var aktif int
+	if err := a.pool.QueryRow(ctx, `select count(*) from subscriptions where plan = $1 and status = 'active'`, id).Scan(&aktif); err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal memeriksa paket")
+		return
+	}
+	if aktif > 0 {
+		writeErr(w, http.StatusConflict, fmt.Sprintf("paket masih dipakai %d pelanggan aktif — nonaktifkan saja", aktif))
+		return
+	}
+	tag, err := a.pool.Exec(ctx, `delete from subscription_plans where id = $1`, id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal menghapus paket")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		writeErr(w, http.StatusNotFound, "paket tidak ditemukan")
+		return
+	}
+	_, _ = a.pool.Exec(ctx, `
+		insert into admin_logs (admin_id, action, target, detail)
+		values ($1::uuid, 'plan_delete', $2, $3)`,
+		p.ID, id, map[string]any{"pelanggan_aktif": aktif})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // handleAdminPlanUpdate: ubah harga/label/status aktif/harga asli/

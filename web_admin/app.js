@@ -449,7 +449,8 @@ async function pagePaket() {
       '<td><input type="number" min="0" max="100" value="' + (p.discount_percent || '') + '" placeholder="0" id="disc-' + esc(p.id) + '" style="width:70px"></td>' +
       '<td><input type="number" min="0" step="500" value="' + p.price + '" id="price-' + esc(p.id) + '" style="width:120px"></td>' +
       '<td><label class="switch"><input type="checkbox" id="active-' + esc(p.id) + '"' + (p.is_active ? ' checked' : '') + '><span class="slider"></span></label></td>' +
-      '<td><button class="btn small" data-save-plan="' + esc(p.id) + '">Simpan</button></td></tr>';
+      '<td><div class="row-actions"><button class="btn small" data-save-plan="' + esc(p.id) + '">Simpan</button>' +
+      '<button class="btn ghost small" data-del-plan="' + esc(p.id) + '" data-del-label="' + esc(p.label) + '">Hapus</button></div></td></tr>';
   }
   html += '</table></div>' +
     '<div class="card" style="margin-top:20px"><h2 style="margin-top:0">Tambah Paket</h2>' +
@@ -469,6 +470,7 @@ async function pagePaket() {
     const orig = parseInt($('orig-' + id).value, 10) || 0;
     const disc = parseInt($('disc-' + id).value, 10) || 0;
     if (orig > 0 && disc > 0) $('price-' + id).value = calcJual(orig, disc);
+    else if (orig > 0) $('price-' + id).value = orig;
   };
   document.querySelectorAll('button[data-save-plan]').forEach((el) => {
     const id = el.dataset.savePlan;
@@ -486,10 +488,20 @@ async function pagePaket() {
       toast(rr.status === 200 ? 'Paket ' + id + ' disimpan' : 'Gagal: ' + ((rr.body && rr.body.error) || rr.status));
     });
   });
+  document.querySelectorAll('button[data-del-plan]').forEach((el) => {
+    el.addEventListener('click', async () => {
+      const id = el.dataset.delPlan;
+      if (!confirm('Hapus paket ' + el.dataset.delLabel + ' (' + id + ')?\n\nPaket yang masih dipakai pelanggan aktif tidak bisa dihapus — nonaktifkan saja.')) return;
+      const rr = await api('/api/v1/admin/plans/' + encodeURIComponent(id), { method: 'DELETE' });
+      if (rr.status === 200) { toast('Paket ' + id + ' dihapus.'); pagePaket(); }
+      else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
+    });
+  });
   const recalcNew = () => {
     const orig = parseInt($('np-orig').value, 10) || 0;
     const disc = parseInt($('np-disc').value, 10) || 0;
     if (orig > 0 && disc > 0) $('np-price').value = calcJual(orig, disc);
+    else if (orig > 0) $('np-price').value = orig;
   };
   $('np-orig').addEventListener('input', recalcNew);
   $('np-disc').addEventListener('input', recalcNew);

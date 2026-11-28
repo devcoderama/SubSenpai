@@ -179,6 +179,7 @@ func (a *API) Router() http.Handler {
 			r.Get("/api/v1/admin/logs", a.handleAdminLogs)
 			r.Get("/api/v1/admin/system", a.handleAdminSystem)
 			r.Patch("/api/v1/admin/plans/{id}", a.handleAdminPlanUpdate)
+			r.Delete("/api/v1/admin/plans/{id}", a.handleAdminPlanDelete)
 			r.Get("/api/v1/me", a.handleMe)
 			r.Get("/api/v1/watchlist", a.handleWatchlistList)
 			r.Get("/api/v1/watchlist/{titleId}", a.handleWatchlistCheck)
