@@ -10,6 +10,7 @@
   import { searchQuery } from '$lib/search.js';
   import { getLocalHistory, fmtWhen } from '$lib/history.js';
   import Hero from '$lib/components/Hero.svelte';
+  import Top10Rail from '$lib/components/Top10Rail.svelte';
   import Rail from '$lib/components/Rail.svelte';
   import TitleCard from '$lib/components/TitleCard.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
@@ -1003,8 +1004,14 @@
       {#if continueWatching.length}
         <Rail title="Lanjutkan Menonton" items={continueWatching} moreHref="/riwayat" />
       {/if}
-      <!-- Urutan rel (28 Nov 2026, permintaan Rams): 10 rel, tiap rel
-           punya Lihat semua. -->
+      <!-- Top 10 Hari Ini (28 Nov 2026, rekomendasi no. 1): 10 judul
+           trending 24 jam (peringkat tontonan nyata), tanpa Lihat semua
+           karena daftarnya memang cuma 10. -->
+      {#if trending.length}
+        <Top10Rail items={trending.slice(0, 10)} />
+      {/if}
+      <!-- Urutan rel (28 Nov 2026, permintaan Rams): 11 rel (10 + Top 10),
+           tiap rel punya Lihat semua kecuali Top 10. -->
       <Rail title="Film" items={rails.film.slice(0, 12)} moreHref="/cari?type=film" />
       {#if filmYear.length}
         <Rail
