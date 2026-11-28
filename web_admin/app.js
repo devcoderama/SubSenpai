@@ -459,15 +459,28 @@ async function pagePaket() {
 
 /* ----- Pengguna ----- */
 async function pagePengguna() {
+  let userFilter = '';
+  let userCache = [];
   $('pageBody').innerHTML =
     '<div class="toolbar"><input type="search" id="userQ" placeholder="Cari email atau nama…">' +
-    '<button class="btn" id="userSearchBtn">Cari</button></div><div id="userList"><p class="muted">Memuat…</p></div>';
-  const load = async () => {
-    const q = encodeURIComponent($('userQ').value.trim());
-    const r = await api('/api/v1/admin/users?limit=100&q=' + q);
-    if (r.status !== 200) { $('userList').innerHTML = '<p class="error">Gagal memuat pengguna.</p>'; return; }
+    '<button class="btn" id="userSearchBtn">Cari</button></div>' +
+    '<div class="chiprow" id="userFilters"></div><div id="userList"><p class="muted">Memuat…</p></div>';
+  const renderUsers = () => {
+    const total = userCache.length;
+    const nPrem = userCache.filter((u) => u.premium_aktif).length;
+    const chip = (val, lbl, n) => '<button class="fchip' + (userFilter === val ? ' on' : '') +
+      '" data-user-filter="' + val + '">' + lbl + ' (' + n + ')</button>';
+    $('userFilters').innerHTML = chip('', 'Semua', total) + chip('premium', 'Premium', nPrem) + chip('free', 'Biasa', total - nPrem);
+    document.querySelectorAll('[data-user-filter]').forEach((b) => b.addEventListener('click', () => {
+      userFilter = b.dataset.userFilter; renderUsers();
+    }));
+    const list = userCache.filter((u) => !userFilter || (userFilter === 'premium' ? u.premium_aktif : !u.premium_aktif));
+    if (!list.length) {
+      $('userList').innerHTML = '<p class="muted">Tidak ada pengguna' + (userFilter ? ' ' + (userFilter === 'premium' ? 'premium' : 'biasa') : '') + '.</p>';
+      return;
+    }
     let html = '<div class="tscroll"><table><tr><th>Pengguna</th><th>Role</th><th>Status</th><th>Premium</th><th>Detail</th></tr>';
-    for (const u of r.body.users || []) {
+    for (const u of list) {
       html += '<tr><td>' + (u.avatar_url ? '<img class="avatar" src="' + esc(u.avatar_url) + '" referrerpolicy="no-referrer" alt="">' : '') +
         esc(u.display_name || '(tanpa nama)') + '<div class="muted small">' + esc(u.email) + '</div></td>' +
         '<td><span class="badge ' + esc(u.role) + '">' + esc(u.role) + '</span></td>' +
@@ -476,6 +489,13 @@ async function pagePengguna() {
         '<td><a class="btn ghost small" href="#/pengguna-detail?id=' + esc(u.id) + '">Detail</a></td></tr>';
     }
     $('userList').innerHTML = html + '</table></div>';
+  };
+  const load = async () => {
+    const q = encodeURIComponent($('userQ').value.trim());
+    const r = await api('/api/v1/admin/users?limit=100&q=' + q);
+    if (r.status !== 200) { $('userList').innerHTML = '<p class="error">Gagal memuat pengguna.</p>'; return; }
+    userCache = r.body.users || [];
+    renderUsers();
   };
   $('userSearchBtn').addEventListener('click', load);
   $('userQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') load(); });
@@ -564,6 +584,7 @@ function trxTable(list) {
 }
 /* ----- Transaksi (dengan edit & hapus) ----- */
 let trxCache = [];
+let trxFilter = '';
 let planCache = [];
 async function pageTransaksi() {
   $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
@@ -574,15 +595,30 @@ async function pageTransaksi() {
   if (r.status !== 200) return bodyError(r);
   trxCache = r.body.transactions || [];
   planCache = rp2.status === 200 ? (rp2.body.plans || []) : [];
+  trxFilter = '';
   renderTrx(null);
 }
 function renderTrx(editId) {
   if (!trxCache.length) { $('pageBody').innerHTML = '<p class="muted">Belum ada transaksi.</p>'; return; }
+  const cnt = (s) => trxCache.filter((t) => t.status === s).length;
+  const chip = (val, lbl, n) => '<button class="fchip' + (trxFilter === val ? ' on' : '') +
+    '" data-trx-filter="' + val + '">' + lbl + ' (' + n + ')</button>';
+  const chips = '<div class="chiprow">' + chip('', 'Semua', trxCache.length) +
+    chip('paid', 'paid', cnt('paid')) + chip('pending', 'pending', cnt('pending')) +
+    chip('expired', 'expired', cnt('expired')) + '</div>';
+  const bindTrxChips = () => document.querySelectorAll('[data-trx-filter]').forEach((b) =>
+    b.addEventListener('click', () => { trxFilter = b.dataset.trxFilter; renderTrx(null); }));
+  const list = trxCache.filter((t) => !trxFilter || t.status === trxFilter);
   let html = '<p class="muted">Mengubah status menjadi <b>paid</b> mengaktifkan hak pengguna ' +
     '(premium diperpanjang / voucher bisa ditukar), sama seperti callback gateway. ' +
-    'Menghapus transaksi tidak mencabut premium yang sudah terlanjur aktif.</p>' +
-    '<div class="tscroll"><table><tr><th>Waktu</th><th>Pengguna</th><th>Keperluan</th><th>Provider</th><th>Jumlah</th><th>Status</th><th>Aksi</th></tr>';
-  for (const t of trxCache) {
+    'Menghapus transaksi tidak mencabut premium yang sudah terlanjur aktif.</p>' + chips;
+  if (!list.length) {
+    $('pageBody').innerHTML = html + '<p class="muted">Tidak ada transaksi berstatus ' + esc(trxFilter) + '.</p>';
+    bindTrxChips();
+    return;
+  }
+  html += '<div class="tscroll"><table><tr><th>Waktu</th><th>Pengguna</th><th>Keperluan</th><th>Provider</th><th>Jumlah</th><th>Status</th><th>Aksi</th></tr>';
+  for (const t of list) {
     if (t.id === editId) {
       const planOpts = [''].concat(planCache.map((p) => p.id)).map((id) =>
         '<option value="' + esc(id) + '"' + (id === t.plan ? ' selected' : '') + '>' + esc(id || '(tanpa paket)') + '</option>').join('');
@@ -607,6 +643,7 @@ function renderTrx(editId) {
     }
   }
   $('pageBody').innerHTML = html + '</table></div>';
+  bindTrxChips();
   document.querySelectorAll('button[data-trx-edit]').forEach((el) =>
     el.addEventListener('click', () => renderTrx(el.dataset.trxEdit)));
   document.querySelectorAll('button[data-trx-cancel]').forEach((el) =>
@@ -704,15 +741,34 @@ async function pageVoucher() {
     if (all) all.addEventListener('click', () => copyText(codes.join('\n'), 'Semua kode disalin.'));
     loadVoucherList();
   });
+  vcFilter = '';
   loadVoucherList();
 }
 
+let vcFilter = '';
+let vcCache = [];
 async function loadVoucherList() {
   const r = await api('/api/v1/admin/vouchers?limit=100');
   if (r.status !== 200) { $('vc-list').innerHTML = '<p class="error">Gagal memuat voucher.</p>'; return; }
-  const list = r.body.vouchers || [];
-  if (!list.length) { $('vc-list').innerHTML = '<p class="muted">Belum ada voucher.</p>'; return; }
-  let html = '<div class="tscroll"><table><tr><th>Kode</th><th>Durasi</th><th>Sumber</th><th>Untuk</th><th>Status</th><th>Ditukar oleh</th><th>Dibuat</th><th>Aksi</th></tr>';
+  vcCache = r.body.vouchers || [];
+  renderVcList();
+}
+function renderVcList() {
+  const cnt = (s) => vcCache.filter((v) => v.status === s).length;
+  const chip = (val, lbl, n) => '<button class="fchip' + (vcFilter === val ? ' on' : '') +
+    '" data-vc-filter="' + val + '">' + lbl + ' (' + n + ')</button>';
+  const chips = '<div class="chiprow">' + chip('', 'Semua', vcCache.length) +
+    chip('active', 'active', cnt('active')) + chip('redeemed', 'redeemed', cnt('redeemed')) +
+    chip('expired', 'expired', cnt('expired')) + '</div>';
+  const bindVcChips = () => document.querySelectorAll('[data-vc-filter]').forEach((b) =>
+    b.addEventListener('click', () => { vcFilter = b.dataset.vcFilter; renderVcList(); }));
+  const list = vcCache.filter((v) => !vcFilter || v.status === vcFilter);
+  if (!list.length) {
+    $('vc-list').innerHTML = chips + '<p class="muted">Belum ada voucher' + (vcFilter ? ' berstatus ' + esc(vcFilter) : '') + '.</p>';
+    bindVcChips();
+    return;
+  }
+  let html = chips + '<div class="tscroll"><table><tr><th>Kode</th><th>Durasi</th><th>Sumber</th><th>Untuk</th><th>Status</th><th>Ditukar oleh</th><th>Dibuat</th><th>Aksi</th></tr>';
   for (const v of list) {
     html += '<tr><td><code>' + esc(v.code) + '</code></td>' +
       '<td>' + v.duration_days + ' hari</td><td>' + esc(v.source) + '</td>' +
@@ -726,6 +782,7 @@ async function loadVoucherList() {
       '</div></td></tr>';
   }
   $('vc-list').innerHTML = html + '</table></div>';
+  bindVcChips();
   document.querySelectorAll('button[data-vc-copy]').forEach((el) =>
     el.addEventListener('click', () => copyText(el.dataset.vcCopy, 'Kode disalin.')));
   document.querySelectorAll('button[data-vc-del]').forEach((el) =>
