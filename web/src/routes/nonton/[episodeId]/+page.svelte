@@ -50,8 +50,28 @@
   // absolute di dalam .actions-row yang overflow-x:auto, sehingga
   // terpotong tak terlihat — tombol tampak "tidak bisa diklik".
   let popPos = { top: 0, maxH: 400, left: 0 };
+  let lastPopRect = null; // rect tombol pemicu popover terakhir
+
+  // v4: pilih posisi popover dari tinggi AKTUAL panel (scrollHeight =
+  // tinggi penuh konten meski dibatasi maxH): di bawah tombol bila muat
+  // penuh, di atas bila muat penuh, bila keduanya tak muat tetap di
+  // bawah + gulir internal. Idempotent — aman dipanggil berulang.
+  function flipPopIfNeeded() {
+    const el = document.querySelector('.pop');
+    if (!el || !lastPopRect) return;
+    const h = el.scrollHeight;
+    const r = lastPopRect;
+    const belowTop = Math.max(8, Math.min(r.bottom + 8, window.innerHeight - 160));
+    const aboveTop = r.top - h - 8;
+    let top;
+    if (belowTop + h <= window.innerHeight - 8) top = belowTop;
+    else if (aboveTop >= 8) top = aboveTop;
+    else top = belowTop;
+    popPos = { ...popPos, top, maxH: Math.max(120, window.innerHeight - top - 8) };
+  }
   async function togglePop(which, ev) {
     const r = ev.currentTarget.getBoundingClientRect();
+    lastPopRect = r;
     // Panel harus muat di sisa ruang viewport di bawah tombol (temuan
     // verifikasi #8, 09:57 — v1 gagal: max-height tetap 100dvh tak
     // membatasi panel setinggi konten). maxH dihitung per buka supaya
@@ -66,21 +86,8 @@
     subOpen = which === 'sub' ? !subOpen : false;
     shareOpen = which === 'share' ? !shareOpen : false;
     partyOpen = which === 'party' ? !partyOpen : false;
-    // v3 (temuan 10:05): bila panel tetap menjulur keluar bawah dan muat
-    // di atas tombol, balik ke atas tombol supaya seluruh isinya terlihat
-    // sekaligus. scrollHeight = tinggi penuh konten meski sedang dibatasi
-    // maxH. Bila di atas pun tak muat, tetap di bawah + gulir internal.
-    const open = serverOpen || subOpen || shareOpen || partyOpen;
-    if (!open) return;
     await tick();
-    const el = document.querySelector('.pop');
-    if (el) {
-      const h = el.scrollHeight;
-      if (popPos.top + h > window.innerHeight - 8 && r.top - h - 8 >= 8) {
-        const top = r.top - h - 8;
-        popPos = { ...popPos, top, maxH: Math.max(120, window.innerHeight - top - 8) };
-      }
-    }
+    flipPopIfNeeded();
   }
   let showReport = false;
   let reportReason = 'link_rusak';
@@ -188,6 +195,14 @@
   function onPlayState(e) {
     if (!partyCode || !isDirect || !partySocket) return;
     partySocket.sync(partyCode, e.detail.action, Math.floor(e.detail.position || 0));
+  }
+
+  // Reposisi popover setiap kali isinya berubah tinggi (v4): panel party
+  // tumbuh sesudah buat/gabung ruang; panel server tumbuh sesudah
+  // playback termuat. void(...) mendaftarkan variabel sebagai dependensi.
+  $: if (serverOpen || subOpen || shareOpen || partyOpen) {
+    void (partyCode, partyStatus, partyGone, playback);
+    void tick().then(flipPopIfNeeded);
   }
 
   // Meta ala aplikasi — bedanya dengan Detail, status di sini mentah
