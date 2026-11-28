@@ -99,7 +99,9 @@ img { display: block; }
 /* Rel horizontal yang bisa digeser (seperti rel aplikasi). */
 .rail {
   display: flex; gap: 12px; overflow-x: auto;
-  padding-bottom: 8px; scrollbar-width: thin;
+  /* Ruang vertikal supaya kartu yang membesar saat hover (TitleCard
+     scale 1.05, 28 Nov 2026) tidak terpotong tepi atas/bawah rel. */
+  padding: 8px 0 12px; scrollbar-width: thin;
 }
 .rail > * { flex: 0 0 auto; width: 140px; }
 @media (min-width: 900px) { .rail > * { width: 168px; } }
