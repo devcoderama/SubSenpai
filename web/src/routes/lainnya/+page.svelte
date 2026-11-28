@@ -80,6 +80,7 @@
     <!-- Tamu diarahkan ke /masuk; pengguna login ke /daftar-saya. -->
     <a href={$user ? '/daftar-saya' : '/masuk'}><span class="ic"><i class="fa-solid fa-bookmark"></i></span><span class="lbl">Daftar Saya</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
     <a href={$user ? '/perangkat' : '/masuk'}><span class="ic"><i class="fa-solid fa-mobile-screen"></i></span><span class="lbl">Perangkat</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
+    <a href={$user ? '/riwayat-transaksi' : '/masuk'}><span class="ic"><i class="fa-solid fa-receipt"></i></span><span class="lbl">Riwayat Transaksi</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
     <a href="/jadwal"><span class="ic"><i class="fa-solid fa-calendar-days"></i></span><span class="lbl">Jadwal Rilis</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
     <a href="/cari"><span class="ic"><i class="fa-solid fa-magnifying-glass"></i></span><span class="lbl">Cari &amp; Genre</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
     <a href="https://discord.gg/yJebKEGNh" rel="noreferrer"

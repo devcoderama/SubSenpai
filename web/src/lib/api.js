@@ -393,6 +393,12 @@ export const getMyVouchers = () => api('/api/v1/vouchers/mine');
 export const paymentStatus = (sessionId) =>
   api('/api/v1/payments/status/' + encodeURIComponent(sessionId));
 
+// Riwayat transaksi (sesi pembayaran) milik user — GET
+// /api/v1/transactions → {transactions: [{id, purpose, provider,
+// plan_id, plan_label, amount, status, created_at, expires_at}]}
+// (maks 50, terbaru dulu).
+export const getTransactions = () => api('/api/v1/transactions');
+
 export const adUnlockStart = (episodeId) =>
   api(`/api/v1/episodes/${encodeURIComponent(episodeId)}/ad-unlock/start`, { method: 'POST' });
 
