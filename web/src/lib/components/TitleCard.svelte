@@ -8,7 +8,7 @@
   export let item;
   export let href = null;
   export let sub = null;
-  export let progress = null; // 0..1 — bar progres Lanjutkan Menonton (null = tak ada data)
+  export let progress = /** @type {number | null} */ (null); // 0..1 — bar progres Lanjutkan Menonton (null = tak ada data)
 
   $: progressPct = progress != null && progress > 0 ? Math.min(100, progress * 100) : 0;
 
