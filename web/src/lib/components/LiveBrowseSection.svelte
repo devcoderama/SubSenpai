@@ -106,6 +106,27 @@
     }
   }
 
+  // Muat otomatis saat digulir ke bawah (permintaan Rams 28 Nov
+  // 2026 — tombol "Muat live lainnya" dicabut): sentinel di ujung
+  // seksi; IntersectionObserver memanggil loadMoreLive begitu
+  // sentinel masuk viewport (+600px). Penjaga di loadMoreLive
+  // (hasMore + loadingMore) mencegah panggilan ganda; sentinel
+  // hilang sendiri saat hasMore habis.
+  function sentinelAction(node) {
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) loadMoreLive();
+      },
+      { rootMargin: '600px 0px' }
+    );
+    io.observe(node);
+    return {
+      destroy() {
+        io.disconnect();
+      }
+    };
+  }
+
   async function loadMoreLive() {
     if (!hasMore || loadingMore) return;
     const s = seq;
@@ -218,10 +239,8 @@
         {/each}
       </div>
       {#if hasMore}
-        <div class="more">
-          <button class="btn ghost" on:click={loadMoreLive} disabled={loadingMore}>
-            {loadingMore ? 'Memuat…' : 'Muat live lainnya'}
-          </button>
+        <div class="more" use:sentinelAction>
+          {#if loadingMore}<span class="muted">Memuat…</span>{/if}
         </div>
       {/if}
     {/if}
@@ -260,5 +279,5 @@
   }
   .live-title { display: block; font-size: 14px; line-height: 1.35; margin-top: 6px; }
   .live-card .muted { display: block; font-size: 12px; margin-top: 2px; }
-  .more { text-align: center; margin: 20px 0 8px; }
+  .more { text-align: center; margin: 20px 0 8px; min-height: 24px; }
 </style>
