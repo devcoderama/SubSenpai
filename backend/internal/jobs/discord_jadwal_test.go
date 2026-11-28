@@ -3,12 +3,19 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"subsenpai/backend/internal/db"
+	"subsenpai/backend/internal/discord"
 	"subsenpai/backend/internal/sources"
 	"subsenpai/backend/internal/telegram"
 )
@@ -49,97 +56,114 @@ func TestJadwalBlockKaya(t *testing.T) {
 	}
 }
 
-func TestPackJadwal(t *testing.T) {
-	blocks := []string{
-		strings.Repeat("a", 600), strings.Repeat("b", 600),
-		strings.Repeat("c", 600), strings.Repeat("d", 100),
-	}
-	msgs := packJadwal("HEADER", blocks, "FOOTER", 1700)
-	if len(msgs) < 2 {
-		t.Fatalf("harus terpecah jadi >=2 pesan, dapat %d", len(msgs))
-	}
-	for i, m := range msgs {
-		if len([]rune(m)) > 1700 {
-			t.Errorf("pesan %d melebihi batas: %d", i, len([]rune(m)))
-		}
-	}
-	if !strings.HasPrefix(msgs[0], "HEADER") {
-		t.Errorf("pesan pertama harus diawali header: %.20q", msgs[0])
-	}
-	if !strings.HasSuffix(msgs[len(msgs)-1], "FOOTER") {
-		t.Errorf("pesan terakhir harus diakhiri footer")
-	}
-	// Tanpa blok: header + footer saja dalam satu pesan.
-	satu := packJadwal("HEADER", nil, "FOOTER", 1700)
-	if len(satu) != 1 || !strings.Contains(satu[0], "HEADER") || !strings.Contains(satu[0], "FOOTER") {
-		t.Errorf("kasus kosong janggal: %v", satu)
-	}
-}
-
-// TestKirimJadwalTelegram: jadwal Telegram terkirim sebagai
-// header + 1 pesan per judul + footer, semuanya ke topik jadwal;
-// hanya pesan judul & footer yang pratinjaunya menyala (header
-// dikirim dengan Send biasa).
-func TestKirimJadwalTelegram(t *testing.T) {
-	var bodies []map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		var p map[string]any
-		if err := json.Unmarshal(raw, &p); err != nil {
-			t.Errorf("payload bukan JSON: %v", err)
-		}
-		bodies = append(bodies, p)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":1}}`))
-	}))
-	defer srv.Close()
-	old := telegram.BaseURL
-	telegram.BaseURL = srv.URL
-	defer func() { telegram.BaseURL = old }()
-
-	blocks := []string{
-		"• **Judul A** — Ep 1\n▶️ Nonton Ep 1: https://www.subsenpai.web.id/nonton/ep-a",
-		"• **Judul B** — Ep 2\n▶️ Nonton Ep 2: https://www.subsenpai.web.id/nonton/ep-b",
-	}
-	headerID, err := kirimJadwalTelegram(context.Background(), telegram.New("token-uji"),
-		"-100123", "20730", "🗓️ **Jadwal Rilis — Selasa, 24 November 2026**",
-		blocks, "Selamat menonton di SubSenpai! 🍿 https://www.subsenpai.web.id")
-	if err != nil {
-		t.Fatalf("kirimJadwalTelegram: %v", err)
-	}
-	if headerID != 1 {
-		t.Fatalf("id header harus 1 (stub), dapat %d", headerID)
-	}
-	if len(bodies) != 4 {
-		t.Fatalf("harus 4 pesan (header + 2 judul + footer), dapat %d", len(bodies))
-	}
-	wants := []struct {
-		muat    string
-		preview bool
+// TestParseJadwalJam: hanya "HH:MM" yang dijadwalkan per slot;
+// "Sudah Rilis"/"??"/kosong/tak valid masuk batch pagi.
+func TestParseJadwalJam(t *testing.T) {
+	cases := []struct {
+		in     string
+		hh, mm int
+		ok     bool
 	}{
-		{"Jadwal Rilis — Selasa, 24 November 2026", false},
-		{"Judul A", true},
-		{"Judul B", true},
-		{"Selamat menonton", true},
+		{"05:00", 5, 0, true},
+		{"5:00", 5, 0, true},
+		{"16:26", 16, 26, true},
+		{"23:59", 23, 59, true},
+		{"Sudah Rilis", 0, 0, false},
+		{"??", 0, 0, false},
+		{"", 0, 0, false},
+		{"24:00", 0, 0, false},
+		{"12:60", 0, 0, false},
+		{"jam 05:00", 0, 0, false},
 	}
-	for i, w := range wants {
-		p := bodies[i]
-		if p["message_thread_id"] != float64(20730) {
-			t.Errorf("pesan %d: thread id janggal: %v", i, p)
-		}
-		if !strings.Contains(p["text"].(string), w.muat) {
-			t.Errorf("pesan %d: teks tidak memuat %q: %v", i, w.muat, p["text"])
-		}
-		if got := p["disable_web_page_preview"] == false; got != w.preview {
-			t.Errorf("pesan %d: pratinjau menyala = %v, mau %v", i, got, w.preview)
+	for _, c := range cases {
+		hh, mm, ok := parseJadwalJam(c.in)
+		if hh != c.hh || mm != c.mm || ok != c.ok {
+			t.Errorf("parseJadwalJam(%q) = %d:%d,%v; mau %d:%d,%v",
+				c.in, hh, mm, ok, c.hh, c.mm, c.ok)
 		}
 	}
 }
 
-// Grup jadwal kedua (permintaan Rams 2026-11-25): helper yang sama
-// mengirim ke grup + topik berbeda dengan isi pesan yang sama —
-// chat_id grup baru dan thread topik barunya harus tepat.
-func TestKirimJadwalTelegramGrup2(t *testing.T) {
+// TestSusunJadwalHariIni: urutan kirim = tanpa jam dulu, lalu
+// jam naik; yang sudah tiba waktunya saja yang due.
+func TestSusunJadwalHariIni(t *testing.T) {
+	loc := time.FixedZone("WIB", 7*3600)
+	now := time.Date(2026, 11, 28, 5, 30, 0, 0, loc) // Sabtu 05:30 WIB
+	enrich := func(string) (jadwalMeta, bool) { return jadwalMeta{}, false }
+	anime := []sources.ScheduleGroup{{
+		Day: "Sabtu",
+		Items: []sources.ScheduleItem{
+			{Title: "Anime Pagi", Slug: "anime-pagi", Time: "05:00", Episode: 1},
+			{Title: "Anime Sore", Slug: "anime-sore", Time: "16:00", Episode: 2},
+			{Title: "Anime Rilis", Slug: "anime-rilis", Time: "Sudah Rilis", Episode: 3},
+		},
+	}, {
+		Day:   "Jumat",
+		Items: []sources.ScheduleItem{{Title: "Kemarin", Slug: "kemarin", Time: "05:00", Episode: 1}},
+	}}
+	donghua := []sources.ScheduleGroup{{
+		Day: "Sabtu",
+		Items: []sources.ScheduleItem{
+			{Title: "Donghua Acak", Slug: "donghua-acak", Time: "??", Episode: 1},
+			{Title: "Donghua Siang", Slug: "donghua-siang", Time: "12:00", Episode: 4},
+		},
+	}}
+	items := susunJadwalHariIni("Sabtu", now, loc, enrich, anime, donghua)
+	if len(items) != 5 {
+		t.Fatalf("harus 5 item hari ini, dapat %d", len(items))
+	}
+	// Urutan: tanpa jam (rilis, acak — urut slug), lalu 05:00, 12:00, 16:00.
+	wantOrder := []string{"anime-rilis", "donghua-acak", "anime-pagi", "donghua-siang", "anime-sore"}
+	for i, w := range wantOrder {
+		if items[i].slug != w {
+			t.Errorf("urutan [%d] = %q, mau %q", i, items[i].slug, w)
+		}
+	}
+	// Tiap pesan membawa label seksinya sendiri (pesan berdiri sendiri).
+	if !strings.HasPrefix(items[0].pesan, "**🎌 Anime**") {
+		t.Errorf("pesan anime harus diawali label seksi: %.40q", items[0].pesan)
+	}
+	if !strings.HasPrefix(items[1].pesan, "**🐉 Donghua**") {
+		t.Errorf("pesan donghua harus diawali label seksi: %.40q", items[1].pesan)
+	}
+	due := jadwalDue(items, now)
+	if len(due) != 3 {
+		t.Fatalf("jam 05:30 harus 3 due (tanpa jam + 05:00), dapat %d", len(due))
+	}
+	for _, d := range due {
+		if d.slug == "anime-sore" || d.slug == "donghua-siang" {
+			t.Errorf("judul jam %s belum boleh due jam 05:30", d.slug)
+		}
+	}
+	// Jam 16:30: semua due.
+	late := jadwalDue(items, now.Add(11*time.Hour))
+	if len(late) != 5 {
+		t.Errorf("jam 16:30 harus 5 due, dapat %d", len(late))
+	}
+}
+
+// TestRetryAfterDariError: angka retry_after dibaca dari badan
+// error 429 Telegram (int) maupun Discord (float).
+func TestRetryAfterDariError(t *testing.T) {
+	cases := []struct {
+		err  error
+		want time.Duration
+	}{
+		{fmt.Errorf(`telegram: status 429: {"ok":false,"error_code":429,"description":"Too Many Requests: retry after 42","parameters":{"retry_after":42}}`), 42 * time.Second},
+		{fmt.Errorf(`discord: status 429: {"message": "You are being rate limited.", "retry_after": 1.5}`), 1500 * time.Millisecond},
+		{fmt.Errorf("telegram: status 500: boom"), 0},
+		{nil, 0},
+	}
+	for _, c := range cases {
+		if got := retryAfterDariError(c.err); got != c.want {
+			t.Errorf("retryAfterDariError(%v) = %v, mau %v", c.err, got, c.want)
+		}
+	}
+}
+
+// TestKirimJadwalJudulTelegram: satu judul = SATU request
+// SendPreview (pratinjau menyala) ke topik jadwal yang tepat.
+func TestKirimJadwalJudulTelegram(t *testing.T) {
 	var bodies []map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
@@ -149,32 +173,108 @@ func TestKirimJadwalTelegramGrup2(t *testing.T) {
 		}
 		bodies = append(bodies, p)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":1}}`))
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":7}}`))
 	}))
 	defer srv.Close()
 	old := telegram.BaseURL
 	telegram.BaseURL = srv.URL
 	defer func() { telegram.BaseURL = old }()
 
-	blocks := []string{"• **Judul A** — Ep 1\n▶️ Nonton Ep 1: https://www.subsenpai.web.id/nonton/ep-a"}
-	headerID, err := kirimJadwalTelegram(context.Background(), telegram.New("token-uji"),
-		"-1002084839985", "65332", "🗓️ **Jadwal Rilis — Kamis, 26 November 2026**",
-		blocks, "Selamat menonton di SubSenpai! 🍿 https://www.subsenpai.web.id")
+	err := kirimJadwalJudulTelegram(context.Background(), telegram.New("token-uji"),
+		"-100123", "20730", "**🎌 Anime**\n\n• **Judul A** — Ep 1 • 05:00")
 	if err != nil {
-		t.Fatalf("kirimJadwalTelegram grup 2: %v", err)
+		t.Fatalf("kirimJadwalJudulTelegram: %v", err)
 	}
-	if headerID != 1 {
-		t.Fatalf("id header grup 2 harus 1 (stub), dapat %d", headerID)
+	if len(bodies) != 1 {
+		t.Fatalf("harus 1 pesan, dapat %d", len(bodies))
 	}
-	if len(bodies) != 3 {
-		t.Fatalf("harus 3 pesan (header + 1 judul + footer), dapat %d", len(bodies))
+	p := bodies[0]
+	if p["message_thread_id"] != float64(20730) {
+		t.Errorf("thread id janggal: %v", p["message_thread_id"])
 	}
-	for i, p := range bodies {
-		if p["chat_id"] != "-1002084839985" {
-			t.Errorf("pesan %d: chat_id janggal: %v", i, p["chat_id"])
+	if p["disable_web_page_preview"] != false {
+		t.Errorf("pratinjau harus menyala (disable_web_page_preview=false)")
+	}
+	if !strings.Contains(p["text"].(string), "Judul A") {
+		t.Errorf("teks tidak memuat judul: %v", p["text"])
+	}
+}
+
+// TestKirimJadwalJudulDiscord: satu judul = SATU request ke channel
+// yang tepat dengan header otorisasi bot.
+func TestKirimJadwalJudulDiscord(t *testing.T) {
+	var bodies []map[string]string
+	var auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		raw, _ := io.ReadAll(r.Body)
+		var p map[string]string
+		if err := json.Unmarshal(raw, &p); err != nil {
+			t.Errorf("payload bukan JSON: %v", err)
 		}
-		if p["message_thread_id"] != float64(65332) {
-			t.Errorf("pesan %d: thread id janggal: %v", i, p["message_thread_id"])
-		}
+		bodies = append(bodies, p)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"1"}`))
+	}))
+	defer srv.Close()
+	old := discord.BaseURL
+	discord.BaseURL = srv.URL
+	defer func() { discord.BaseURL = old }()
+
+	err := kirimJadwalJudulDiscord(context.Background(), discord.New("token-uji"),
+		"chan-1", "**🎌 Anime**\n\n• **Judul A** — Ep 1 • 05:00")
+	if err != nil {
+		t.Fatalf("kirimJadwalJudulDiscord: %v", err)
+	}
+	if len(bodies) != 1 {
+		t.Fatalf("harus 1 pesan, dapat %d", len(bodies))
+	}
+	if auth != "Bot token-uji" {
+		t.Errorf("Authorization janggal: %q", auth)
+	}
+	if !strings.Contains(bodies[0]["content"], "Judul A") {
+		t.Errorf("content tidak memuat judul: %v", bodies[0])
+	}
+}
+
+// TestJadwalNotifiedLive: penanda per judul di tabel jadwal_notified
+// (migrasi 0027) — belum ditandai -> tandai -> sudah ditandai;
+// tandai ulang aman (idempotent, tanpa error).
+//
+// Jalan dengan: SUBSENPAI_LIVE_TEST=1 + DATABASE_URL.
+func TestJadwalNotifiedLive(t *testing.T) {
+	if os.Getenv("SUBSENPAI_LIVE_TEST") != "1" {
+		t.Skip("khusus uji hidup")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := db.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrasi: %v", err)
+	}
+	kanal, hari, slug := "telegram", "2000-01-01", "uji-jadwal-dobel"
+	defer pool.Exec(ctx, `delete from jadwal_notified where channel = $1 and day = $2 and slug = $3`,
+		kanal, hari, slug)
+	if jadwalSudahTerkirim(ctx, pool, kanal, hari, slug) {
+		t.Fatal("sebelum ditandai harus belum terkirim")
+	}
+	jadwalTandaiTerkirim(ctx, pool, kanal, hari, slug)
+	if !jadwalSudahTerkirim(ctx, pool, kanal, hari, slug) {
+		t.Fatal("sesudah ditandai harus sudah terkirim")
+	}
+	jadwalTandaiTerkirim(ctx, pool, kanal, hari, slug) // ulang: aman
+	if !jadwalSudahTerkirim(ctx, pool, kanal, hari, slug) {
+		t.Fatal("tandai ulang tidak boleh menghapus penanda")
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `select count(*) from jadwal_notified
+		where channel = $1 and day = $2 and slug = $3`, kanal, hari, slug).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("harus tepat 1 baris penanda, dapat %d", n)
 	}
 }

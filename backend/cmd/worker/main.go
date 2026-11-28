@@ -73,9 +73,6 @@ func main() {
 		if err := jobs.PurgePosterless(ctx, pool); err != nil {
 			log.Printf("purge poster: %v", err)
 		}
-		// Jadwal rilis harian ke Discord komunitas (sekali sehari,
-		// penanda tanggal di app_settings; no-op bila token kosong).
-		jobs.PostDailyScheduleToDiscord(ctx, pool, cfg)
 		// Pengumuman update APK otomatis: versi rilis GitHub
 		// terbaru yang belum diumumkan diposting ke #update-apk
 		// (penanda versi di app_settings; no-op bila token kosong).
@@ -119,6 +116,23 @@ func main() {
 				return
 			case <-payTicker.C:
 				runPayments()
+			}
+		}
+	}()
+	// Ticker jadwal rilis: pengiriman per judul harus tepat waktu
+	// (sesudah jam rilis, WIB) — tidak bisa menunggu akhir siklus
+	// katalog yang lamanya puluhan menit. Goroutine sendiri seperti
+	// payTicker; penanda per judul di jadwal_notified membuat
+	// pemanggilan ganda aman (idempotent).
+	go func() {
+		jadwalTicker := time.NewTicker(5 * time.Minute)
+		defer jadwalTicker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-jadwalTicker.C:
+				jobs.PostJadwalRilis(ctx, pool, cfg)
 			}
 		}
 	}()

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,9 +18,28 @@ import (
 	"subsenpai/backend/internal/telegram"
 )
 
-const discordJadwalLastDateKey = "discord_jadwal_last_date"
-const telegramJadwalLastDateKey = "telegram_jadwal_last_date"
-const telegramJadwalLastDateKey2 = "telegram_jadwal_last_date_2"
+// Pengiriman jadwal rilis per judul per slot waktu (perbaikan
+// 2026-11-28, permintaan Rams): tiap judul dikirim SATU pesan,
+// tepat sesudah jam rilisnya (WIB) — bukan lagi digest sehari penuh
+// sekali jalan. Penanda per judul per kanal di tabel jadwal_notified
+// (migrasi 0027): kirim yang gagal tidak menandai apa pun, jadi
+// siklus berikutnya hanya mengulang judul yang gagal itu, bukan
+// sehari penuh dari awal. Header harian memakai slug "__header__"
+// di tabel yang sama.
+const jadwalHeaderSlug = "__header__"
+
+const (
+	jadwalKanalDiscord   = "discord"
+	jadwalKanalTelegram  = "telegram"
+	jadwalKanalTelegram2 = "telegram2"
+)
+
+// Jeda antar pesan ke kanal yang sama — Telegram Bot API membatasi
+// kirim ke satu grup (~1 pesan/detik); tanpa jeda, burst header +
+// puluhan judul langsung kena 429 (kejadian 2026-11-28: grup 1
+// gagal 2 hari berturut-turut karena tiap siklus mengulang dari
+// awal). Discord ikut diberi jeda yang sama.
+const jadwalJedaAntarPesan = 1200 * time.Millisecond
 
 // Kunci app_settings untuk id pesan header jadwal yang sedang
 // tersemat di tiap grup Telegram (permintaan Rams 2026-11-25:
@@ -38,13 +59,195 @@ var hariIndo = map[time.Weekday]string{
 	time.Sunday:    "Minggu",
 }
 
-// PostDailyScheduleToDiscord memposting jadwal rilis HARI INI
-// (anime dari Kuronime + donghua dari Anichin) ke channel Discord
-// #jadwal-rilis, sekali sehari sesudah pukul 05:00 WIB. Penanda
-// tanggal terakhir disimpan di app_settings agar siklus worker
-// berkala tidak memposting berulang. Kegagalan ambil jadwal tidak
-// menandai hari itu — siklus berikutnya mencoba lagi.
-func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) {
+// jadwalJamRe mengenali "05:00" / "5:00" / "16:26".
+var jadwalJamRe = regexp.MustCompile(`^(\d{1,2}):(\d{2})$`)
+
+// parseJadwalJam mengubah Time jadwal ("05:00") menjadi jam+menit.
+// "Sudah Rilis", "??", "" dan format lain -> ok=false (sudah
+// terbit / jam tak diketahui: dikirim di batch pagi, bukan
+// dijadwalkan per slot).
+func parseJadwalJam(s string) (int, int, bool) {
+	m := jadwalJamRe.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return 0, 0, false
+	}
+	hh, _ := strconv.Atoi(m[1])
+	mm, _ := strconv.Atoi(m[2])
+	if hh < 0 || hh > 23 || mm < 0 || mm > 59 {
+		return 0, 0, false
+	}
+	return hh, mm, true
+}
+
+// jadwalItem adalah satu judul hari ini yang siap dikirim.
+// jam = waktu rilis hari ini (WIB); nol = sudah terbit / jam tak
+// diketahui, dikirim di batch pagi pertama sesudah 05:00.
+type jadwalItem struct {
+	slug  string
+	pesan string
+	jam   time.Time
+}
+
+// susunJadwalHariIni mengubah grup jadwal mentah menjadi daftar
+// item hari ini, diurutkan berdasarkan jam rilis (yang tanpa jam
+// dulu), siap dipilah mana yang sudah tiba waktunya. enrich
+// dipisah sebagai parameter agar logika urut/pilah bisa diuji
+// tanpa database.
+func susunJadwalHariIni(day string, now time.Time, loc *time.Location,
+	enrich func(string) (jadwalMeta, bool),
+	anime, donghua []sources.ScheduleGroup) []jadwalItem {
+	kumpul := func(label string, groups []sources.ScheduleGroup) []jadwalItem {
+		var out []jadwalItem
+		for _, g := range groups {
+			if g.Day != day {
+				continue
+			}
+			for _, it := range g.Items {
+				var m *jadwalMeta
+				if meta, found := enrich(it.Slug); found {
+					m = &meta
+				}
+				ji := jadwalItem{
+					slug:  it.Slug,
+					pesan: "**" + label + "**\n\n" + jadwalBlock(it, m),
+				}
+				if hh, mm, ok := parseJadwalJam(it.Time); ok {
+					ji.jam = time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, loc)
+				}
+				out = append(out, ji)
+			}
+			break // hanya grup hari ini
+		}
+		return out
+	}
+	items := append(kumpul("🎌 Anime", anime), kumpul("🐉 Donghua", donghua)...)
+	sort.Slice(items, func(i, j int) bool {
+		iz, jz := items[i].jam.IsZero(), items[j].jam.IsZero()
+		if iz != jz {
+			return iz
+		}
+		if !items[i].jam.Equal(items[j].jam) {
+			return items[i].jam.Before(items[j].jam)
+		}
+		return items[i].slug < items[j].slug
+	})
+	return items
+}
+
+// jadwalDue mengembalikan item yang jam rilisnya sudah tiba
+// (atau tanpa jam — sudah terbit / tak diketahui).
+func jadwalDue(items []jadwalItem, now time.Time) []jadwalItem {
+	var out []jadwalItem
+	for _, it := range items {
+		if it.jam.IsZero() || !now.Before(it.jam) {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// jadwalSudahTerkirim memeriksa penanda per judul per kanal.
+func jadwalSudahTerkirim(ctx context.Context, pool *pgxpool.Pool, kanal, hari, slug string) bool {
+	var ok bool
+	_ = pool.QueryRow(ctx, `
+		select exists(select 1 from jadwal_notified
+		              where channel = $1 and day = $2 and slug = $3)`,
+		kanal, hari, slug).Scan(&ok)
+	return ok
+}
+
+// jadwalTandaiTerkirim mencatat satu judul (atau header) sebagai
+// sudah terkirim ke satu kanal. Dipanggil hanya sesudah kirim
+// berhasil — gagal kirim tidak menandai apa pun.
+func jadwalTandaiTerkirim(ctx context.Context, pool *pgxpool.Pool, kanal, hari, slug string) {
+	if _, err := pool.Exec(ctx, `
+		insert into jadwal_notified (channel, day, slug) values ($1, $2, $3)
+		on conflict do nothing`, kanal, hari, slug); err != nil {
+		log.Printf("jadwal: simpan penanda %s %s: %v", kanal, slug, err)
+	}
+}
+
+// jadwalRetryAfterRe membaca "retry_after":N dari badan error 429
+// (Telegram: {"retry_after":42}; Discord: {"retry_after":1.5}).
+var jadwalRetryAfterRe = regexp.MustCompile(`"retry_after"\s*:\s*([0-9]+(?:\.[0-9]+)?)`)
+
+// retryAfterDariError mengembalikan lama tunggu dari error 429,
+// atau 0 bila errornya bukan 429 / tak membawa angka.
+func retryAfterDariError(err error) time.Duration {
+	if err == nil {
+		return 0
+	}
+	m := jadwalRetryAfterRe.FindStringSubmatch(err.Error())
+	if m == nil {
+		return 0
+	}
+	f, ferr := strconv.ParseFloat(m[1], 64)
+	if ferr != nil || f <= 0 {
+		return 0
+	}
+	return time.Duration(f * float64(time.Second))
+}
+
+// jedaJadwal menunggu antar pesan ke kanal yang sama, batal bila
+// konteks dibatalkan.
+func jedaJadwal(ctx context.Context) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(jadwalJedaAntarPesan):
+	}
+}
+
+// kirimJadwalSekali mengirim satu pesan: gagal (mis. 429) -> tunggu
+// retry_after (atau 10 dtk bila tak diketahui) lalu coba sekali
+// lagi untuk pesan itu saja. Pesan yang ditolak 429 tidak pernah
+// terkirim, jadi ulang sekali aman dari dobel. Gagal kedua ->
+// error; pemanggil menghentikan kanal itu di siklus ini (judulnya
+// tetap tak tertandai, dicoba lagi siklus berikutnya).
+func kirimJadwalSekali(ctx context.Context, kirim func(context.Context) error) error {
+	if err := kirim(ctx); err == nil {
+		return nil
+	} else {
+		tunggu := retryAfterDariError(err)
+		if tunggu <= 0 {
+			tunggu = 10 * time.Second
+		}
+		log.Printf("jadwal: kirim gagal, tunggu %s lalu coba lagi: %v", tunggu, err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(tunggu):
+		}
+		return kirim(ctx)
+	}
+}
+
+// kirimJadwalJudulTelegram mengirim satu judul sebagai satu pesan
+// dengan pratinjau menyala, agar posternya tampil sebagai kartu.
+func kirimJadwalJudulTelegram(ctx context.Context, tc *telegram.Client, groupID, topicID, pesan string) error {
+	return tc.SendPreview(ctx, groupID, topicID, telegram.ToHTML(pesan))
+}
+
+// kirimJadwalJudulDiscord mengirim satu judul sebagai satu pesan.
+func kirimJadwalJudulDiscord(ctx context.Context, dc *discord.Client, channelID, pesan string) error {
+	return dc.Send(ctx, channelID, pesan)
+}
+
+// jadwalTujuan adalah satu kanal tujuan (Discord / Telegram grup 1 /
+// Telegram grup 2) dengan cara kirimnya masing-masing.
+type jadwalTujuan struct {
+	kanal       string
+	kirimHeader func(context.Context, string) (int64, error) // id untuk pin (Telegram); Discord 0
+	kirimJudul  func(context.Context, string) error
+	pin         func(context.Context, int64) // nil bila kanal tak di-pin
+}
+
+// PostJadwalRilis mengirim jadwal rilis HARI INI (anime dari
+// Kuronime + donghua dari Anichin) satu pesan per judul, tepat
+// sesudah jam rilisnya (WIB). Dipanggil berkala (ticker 5 menit
+// worker); tiap siklus hanya mengirim judul yang jamnya sudah tiba
+// dan belum tertandai di jadwal_notified. Header harian dikirim
+// sekali sesudah pukul 05:00 WIB dan di-pin di Telegram.
+func PostJadwalRilis(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) {
 	discordOK := cfg.DiscordBotToken != "" && cfg.DiscordChannelJadwal != ""
 	telegramOK := cfg.TelegramBotToken != "" && cfg.TelegramGroupID != "" && cfg.TelegramTopicJadwal != ""
 	telegram2OK := cfg.TelegramBotToken != "" && cfg.TelegramGroupID2 != "" && cfg.TelegramTopicJadwal2 != ""
@@ -60,21 +263,10 @@ func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg con
 		return
 	}
 	today := now.Format("2006-01-02")
-	// Penanda harian per kanal (perbaikan 2026-11-24, pola sama
-	// dengan notifikasi update APK): kanal yang dikonfigurasi
-	// belakangan tetap menerima jadwal hari ini walau kanal lain
-	// sudah mempostingnya lebih dulu.
-	readDay := func(key string) string {
-		var v string
-		_ = pool.QueryRow(ctx,
-			`select value from app_settings where key = $1`, key).Scan(&v)
-		return v
-	}
-	discordDue := discordOK && readDay(discordJadwalLastDateKey) != today
-	telegramDue := telegramOK && readDay(telegramJadwalLastDateKey) != today
-	telegram2Due := telegram2OK && readDay(telegramJadwalLastDateKey2) != today
-	if !discordDue && !telegramDue && !telegram2Due {
-		return
+	// Bersihkan penanda lama (hemat tabel; 7 hari cukup untuk
+	// menahan kirim ganda bila worker lama mati).
+	if _, err := pool.Exec(ctx, `delete from jadwal_notified where day < $1::date - 7`, today); err != nil {
+		log.Printf("jadwal: bersihkan penanda lama: %v", err)
 	}
 	day := hariIndo[now.Weekday()]
 
@@ -94,96 +286,106 @@ func PostDailyScheduleToDiscord(ctx context.Context, pool *pgxpool.Pool, cfg con
 	// judul, judul lain, genre, studio, musim, sinopsis ringkas,
 	// dan tautan nonton langsung ke pemutar episode terbaru —
 	// metadata dari katalog, dipetakan lewat slug.
-	collect := func(label string, groups []sources.ScheduleGroup) []string {
-		var blocks []string
-		for _, g := range groups {
-			if g.Day != day {
-				continue
-			}
-			for i, it := range g.Items {
-				var m *jadwalMeta
-				if meta, found := enrichJadwalItem(ctx, pool, it.Slug); found {
-					m = &meta
-				}
-				blk := jadwalBlock(it, m)
-				if i == 0 {
-					blk = "**" + label + "**\n\n" + blk
-				}
-				blocks = append(blocks, blk)
-			}
-			break // hanya grup hari ini
-		}
-		return blocks
+	enrich := func(slug string) (jadwalMeta, bool) {
+		return enrichJadwalItem(ctx, pool, slug)
 	}
-	var blocks []string
+	var animeGroups, donghuaGroups []sources.ScheduleGroup
 	if errA == nil {
-		blocks = append(blocks, collect("🎌 Anime", anime)...)
+		animeGroups = anime
 	}
 	if errD == nil {
-		blocks = append(blocks, collect("🐉 Donghua", donghua)...)
+		donghuaGroups = donghua
+	}
+	items := susunJadwalHariIni(day, now, loc, enrich, animeGroups, donghuaGroups)
+	due := jadwalDue(items, now)
+
+	info := fmt.Sprintf("Hari ini ada %d judul — tiap judul dikirim sendiri sesudah jam rilisnya.", len(items))
+	if len(items) == 0 {
+		info = "Belum ada judul terjadwal hari ini."
 	}
 	header := fmt.Sprintf("🗓️ **Jadwal Rilis — %s, %s**", day, now.Format("2 January 2006"))
 	footer := "Selamat menonton di SubSenpai! 🍿 https://www.subsenpai.web.id"
-	msgs := packJadwal(header, blocks, footer, 1700)
+	headerPesan := header + "\n" + info + "\n\n" + footer
 
-	markDay := func(key string) {
-		if _, err := pool.Exec(ctx, `
-			insert into app_settings (key, value) values ($1, $2)
-			on conflict (key) do update set value = excluded.value, updated_at = now()`,
-			key, today); err != nil {
-			log.Printf("jadwal: simpan penanda %s: %v", key, err)
-		}
-	}
-	sendAll := func(send func(string) error) error {
-		for _, m := range msgs {
-			if err := send(m); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	if discordDue {
+	var tujuan []jadwalTujuan
+	if discordOK {
 		dc := discord.New(cfg.DiscordBotToken)
-		if err := sendAll(func(m string) error {
-			return dc.Send(ctx, cfg.DiscordChannelJadwal, m)
-		}); err != nil {
-			log.Printf("discord jadwal: kirim gagal: %v", err)
-		} else {
-			markDay(discordJadwalLastDateKey)
-			log.Printf("discord jadwal: jadwal %s terposting (%d pesan)", today, len(msgs))
-		}
+		tujuan = append(tujuan, jadwalTujuan{
+			kanal: jadwalKanalDiscord,
+			kirimHeader: func(ctx context.Context, pesan string) (int64, error) {
+				return 0, dc.Send(ctx, cfg.DiscordChannelJadwal, pesan)
+			},
+			kirimJudul: func(ctx context.Context, pesan string) error {
+				return kirimJadwalJudulDiscord(ctx, dc, cfg.DiscordChannelJadwal, pesan)
+			},
+		})
 	}
-	if telegramDue {
-		// Telegram menerima bentuk berbeda dari Discord (permintaan
-		// Rams 2026-11-24): bukan kemasan ringkasan, melainkan 1
-		// pesan per judul dengan pratinjau tautan menyala, agar
-		// poster tiap judul tampil sebagai kartu WebPage.
+	if telegramOK {
 		tc := telegram.New(cfg.TelegramBotToken)
-		headerID, err := kirimJadwalTelegram(ctx, tc, cfg.TelegramGroupID,
-			cfg.TelegramTopicJadwal, header, blocks, footer)
-		if err != nil {
-			log.Printf("telegram jadwal: kirim gagal: %v", err)
-		} else {
-			markDay(telegramJadwalLastDateKey)
-			pinJadwalHeader(ctx, pool, tc, cfg.TelegramGroupID, telegramJadwalPinKey, headerID)
-			log.Printf("telegram jadwal: jadwal %s terposting (%d pesan)", today, len(blocks)+2)
-		}
+		tujuan = append(tujuan, jadwalTujuan{
+			kanal: jadwalKanalTelegram,
+			kirimHeader: func(ctx context.Context, pesan string) (int64, error) {
+				return tc.SendID(ctx, cfg.TelegramGroupID, cfg.TelegramTopicJadwal, telegram.ToHTML(pesan))
+			},
+			kirimJudul: func(ctx context.Context, pesan string) error {
+				return kirimJadwalJudulTelegram(ctx, tc, cfg.TelegramGroupID, cfg.TelegramTopicJadwal, pesan)
+			},
+			pin: func(ctx context.Context, id int64) {
+				pinJadwalHeader(ctx, pool, tc, cfg.TelegramGroupID, telegramJadwalPinKey, id)
+			},
+		})
 	}
-	if telegram2Due {
+	if telegram2OK {
 		// Grup Telegram kedua (permintaan Rams 2026-11-25): bot
 		// yang sama, grup + topik berbeda, isi pesan sama persis.
 		// Penandanya sendiri — gagal di grup kedua tidak menahan
-		// grup pertama, dan siklus berikutnya mengulang grup kedua
-		// saja sampai berhasil.
+		// grup pertama.
 		tc2 := telegram.New(cfg.TelegramBotToken)
-		headerID2, err := kirimJadwalTelegram(ctx, tc2, cfg.TelegramGroupID2,
-			cfg.TelegramTopicJadwal2, header, blocks, footer)
-		if err != nil {
-			log.Printf("telegram jadwal grup 2: kirim gagal: %v", err)
-		} else {
-			markDay(telegramJadwalLastDateKey2)
-			pinJadwalHeader(ctx, pool, tc2, cfg.TelegramGroupID2, telegramJadwalPinKey2, headerID2)
-			log.Printf("telegram jadwal grup 2: jadwal %s terposting (%d pesan)", today, len(blocks)+2)
+		tujuan = append(tujuan, jadwalTujuan{
+			kanal: jadwalKanalTelegram2,
+			kirimHeader: func(ctx context.Context, pesan string) (int64, error) {
+				return tc2.SendID(ctx, cfg.TelegramGroupID2, cfg.TelegramTopicJadwal2, telegram.ToHTML(pesan))
+			},
+			kirimJudul: func(ctx context.Context, pesan string) error {
+				return kirimJadwalJudulTelegram(ctx, tc2, cfg.TelegramGroupID2, cfg.TelegramTopicJadwal2, pesan)
+			},
+			pin: func(ctx context.Context, id int64) {
+				pinJadwalHeader(ctx, pool, tc2, cfg.TelegramGroupID2, telegramJadwalPinKey2, id)
+			},
+		})
+	}
+
+	for _, t := range tujuan {
+		if !jadwalSudahTerkirim(ctx, pool, t.kanal, today, jadwalHeaderSlug) {
+			var headerID int64
+			err := kirimJadwalSekali(ctx, func(ctx context.Context) error {
+				id, err := t.kirimHeader(ctx, headerPesan)
+				if err == nil {
+					headerID = id
+				}
+				return err
+			})
+			if err != nil {
+				log.Printf("jadwal %s: header gagal: %v", t.kanal, err)
+			} else {
+				jadwalTandaiTerkirim(ctx, pool, t.kanal, today, jadwalHeaderSlug)
+				if t.pin != nil {
+					t.pin(ctx, headerID)
+				}
+			}
+		}
+		for _, it := range due {
+			if jadwalSudahTerkirim(ctx, pool, t.kanal, today, it.slug) {
+				continue
+			}
+			if err := kirimJadwalSekali(ctx, func(ctx context.Context) error {
+				return t.kirimJudul(ctx, it.pesan)
+			}); err != nil {
+				log.Printf("jadwal %s: %s gagal: %v", t.kanal, it.slug, err)
+				break // berhenti untuk kanal ini di siklus ini
+			}
+			jadwalTandaiTerkirim(ctx, pool, t.kanal, today, it.slug)
+			jedaJadwal(ctx)
 		}
 	}
 }
@@ -219,34 +421,6 @@ func pinJadwalHeader(ctx context.Context, pool *pgxpool.Pool, tc *telegram.Clien
 		pinKey, strconv.FormatInt(headerID, 10)); err != nil {
 		log.Printf("telegram jadwal: simpan id pin %s: %v", pinKey, err)
 	}
-}
-
-// kirimJadwalTelegram mengirim jadwal ke topik Telegram sebagai
-// rangkaian pesan: header, lalu 1 pesan per judul dengan pratinjau
-// menyala (halaman /nonton/ membawa og:image poster, jadi tiap
-// judul tampil bergambar), lalu footer. Satu kegagalan membatalkan
-// sisanya dan mengembalikan error — pemanggil tidak menandai hari
-// itu, jadi siklus worker berikutnya mengulang dari awal (judul
-// awal mungkin terkirim dua kali; diterima, sama seperti kemasan
-// lama). Mengembalikan message_id pesan header agar pemanggil bisa
-// mem-pinnya.
-func kirimJadwalTelegram(ctx context.Context, tc *telegram.Client,
-	groupID, topicID, header string, blocks []string, footer string) (int64, error) {
-	headerID, err := tc.SendID(ctx, groupID, topicID, telegram.ToHTML(header))
-	if err != nil {
-		return 0, err
-	}
-	for _, b := range blocks {
-		if err := tc.SendPreview(ctx, groupID, topicID, telegram.ToHTML(b)); err != nil {
-			return 0, err
-		}
-	}
-	if footer != "" {
-		if err := tc.SendPreview(ctx, groupID, topicID, telegram.ToHTML(footer)); err != nil {
-			return 0, err
-		}
-	}
-	return headerID, nil
 }
 
 // jadwalMeta adalah metadata katalog untuk satu judul jadwal.
@@ -334,44 +508,6 @@ func jadwalBlock(it sources.ScheduleItem, m *jadwalMeta) string {
 			m.LatestNo, m.EpisodeID)
 	}
 	return b.String()
-}
-
-// packJadwal mengemas blok-blok menjadi pesan-pesan yang tidak
-// melebihi maxLen karakter (Discord menolak pesan > 2000).
-// Header selalu membuka pesan pertama; footer menutup pesan
-// terakhir bila muat, kalau tidak jadi pesan sendiri.
-func packJadwal(header string, blocks []string, footer string, maxLen int) []string {
-	parts := append([]string{header}, blocks...)
-	var msgs []string
-	cur := ""
-	flush := func() {
-		if cur != "" {
-			msgs = append(msgs, cur)
-			cur = ""
-		}
-	}
-	for _, p := range parts {
-		if cur == "" {
-			cur = p
-			continue
-		}
-		if len([]rune(cur))+2+len([]rune(p)) > maxLen {
-			flush()
-			cur = p
-		} else {
-			cur += "\n\n" + p
-		}
-	}
-	if footer != "" {
-		if cur != "" && len([]rune(cur))+2+len([]rune(footer)) <= maxLen {
-			cur += "\n\n" + footer
-		} else {
-			flush()
-			cur = footer
-		}
-	}
-	flush()
-	return msgs
 }
 
 // potongRunes memotong teks ke maksimal n rune + elipsis.
