@@ -42,7 +42,7 @@
   .top10-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
   .top10-head h2 { margin: 0; font-size: 19px; }
   .top10-rail {
-    display: flex; gap: 20px; overflow-x: auto;
+    display: flex; gap: 20px; overflow-x: auto; overflow-y: hidden;
     padding-bottom: 8px; scrollbar-width: thin;
   }
   .top10-card {
@@ -51,12 +51,14 @@
   }
   .top10-card:hover { transform: scale(1.03); }
   /* Angka peringkat ala Netflix: isi gelap + outline abu tebal,
-     menjorok ke balik poster. */
+     menjorok ke balik poster. Overlap kecil (-8px) supaya angka
+     sempit seperti "1" tetap terbaca — overlap lama -26px menutup
+     hampir seluruh batang "1" (28 Nov 2026, laporan Rams). */
   .rank {
     font-weight: 900; line-height: 0.75; letter-spacing: -0.08em;
     font-size: 140px; color: #000;
     -webkit-text-stroke: 4px #8a8a8a;
-    margin-right: -26px; margin-bottom: -6px; z-index: 0;
+    margin-right: -8px; margin-bottom: -6px; z-index: 0;
     user-select: none;
   }
   .poster {
@@ -70,11 +72,11 @@
     color: var(--red); font-weight: 900; font-size: 11px; letter-spacing: 1px;
   }
   @media (min-width: 900px) {
-    .rank { font-size: 170px; margin-right: -30px; }
+    .rank { font-size: 170px; margin-right: -10px; }
     .poster { width: 132px; }
   }
   @media (min-width: 1600px) {
-    .rank { font-size: 200px; margin-right: -34px; }
+    .rank { font-size: 200px; margin-right: -12px; }
     .poster { width: 150px; }
   }
 </style>
