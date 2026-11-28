@@ -23,7 +23,11 @@
 
 * { box-sizing: border-box; }
 
-html, body { margin: 0; padding: 0; }
+html, body { margin: 0; padding: 0; overflow-x: clip; }
+/* 28 Nov 2026: overflow-x clip di root — halaman tidak boleh meluber
+   horizontal (pernah terjadi di tab Series: kartu grid kanan terpotong +
+   celah kosong di kanan navbar). clip (bukan hidden) supaya position:
+   sticky navbar & baris chip tetap jalan. */
 
 body {
   background: var(--bg);
@@ -100,6 +104,10 @@ img { display: block; }
   display: grid; gap: 12px;
   grid-template-columns: repeat(2, 1fr);
 }
+/* 28 Nov 2026: anak grid boleh menyusut di bawah ukuran kontennya —
+   tanpa ini, satu kartu yang kontennya lebih lebar dari kolom bisa
+   mendorong grid (dan halaman) meluber ke kanan. */
+.poster-grid > * { min-width: 0; }
 @media (min-width: 600px) { .poster-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (min-width: 900px) { .poster-grid { grid-template-columns: repeat(5, 1fr); } }
 @media (min-width: 1200px) { .poster-grid { grid-template-columns: repeat(6, 1fr); } }

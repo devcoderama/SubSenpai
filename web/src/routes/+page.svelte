@@ -25,9 +25,9 @@
   const TABS = [
     { id: '', label: 'Semua' },
     { id: 'film', label: 'Film' },
+    { id: 'series', label: 'Series' },
     { id: 'anime', label: 'Anime' },
-    { id: 'donghua', label: 'Donghua' },
-    { id: 'series', label: 'Series' }
+    { id: 'donghua', label: 'Donghua' }
   ];
 
   const THIS_YEAR = new Date().getFullYear();
@@ -1197,7 +1197,10 @@
      kembali solid seperti biasa. */
   .tabs-top.at-top { background: transparent; }
   @media (min-width: 1280px) { .tabs-top { padding-top: 16px; } }
-  .tabs { display: flex; gap: 8px; margin: 0; overflow-x: auto; justify-content: safe center; }
+  /* 28 Nov 2026: chip rata kiri (dulu safe center — di HP sempit baris
+     kelihatan bergeser + ada celah di kanan; baris genre di bawah & aplikasi
+     sudah rata kiri). */
+  .tabs { display: flex; gap: 8px; margin: 0; overflow-x: auto; justify-content: flex-start; }
   .more { text-align: center; margin: 24px 0; }
 
   /* Hero berganti otomatis: slide ditumpuk, crossfade via opacity. */
