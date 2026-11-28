@@ -47,26 +47,26 @@ type feedAuthor struct {
 }
 
 type feedPost struct {
-	ID string `json:"id"` // id baris feed (baris repost bila ini repost)
-	PostID string `json:"post_id"` // id postingan konten (asli)
-	Author feedAuthor `json:"author"`
-	RepostedBy *feedAuthor `json:"reposted_by,omitempty"`
-	Body         *string    `json:"body,omitempty"`
-	ImageURL     *string    `json:"image_url,omitempty"`
-	Category     string     `json:"category"`
-	Visibility   string     `json:"visibility"`
-	GroupID      *string    `json:"group_id,omitempty"`
-	GroupName    *string    `json:"group_name,omitempty"`
-	TitleID      *string    `json:"title_id,omitempty"`
-	LikeCount    int        `json:"like_count"`
-	CommentCount int        `json:"comment_count"`
-	RepostCount  int        `json:"repost_count"`
-	ShareCount   int        `json:"share_count"`
-	Liked        bool       `json:"liked"`
-	Bookmarked   bool       `json:"bookmarked"`
-	Reposted     bool       `json:"reposted"`
-	Mine         bool       `json:"mine"`
-	CreatedAt    time.Time   `json:"created_at"`
+	ID              string        `json:"id"`      // id baris feed (baris repost bila ini repost)
+	PostID          string        `json:"post_id"` // id postingan konten (asli)
+	Author          feedAuthor    `json:"author"`
+	RepostedBy      *feedAuthor   `json:"reposted_by,omitempty"`
+	Body            *string       `json:"body,omitempty"`
+	ImageURL        *string       `json:"image_url,omitempty"`
+	Category        string        `json:"category"`
+	Visibility      string        `json:"visibility"`
+	GroupID         *string       `json:"group_id,omitempty"`
+	GroupName       *string       `json:"group_name,omitempty"`
+	TitleID         *string       `json:"title_id,omitempty"`
+	LikeCount       int           `json:"like_count"`
+	CommentCount    int           `json:"comment_count"`
+	RepostCount     int           `json:"repost_count"`
+	ShareCount      int           `json:"share_count"`
+	Liked           bool          `json:"liked"`
+	Bookmarked      bool          `json:"bookmarked"`
+	Reposted        bool          `json:"reposted"`
+	Mine            bool          `json:"mine"`
+	CreatedAt       time.Time     `json:"created_at"`
 	CommentsPreview []feedComment `json:"comments_preview"`
 }
 
@@ -686,9 +686,27 @@ func (a *API) handleFeedCommentLike(w http.ResponseWriter, r *http.Request) {
 func (a *API) handleFeedCommentDelete(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	id := chi.URLParam(r, "id")
-	tag, err := a.pool.Exec(r.Context(), `
+	ctx := r.Context()
+	// Hanya pemilik yang boleh menghapus; balasan di bawah komentar yang
+	// dihapus ikut terhapus (soft-delete satu pohon) — tanpa ini balasannya
+	// jadi yatim: tetap terhitung di comment_count + pratinjau feed, tapi
+	// tak terlihat lagi di daftar beruntun (temuan verifikasi web #7, 28 Nov).
+	var exists bool
+	if err := a.pool.QueryRow(ctx, `
+		select exists(select 1 from feed_comments
+		where id = $1::uuid and user_id = $2::uuid and deleted_at is null)`,
+		id, p.ID).Scan(&exists); err != nil || !exists {
+		writeErr(w, http.StatusNotFound, "komentar tidak ditemukan")
+		return
+	}
+	tag, err := a.pool.Exec(ctx, `
+		with recursive tree as (
+			select id from feed_comments where id = $1::uuid
+			union all
+			select c.id from feed_comments c join tree t on c.parent_id = t.id
+		)
 		update feed_comments set deleted_at = now()
-		where id = $1::uuid and user_id = $2::uuid and deleted_at is null`, id, p.ID)
+		where id in (select id from tree) and deleted_at is null`, id)
 	if err != nil || tag.RowsAffected() == 0 {
 		writeErr(w, http.StatusNotFound, "komentar tidak ditemukan")
 		return
