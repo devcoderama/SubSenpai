@@ -11,3 +11,11 @@
   from = "/*"
   to = "/200.html"
   status = 200
+
+# Manifest PWA harus disajikan sebagai application/manifest+json —
+# tanpa itu Chrome mengabaikan manifest (disajikan octet-stream)
+# sehingga prompt install tak pernah muncul (temuan 28 Nov 2026).
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
