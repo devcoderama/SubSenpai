@@ -298,10 +298,16 @@ export const getGenres = (type = '') =>
 export const getFilters = (type) =>
   api('/api/v1/filters?type=' + encodeURIComponent(type));
 
-export const getLiveBrowse = (type, genre, page = 1) =>
-  api(
-    `/api/v1/live-browse?type=${encodeURIComponent(type)}&genre=${encodeURIComponent(genre)}&page=${page}`
-  );
+export const getLiveBrowse = (type, genre, page = 1, opts = {}) => {
+  const p = new URLSearchParams({ type, page: String(page) });
+  if (genre) p.set('genre', genre);
+  const genres = opts.genres?.length ? opts.genres : [];
+  if (genres.length) p.set('genres', genres.join(','));
+  if (opts.year) p.set('year', String(opts.year));
+  if (opts.country) p.set('country', opts.country);
+  if (opts.sort) p.set('sort', opts.sort);
+  return api(`/api/v1/live-browse?${p.toString()}`);
+};
 
 // Impor satu judul hasil telusur live ke katalog (cermin
 // Models.importTitle aplikasi); mengembalikan {id, slug, created}.

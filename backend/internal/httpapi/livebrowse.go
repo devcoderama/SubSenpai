@@ -75,6 +75,34 @@ func (a *API) handleLiveBrowse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	genre := strings.TrimSpace(q.Get("genre"))
+	// Filter lengkap ala donkey.to/filters (film): genres dipisah
+	// koma (genres=Action,Horror); bila kosong, pakai genre tunggal
+	// lama agar aplikasi + web lama tetap jalan.
+	genres := []string{}
+	if gs := strings.TrimSpace(q.Get("genres")); gs != "" {
+		for _, g := range strings.Split(gs, ",") {
+			if g = strings.TrimSpace(g); g != "" {
+				genres = append(genres, g)
+			}
+		}
+	}
+	if len(genres) == 0 && genre != "" {
+		genres = []string{genre}
+	}
+	year, _ := strconv.Atoi(q.Get("year"))
+	if year < 1900 || year > 2030 {
+		year = 0
+	}
+	country := strings.ToUpper(strings.TrimSpace(q.Get("country")))
+	if len(country) != 2 {
+		country = ""
+	}
+	sort := strings.ToLower(strings.TrimSpace(q.Get("sort")))
+	switch sort {
+	case "popular", "latest", "name_asc", "name_desc", "most_voted":
+	default:
+		sort = ""
+	}
 	page, _ := strconv.Atoi(q.Get("page"))
 	if page < 1 {
 		page = 1
@@ -84,7 +112,8 @@ func (a *API) handleLiveBrowse(w http.ResponseWriter, r *http.Request) {
 	// web resmi; resolver yang tak mendukungnya mengembalikan
 	// kosong. (Dulu anime/donghua tanpa genre dilayani katalog
 	// lokal dan endpoint ini mengembalikan kosong.)
-	key := typ + "|" + strings.ToLower(genre) + "|" + strconv.Itoa(page)
+	key := typ + "|" + strings.ToLower(strings.Join(genres, ",")) + "|" +
+		strconv.Itoa(year) + "|" + country + "|" + sort + "|" + strconv.Itoa(page)
 	liveCache.Lock()
 	ent, hit := liveCache.m[key]
 	liveCache.Unlock()
@@ -110,11 +139,20 @@ func (a *API) handleLiveBrowse(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			continue
 		}
-		gb, ok := resolver.(sources.GenreBrowser)
-		if !ok {
+		// Resolver yang mendukung filter lengkap (film/Hashflix)
+		// selalu dipakai bila ada; BrowseFiltered dengan filter
+		// kosong sama dengan BrowseGenre lama. Resolver lain
+		// (anime/donghua) tetap jalur genre tunggal.
+		var items []sources.DiscoveredTitle
+		var err error
+		if fb, ok := resolver.(sources.FilteredBrowser); ok {
+			f := sources.BrowseFilter{Genres: genres, Year: year, Country: country, Sort: sort}
+			items, err = fb.BrowseFiltered(r.Context(), srcs[i], f, page)
+		} else if gb, ok := resolver.(sources.GenreBrowser); ok {
+			items, err = gb.BrowseGenre(r.Context(), srcs[i], genre, page)
+		} else {
 			continue
 		}
-		items, err := gb.BrowseGenre(r.Context(), srcs[i], genre, page)
 		if err != nil {
 			writeErr(w, http.StatusBadGateway, "sumber tidak terjangkau")
 			return

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -34,6 +35,71 @@ func (h *hashflixResolver) Key() string { return "hashflix" }
 func (h *hashflixResolver) Search(_ context.Context, _ Source, _ string) ([]Candidate, error) {
 	return nil, fmt.Errorf("hashflix: pencarian belum didukung")
 }
+
+// donkeySort memetakan urutan ala donkey.to/filters ke sort_by TMDB.
+var donkeySort = map[string]string{
+	"popular":    "popularity.desc",
+	"latest":     "primary_release_date.desc",
+	"name_asc":   "title.asc",
+	"name_desc":  "title.desc",
+	"most_voted": "vote_count.desc",
+}
+
+// hfDiscoverURL merakit URL discover TMDB Hashflix dari filter.
+// Genre banyak = OR (pemisah "|" — TMDB: koma = AND, pipa = OR).
+// Mengembalikan ok=false bila genre diisi tapi tak satu pun dikenal
+// TMDB (pemanggil mengembalikan kosong, seperti BrowseGenre lama).
+func hfDiscoverURL(base string, f BrowseFilter, page int) (string, bool) {
+	if page < 1 {
+		page = 1
+	}
+	u := fmt.Sprintf("%s/database/discover/movie?page=%d", strings.TrimRight(base, "/"), page)
+	if len(f.Genres) > 0 {
+		var ids []string
+		for _, g := range f.Genres {
+			if id, ok := tmdbGenreIDs[strings.ToLower(strings.TrimSpace(g))]; ok {
+				ids = append(ids, strconv.Itoa(id))
+			}
+		}
+		if len(ids) == 0 {
+			return "", false
+		}
+		u += "&with_genres=" + strings.Join(ids, "%7C")
+	}
+	if f.Year > 0 {
+		u += fmt.Sprintf("&primary_release_year=%d", f.Year)
+	}
+	if c := strings.ToUpper(strings.TrimSpace(f.Country)); c != "" {
+		u += "&with_origin_country=" + c
+	}
+	if sb, ok := donkeySort[strings.ToLower(strings.TrimSpace(f.Sort))]; ok {
+		u += "&sort_by=" + sb
+	}
+	return u, true
+}
+
+// BrowseFiltered Hashflix: discover TMDB dengan filter lengkap
+// ala donkey.to (genre/tahun/negara/urutan). Filter kosong = semua
+// film (sama seperti BrowseGenre tanpa genre).
+func (h *hashflixResolver) BrowseFiltered(ctx context.Context, src Source, f BrowseFilter, page int) ([]DiscoveredTitle, error) {
+	if page < 1 {
+		return nil, nil
+	}
+	u, ok := hfDiscoverURL(src.BaseURL, f, page)
+	if !ok {
+		return nil, nil
+	}
+	body, err := Fetch(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	items, _ := parseHFTrending(body, strings.TrimRight(src.BaseURL, "/"))
+	return items, nil
+}
+
+// (SearchTitles Hashflix sudah ada di searchtitles.go —
+// /database/search/movie?query= — jadi pencarian kata kunci film
+// sudah hidup lewat liveSearch; di sini tak diduplikasi.)
 
 // tmdbIDFromRef mengekstrak id TMDB dari URL halaman judul hashflix
 // ({base}/movie/83533), slug katalog (avatar-fire-and-ash-83533),

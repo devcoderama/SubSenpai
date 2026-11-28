@@ -6,13 +6,24 @@
   // pada judul yang belum ada di katalog mengimpornya dulu
   // (POST /titles/import) lalu membuka Detail. Gagal sumber = seksi
   // disembunyikan diam-diam (katalog di atas tetap tampil).
+  //
+  // Film: filter lengkap ala donkey.to/filters (permintaan Rams
+  // 28 Nov 2026) — genre boleh banyak, tahun, negara, urutan.
+  // Datanya tetap TMDB lewat discover Hashflix (persis yang
+  // ditampilkan donkey.to — hasil Action+2024+Populer terbukti
+  // identik), jadi tak perlu mengerik donkey.to; streaming tetap
+  // embed Hashflix. Filter ini HANYA menggerakkan seksi live —
+  // grid database di atas tetap memakai panel Filter halaman.
   import { goto } from '$app/navigation';
-  import { getLiveBrowse, importTitle } from '$lib/api.js';
+  import { getLiveBrowse, getFilters, importTitle } from '$lib/api.js';
+  import { FILM_COUNTRIES, FILM_SORTS } from '$lib/countries.js';
   import { toastError } from '$lib/toast.js';
   import Skeleton from '$lib/components/Skeleton.svelte';
 
   export let type = ''; // film | anime | donghua
   export let genre = '';
+  export let year = 0;
+  export let country = '';
   export let exclude = []; // item DB yang sudah tampil di atas (dedup)
 
   let items = [];
@@ -25,16 +36,48 @@
   let importingSlug = null;
   let seq = 0;
 
+  // State filter film (awal = filter halaman yang membawanya ke sini).
+  // country boleh kode ISO ("US") atau nama ("Amerika Serikat" —
+  // begitu Beranda menyimpan fCountry); normalisasi ke kode.
+  function toCountryCode(v) {
+    if (!v) return '';
+    const t = String(v).trim();
+    if (/^[A-Za-z]{2}$/.test(t)) return t.toUpperCase();
+    const hit = FILM_COUNTRIES.find((c) => c.name.toLowerCase() === t.toLowerCase());
+    return hit ? hit.code : '';
+  }
+  let selGenres = genre ? [genre] : [];
+  let selYear = year || 0;
+  let selCountry = toCountryCode(country);
+  let selSort = 'popular';
+  let filmGenres = [];
+  const years = [];
+  for (let y = 2026; y >= 1920; y--) years.push(y);
+
   $: excludeSlugs = new Set((exclude || []).map((x) => x.slug).filter(Boolean));
   $: excludeIds = new Set((exclude || []).map((x) => x.id).filter(Boolean));
   $: visible = items.filter(
     (it) => !(it.catalog_id && excludeIds.has(it.catalog_id)) && !excludeSlugs.has(it.slug)
   );
 
-  // Muat ulang halaman 1 setiap kali pasangan type|genre berubah.
-  $: if (type && genre) reloadLive(type, genre);
+  // Daftar genre film (19 genre TMDB) untuk chip multi-pilih.
+  $: if (type === 'film' && !filmGenres.length) {
+    getFilters('film')
+      .then((f) => (filmGenres = f.genres || []))
+      .catch(() => {});
+  }
 
-  async function reloadLive(t, g) {
+  // Muat ulang halaman 1 setiap kali filter berubah. Film selalu
+  // muat (tanpa genre = semua film, urutan Populer — seperti
+  // bawaan donkey.to); anime/donghua butuh satu genre.
+  $: filterKey = [type, selGenres.join(','), selYear, selCountry, selSort].join('|');
+  $: if (type && (type === 'film' || selGenres.length)) reloadLive();
+
+  function liveOpts() {
+    return { genres: selGenres, year: selYear, country: selCountry, sort: selSort };
+  }
+
+  async function reloadLive() {
     const s = ++seq;
     items = [];
     source = '';
@@ -43,7 +86,7 @@
     failed = false;
     loading = true;
     try {
-      const res = await getLiveBrowse(t, g, 1);
+      const res = await getLiveBrowse(type, selGenres[0] || '', 1, liveOpts());
       if (s !== seq) return;
       source = res.source || '';
       hasMore = !!res.has_more;
@@ -60,7 +103,7 @@
     const s = seq;
     loadingMore = true;
     try {
-      const res = await getLiveBrowse(type, genre, page + 1);
+      const res = await getLiveBrowse(type, selGenres[0] || '', page + 1, liveOpts());
       if (s !== seq) return;
       hasMore = !!res.has_more;
       const seen = new Set(items.map((x) => x.slug));
@@ -73,6 +116,23 @@
     }
   }
 
+  function toggleGenre(g) {
+    selGenres = selGenres.includes(g) ? selGenres.filter((x) => x !== g) : [...selGenres, g];
+  }
+
+  function resetFilters() {
+    selGenres = genre ? [genre] : [];
+    selYear = year || 0;
+    selCountry = country || '';
+    selSort = 'popular';
+  }
+
+  $: dirty =
+    selGenres.join(',') !== (genre || '') ||
+    selYear !== (year || 0) ||
+    selCountry !== (country || '') ||
+    selSort !== 'popular';
+
   async function openLive(item) {
     if (item.catalog_id) {
       goto('/judul/' + item.catalog_id);
@@ -81,7 +141,7 @@
     if (importingSlug) return;
     importingSlug = item.slug;
     try {
-      const res = await importTitle(type, item, genre);
+      const res = await importTitle(type, item, selGenres[0] || genre);
       goto('/judul/' + res.id);
     } catch (e) {
       toastError(e.message || 'Gagal menambahkan judul.');
@@ -95,9 +155,43 @@
   <div class="live-section">
     <h2>Dari web — {source || 'situs sumber'}</h2>
     <p class="muted">
-      Langsung dari {source || 'situs sumber'} untuk genre ini — yang belum ada di katalog tersimpan
-      otomatis saat tampil.
+      {#if type === 'film'}
+        Filter ala donkey.to — genre, tahun, negara, urutan — langsung dari {source ||
+          'situs sumber'}; yang belum ada di katalog tersimpan otomatis saat tampil.
+      {:else}
+        Langsung dari {source || 'situs sumber'} untuk genre ini — yang belum ada di katalog tersimpan
+        otomatis saat tampil.
+      {/if}
     </p>
+    {#if type === 'film'}
+      <div class="live-filters">
+        {#if filmGenres.length}
+          <div class="lf-genres">
+            {#each filmGenres as g (g.value)}
+              <button
+                class="chip"
+                class:active={selGenres.includes(g.name)}
+                on:click={() => toggleGenre(g.name)}>{g.name}</button
+              >
+            {/each}
+          </div>
+        {/if}
+        <div class="lf-row">
+          <select bind:value={selYear} aria-label="Tahun">
+            <option value={0}>Semua tahun</option>
+            {#each years as y}<option value={y}>{y}</option>{/each}
+          </select>
+          <select bind:value={selCountry} aria-label="Negara">
+            <option value="">Semua negara</option>
+            {#each FILM_COUNTRIES as c}<option value={c.code}>{c.name}</option>{/each}
+          </select>
+          <select bind:value={selSort} aria-label="Urutan">
+            {#each FILM_SORTS as s}<option value={s.key}>{s.name}</option>{/each}
+          </select>
+          {#if dirty}<button class="linklike" on:click={resetFilters}>Reset</button>{/if}
+        </div>
+      </div>
+    {/if}
     {#if loading}
       <div class="poster-grid"><Skeleton kind="card" count={6} /></div>
     {:else}
@@ -130,6 +224,18 @@
   .live-section { margin-top: 28px; }
   .live-section h2 { font-size: 20px; margin: 0 0 4px; }
   .live-section > .muted { margin: 0 0 14px; font-size: 13px; }
+  .live-filters { margin: 0 0 16px; display: flex; flex-direction: column; gap: 10px; }
+  .lf-genres { display: flex; flex-wrap: wrap; gap: 8px; }
+  .lf-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .lf-row select {
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 14px;
+    max-width: 100%;
+  }
+  .linklike {
+    background: none; border: 0; padding: 0; cursor: pointer;
+    color: var(--muted); font: inherit; font-size: 14px; text-decoration: underline;
+  }
   .live-card {
     display: block; text-align: left; background: none; border: 0; padding: 0;
     cursor: pointer; color: inherit; font: inherit;

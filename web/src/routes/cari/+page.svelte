@@ -227,8 +227,10 @@
         </div>
       {/if}
     {/if}
-    {#if type && genre && !q.trim()}
-      <LiveBrowseSection {type} {genre} exclude={results} />
+    {#if type && !q.trim() && (genre || type === 'film')}
+      {#key type + '|' + genre + '|' + year}
+        <LiveBrowseSection {type} {genre} year={year ? +year : 0} exclude={results} />
+      {/key}
     {/if}
   {/if}
 </div>

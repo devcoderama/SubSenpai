@@ -2,7 +2,10 @@ package sources
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -96,5 +99,81 @@ func TestHashflixLive(t *testing.T) {
 		len(meta.Synopsis), meta.DurationMin, meta.Year, meta.Genres, meta.Studio)
 	if meta.Synopsis == "" || meta.DurationMin == 0 {
 		t.Fatal("metadata live kosong")
+	}
+}
+
+// Uji URL discover ala donkey.to: genre banyak = OR, tahun, negara,
+// urutan — dan genre tak dikenal mengembalikan kosong.
+func TestHFDiscoverURL(t *testing.T) {
+	base := "https://hashflix.top"
+	cases := []struct {
+		name string
+		f    BrowseFilter
+		page int
+		want string
+		ok   bool
+	}{
+		{"kosong", BrowseFilter{}, 1, base + "/database/discover/movie?page=1", true},
+		{"satu genre", BrowseFilter{Genres: []string{"Action"}}, 1, base + "/database/discover/movie?page=1&with_genres=28", true},
+		{"multi genre OR", BrowseFilter{Genres: []string{"Action", "Horror"}}, 2, base + "/database/discover/movie?page=2&with_genres=28%7C27", true},
+		{"genre tak dikenal", BrowseFilter{Genres: []string{"BukanGenre"}}, 1, "", false},
+		{"tahun+negara+urutan", BrowseFilter{Genres: []string{"Action"}, Year: 2024, Country: "id", Sort: "latest"}, 1, base + "/database/discover/movie?page=1&with_genres=28&primary_release_year=2024&with_origin_country=ID&sort_by=primary_release_date.desc", true},
+		{"urutan tak dikenal diabaikan", BrowseFilter{Sort: "acak"}, 1, base + "/database/discover/movie?page=1", true},
+		{"urutan nama A-Z", BrowseFilter{Sort: "name_asc"}, 1, base + "/database/discover/movie?page=1&sort_by=title.asc", true},
+		{"urutan paling banyak divote", BrowseFilter{Sort: "most_voted"}, 1, base + "/database/discover/movie?page=1&sort_by=vote_count.desc", true},
+		{"page 0 jadi 1", BrowseFilter{}, 0, base + "/database/discover/movie?page=1", true},
+	}
+	for _, c := range cases {
+		got, ok := hfDiscoverURL(base, c.f, c.page)
+		if ok != c.ok || got != c.want {
+			t.Errorf("%s: got (%q, %v), mau (%q, %v)", c.name, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestHashflixBrowseFiltered(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`{"page":1,"results":[
+			{"id":801688,"title":"Kalki 2898-AD","poster_path":"/x.jpg","release_date":"2024-06-27","genre_ids":[28,878],"adult":false}
+		]}`))
+	}))
+	defer srv.Close()
+	src := Source{BaseURL: srv.URL}
+	out, err := NewHashflix().BrowseFiltered(context.Background(), src,
+		BrowseFilter{Genres: []string{"Action", "Horror"}, Year: 2024, Country: "id", Sort: "latest"}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"with_genres=28%7C27", "primary_release_year=2024", "with_origin_country=ID", "sort_by=primary_release_date.desc"} {
+		if !strings.Contains(gotQuery, want) {
+			t.Fatalf("query=%q, kurang %q", gotQuery, want)
+		}
+	}
+	if len(out) != 1 || out[0].Slug != "kalki-2898-ad-801688" || out[0].Year != 2024 {
+		t.Fatalf("hasil=%+v", out)
+	}
+}
+
+func TestHashflixSearchTitles(t *testing.T) {
+	var gotPath, gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotQuery = r.URL.Path, r.URL.Query().Get("query")
+		_, _ = w.Write([]byte(`{"page":1,"results":[
+			{"id":533535,"title":"Deadpool & Wolverine","poster_path":"/8cd.jpg","release_date":"2024-07-24","genre_ids":[28,35,878],"adult":false}
+		]}`))
+	}))
+	defer srv.Close()
+	src := Source{BaseURL: srv.URL}
+	out, err := NewHashflix().SearchTitles(context.Background(), src, "deadpool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/database/search/movie" || gotQuery != "deadpool" {
+		t.Fatalf("path=%q query=%q", gotPath, gotQuery)
+	}
+	if len(out) != 1 || out[0].Slug != "deadpool-wolverine-533535" || out[0].URL != srv.URL+"/movie/533535" {
+		t.Fatalf("hasil=%+v", out)
 	}
 }

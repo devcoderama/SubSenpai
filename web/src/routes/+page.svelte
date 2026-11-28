@@ -1093,8 +1093,15 @@
             </div>
           {/if}
         {/if}
-        {#if tab && genre}
-          <LiveBrowseSection type={tab} {genre} exclude={results} />
+        {#if tab && (genre || tab === 'film')}
+          {#key tab + '|' + genre + '|' + fYear + '|' + fCountry}
+            <LiveBrowseSection
+              type={tab}
+              {genre}
+              year={fYear ? +fYear : 0}
+              country={fCountry}
+              exclude={results} />
+          {/key}
         {/if}
       {/if}
     {:else}

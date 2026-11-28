@@ -107,6 +107,25 @@ type GenreBrowser interface {
 	BrowseGenre(ctx context.Context, src Source, genre string, page int) ([]DiscoveredTitle, error)
 }
 
+// BrowseFilter adalah paket filter ala donkey.to/filters untuk
+// telusur langsung film: genre (boleh banyak), tahun, negara
+// (kode ISO 3166-1 alpha-2), dan urutan. Dipakai resolver film
+// yang datanya TMDB (Hashflix) — parameternya diteruskan apa adanya
+// ke endpoint discover TMDB-nya, jadi hasilnya sama dengan yang
+// ditampilkan donkey.to; streaming tetap dari Hashflix.
+type BrowseFilter struct {
+	Genres  []string
+	Year    int
+	Country string
+	Sort    string // popular | latest | name_asc | name_desc | most_voted
+}
+
+// FilteredBrowser adalah kemampuan opsional resolver: telusur
+// langsung dengan filter lengkap (bukan hanya satu genre).
+type FilteredBrowser interface {
+	BrowseFiltered(ctx context.Context, src Source, f BrowseFilter, page int) ([]DiscoveredTitle, error)
+}
+
 // TitleSearcher adalah kemampuan opsional resolver: mencari judul
 // LANGSUNG di halaman pencarian situs sumber dan mengembalikan
 // hasil kaya (poster/tahun/genre), untuk pencarian live aplikasi —

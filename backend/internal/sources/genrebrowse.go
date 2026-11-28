@@ -86,27 +86,14 @@ var tmdbGenreIDs = func() map[string]int {
 	return out
 }()
 
-// BrowseGenre Hashflix: endpoint discover TMDB-nya menerima
-// with_genres berisi id genre; genre kosong = semua film.
+// BrowseGenre Hashflix: mendelegasikan ke BrowseFiltered (satu
+// genre = filter dengan satu genre; URL yang dihasilkan sama).
 func (h *hashflixResolver) BrowseGenre(ctx context.Context, src Source, genre string, page int) ([]DiscoveredTitle, error) {
-	if page < 1 {
-		return nil, nil
-	}
-	base := strings.TrimRight(src.BaseURL, "/")
-	u := fmt.Sprintf("%s/database/discover/movie?page=%d", base, page)
+	f := BrowseFilter{}
 	if strings.TrimSpace(genre) != "" {
-		id, ok := tmdbGenreIDs[strings.ToLower(strings.TrimSpace(genre))]
-		if !ok {
-			return nil, nil // genre tak dikenal TMDB: kosong, bukan error
-		}
-		u += fmt.Sprintf("&with_genres=%d", id)
+		f.Genres = []string{genre}
 	}
-	body, err := Fetch(ctx, u)
-	if err != nil {
-		return nil, err
-	}
-	items, _ := parseHFTrending(body, base)
-	return items, nil
+	return h.BrowseFiltered(ctx, src, f, page)
 }
 
 // SlugifyTitle mengekspos pembuat slug katalog (dipakai endpoint
