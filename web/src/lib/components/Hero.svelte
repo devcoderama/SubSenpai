@@ -3,6 +3,14 @@
 
   export let item;
   export let firstEpisodeId = null;
+  // Toggle Daftar Saya (28 Nov 2026, permintaan Rams): tombol hidup di
+  // baris aksi, di kiri tombol Nonton — bukan lagi overlay kanan atas
+  // (posisi lama menutupi backdrop dan jauh dari Nonton/Detail).
+  // onToggleWatchlist null = tombol tak tampil (dipakai halaman lain).
+  export let inWatchlist = false;
+  export let wlBusy = false;
+  export let wlError = '';
+  export let onToggleWatchlist = null;
 
   $: typeLabel = item.type === 'donghua' ? 'Donghua' : item.type === 'anime' ? 'Anime' : 'Film';
 </script>
@@ -30,11 +38,27 @@
       <p class="synopsis">{item.synopsis}</p>
     {/if}
     <div class="actions">
+      {#if onToggleWatchlist}
+        <button
+          class="btn ghost hero-wl"
+          class:active={inWatchlist}
+          on:click={onToggleWatchlist}
+          disabled={wlBusy}
+          aria-pressed={inWatchlist}
+          aria-label={inWatchlist ? 'Hapus dari Daftar Saya' : 'Simpan ke Daftar Saya'}
+        >
+          <i class={inWatchlist ? 'fa-solid fa-bookmark' : 'fa-regular fa-bookmark'}></i>
+          {wlBusy ? 'Menyimpan…' : inWatchlist ? 'Tersimpan' : 'Daftar Saya'}
+        </button>
+      {/if}
       {#if firstEpisodeId}
         <a class="btn" href={'/nonton/' + firstEpisodeId}><i class="fa-solid fa-play"></i> Nonton</a>
       {/if}
       <a class="btn ghost" href={'/judul/' + item.id}><i class="fa-solid fa-circle-info"></i> Detail</a>
     </div>
+    {#if wlError}
+      <p class="hero-wl-error">{wlError}</p>
+    {/if}
   </div>
 </section>
 
@@ -63,5 +87,10 @@
     margin: 14px 0 20px; font-size: 15px; line-height: 1.55; color: #e5e5e5;
     display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
   }
-  .actions { display: flex; gap: 10px; }
+  /* Tiga tombol sebaris di desktop; di HP sempit boleh membungkus ke
+     baris berikut daripada terpotong. */
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .hero-wl.active { background: var(--red); }
+  .hero-wl.active:hover { background: var(--red-dark); }
+  .hero-wl-error { margin: 10px 0 0; font-size: 13px; color: #ffb4b4; }
 </style>

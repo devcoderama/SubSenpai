@@ -945,7 +945,14 @@
     >
       {#each heroItems as h, i (h.title.id)}
         <div class="hero-slide" class:active={i === heroIdx}>
-          <Hero item={h.title} firstEpisodeId={h.firstEp} />
+          <Hero
+            item={h.title}
+            firstEpisodeId={h.firstEp}
+            inWatchlist={heroInWatchlist}
+            wlBusy={heroWlBusy}
+            wlError={heroWlError}
+            onToggleWatchlist={toggleHeroWatchlist}
+          />
         </div>
       {/each}
       {#if heroItems.length > 1}
@@ -974,23 +981,6 @@
         <button class="hero-arrow right" on:click={() => goHero(heroIdx + 1, true)} aria-label="Hero berikutnya"
           >›</button
         >
-      {/if}
-      <!-- Toggle Daftar Saya hero (27 Nov 2026): overlay di kanan atas —
-           Hero.svelte di luar cakupan batch ini, jadi tombol hidup di sini
-           seperti dot + panah; Nonton/Detail di dalam Hero tak disentuh. -->
-      <button
-        class="btn ghost hero-wl"
-        class:active={heroInWatchlist}
-        on:click={toggleHeroWatchlist}
-        disabled={heroWlBusy}
-        aria-pressed={heroInWatchlist}
-        aria-label={heroInWatchlist ? 'Hapus dari Daftar Saya' : 'Simpan ke Daftar Saya'}
-      >
-        <i class={heroInWatchlist ? 'fa-solid fa-bookmark' : 'fa-regular fa-bookmark'}></i>
-        {heroWlBusy ? 'Menyimpan…' : heroInWatchlist ? 'Tersimpan' : 'Daftar Saya'}
-      </button>
-      {#if heroWlError}
-        <p class="hero-wl-error">{heroWlError}</p>
       {/if}
     </div>
   {/if}
@@ -1198,16 +1188,6 @@
   .hero-arrow.left { left: 16px; }
   .hero-arrow.right { right: 16px; }
   @media (hover: none) { .hero-arrow { display: none; } }
-  /* Toggle Daftar Saya di hero: overlay kanan atas (seperti dot +
-     panah); aktif = latar merah + bookmark penuh. */
-  .hero-wl { position: absolute; top: 14px; right: 16px; z-index: 6; }
-  .hero-wl.active { background: var(--red); }
-  .hero-wl.active:hover { background: var(--red-dark); }
-  .hero-wl-error {
-    position: absolute; left: 16px; bottom: 12px; z-index: 6; margin: 0;
-    font-size: 13px; color: #ffb4b4; background: rgba(0, 0, 0, 0.65);
-    padding: 4px 8px; border-radius: 4px;
-  }
   /* Kartu promo Premium ala aplikasi: gradien ungu + bintang emas. */
   .promo-premium {
     display: flex; align-items: center; gap: 12px;
