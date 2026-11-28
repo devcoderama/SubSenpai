@@ -67,9 +67,9 @@
   }
 </script>
 
-<div class="card" on:mouseenter={ensureWlState}>
+<div class="card">
   <div class="poster-wrap">
-    <a class="poster" href={link}>
+    <a class="poster" href={link} on:mouseenter={ensureWlState}>
       {#if item.poster_url}
         <img src={posterUrl(item.poster_url)} alt={item.title} loading="lazy" />
       {:else}
