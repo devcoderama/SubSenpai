@@ -54,7 +54,12 @@
   function attachHls() {
     destroyHls();
     if (!videoEl || !src?.url) return;
+    // Live stream lebih toleran (28 Nov 2026): manifest/varian dimuat
+    // ulang lebih sering di jaringan goyah sebelum hls.js menyerah.
     const h = new Hls({
+      manifestLoadingMaxRetry: 3,
+      levelLoadingMaxRetry: 6,
+      fragLoadingMaxRetry: 6,
       xhrSetup(xhr) {
         // User-Agent kanal (mis. CNN/CNBC/ANTV) diteruskan bila ada.
         // CATATAN: User-Agent adalah forbidden header di peramban —
@@ -70,8 +75,32 @@
         }
       }
     });
+    // Kegagalan segmen sesaat (timeout/putus di tengah jalan) itu WAJAR
+    // di live stream — JANGAN langsung menyerah. Pola standar hls.js:
+    // NETWORK_ERROR fatal -> startLoad() lagi (maks 3x beruntun, lalu
+    // menyerah), MEDIA_ERROR fatal -> recoverMediaError() (maks 2x).
+    // Tanpa ini, satu segmen gagal = pemutar langsung mati + panel
+    // error: Trans TV/CNN mati di web 18:52 padahal segmennya sehat
+    // (200, ~450 KB dari VM) — CNN sempat jalan 10-30 detik dulu.
+    // Hitungan gagal di-reset tiap ada segmen yang berhasil masuk.
+    let netRetries = 0;
+    let mediaRetries = 0;
+    h.on(Hls.Events.FRAG_LOADED, () => {
+      netRetries = 0;
+      mediaRetries = 0;
+    });
     h.on(Hls.Events.ERROR, (_e, data) => {
       if (!data?.fatal) return;
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR && netRetries < 3) {
+        netRetries += 1;
+        h.startLoad();
+        return;
+      }
+      if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRetries < 2) {
+        mediaRetries += 1;
+        h.recoverMediaError();
+        return;
+      }
       hlsError =
         data.type === Hls.ErrorTypes.NETWORK_ERROR
           ? 'Stream tidak bisa dimuat — kanal mungkin sedang mati.'
