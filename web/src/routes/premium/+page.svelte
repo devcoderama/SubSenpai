@@ -5,6 +5,7 @@
   import { user } from '$lib/auth.js';
   import { refreshPremium } from '$lib/ads.js';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import { toastSuccess } from '$lib/toast.js';
 
   // Tiga kategori seperti di aplikasi Android (PremiumScreen.kt):
   // 0 = Langganan, 1 = Beli Voucher, 2 = Tukar Voucher.
@@ -32,7 +33,6 @@
   let trialIcon = ''; // '' | 'check' | 'exclamation'
   let trialMsg = '';
   let trialBusy = false;
-  let info = '';
   let qrDownloading = false;
 
   // Tukar voucher.
@@ -76,7 +76,6 @@
     payPaid = false;
     payError = '';
     statusMsg = '';
-    info = '';
   }
 
   function onQty(e) {
@@ -260,7 +259,7 @@
   async function copyText(t, doneMsg) {
     try {
       await navigator.clipboard.writeText(t);
-      info = doneMsg || 'Disalin.';
+      toastSuccess(doneMsg || 'Disalin.');
     } catch {
       window.prompt('Salin:', t);
     }
@@ -278,7 +277,7 @@
       a.download = 'QRIS-SubSenpai-' + (payment.session_id || '').slice(0, 8) + '.png';
       a.click();
       URL.revokeObjectURL(url);
-      info = 'QRIS tersimpan — lihat di unduhan.';
+      toastSuccess('QRIS tersimpan — lihat di unduhan.');
     } catch {
       // Gagal unduh QR: tampilkan gambar QR di tab yang sama (tanpa tab
       // baru, 27 Nov 2026) — tombol Kembali mengembalikan ke Premium.
@@ -320,7 +319,6 @@
     {/each}
   </div>
 
-  {#if info}<p class="info"><i class="fa-solid fa-circle-check"></i> {info}</p>{/if}
 
   {#if tab === 2}
     <!-- Tukar Voucher — tanpa langkah pembayaran, seperti di aplikasi. -->
@@ -546,7 +544,6 @@
   h1 { margin: 24px 0 8px; font-size: 28px; }
   .ok { border-color: #2f7d32; background: #122b16; }
   .ok-text { color: #7ec97e; }
-  .info { color: #7ec97e; }
   .row { display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
   .wide { width: 100%; margin-top: 12px; }
   .linklike { background: none; border: 0; color: var(--red); cursor: pointer; font-size: 14px; padding: 0; }

@@ -6,6 +6,7 @@
     getFilters
   } from '$lib/api.js';
   import { wlMap, wlPending, ensureWl, toggleWl } from '$lib/watchlist.js';
+  import { toastError } from '$lib/toast.js';
   import { homeCache } from '$lib/homeCache.js';
   import { user, isPremium } from '$lib/auth.js';
   import { searchQuery } from '$lib/search.js';
@@ -51,7 +52,6 @@
   // Toggle Daftar Saya di hero: status mengikuti store bersama
   // ($lib/watchlist.js) — sama seperti kartu, supaya simpan dari hero
   // langsung tercermin di rel dan sebaliknya (28 Nov 2026).
-  let heroWlError = '';
   let rails = { anime: [], donghua: [], film: [] };
   let grid = [];
   let nextCursor = '';
@@ -405,11 +405,10 @@
     }
     const id = heroItems[heroIdx]?.title?.id;
     if (!id || $wlPending[id]) return;
-    heroWlError = '';
     try {
       await toggleWl(id);
     } catch (e) {
-      heroWlError = e.message || 'Gagal mengubah Daftar Saya.';
+      toastError(e.message || 'Gagal mengubah Daftar Saya.');
     }
   }
 
@@ -927,7 +926,6 @@
             underNav={tab === ''}
             inWatchlist={$user ? $wlMap[h.title.id] : undefined}
             wlBusy={!!$wlPending[h.title.id]}
-            wlError={heroWlError}
             onToggleWatchlist={toggleHeroWatchlist}
           />
         </div>

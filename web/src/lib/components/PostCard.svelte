@@ -2,6 +2,7 @@
   import { API_BASE, likePost, repostPost, bookmarkPost, sharePost, deletePost, getComments, createComment } from '$lib/api.js';
   import { user } from '$lib/auth.js';
   import { fmtWhen } from '$lib/history.js';
+  import { toastError, toastSuccess } from '$lib/toast.js';
 
   export let post;
   export let onDelete = null;
@@ -44,7 +45,6 @@
   let commentsLoaded = false;
   let commentBody = '';
   let commentBusy = false;
-  let actionError = '';
 
   $: author = post.author;
   $: mediaUrl = post.image_url
@@ -78,7 +78,7 @@
     } catch (e) {
       liked = was;
       likeCount += was ? 1 : -1;
-      actionError = e.message || 'Gagal menyukai.';
+      toastError(e.message || 'Gagal menyukai.');
     }
   }
 
@@ -89,7 +89,7 @@
       reposted = res.reposted ?? !reposted;
       repostCount = res.repost_count ?? repostCount + (reposted ? 1 : -1);
     } catch (e) {
-      actionError = e.message || 'Gagal repost.';
+      toastError(e.message || 'Gagal repost.');
     }
   }
 
@@ -99,7 +99,7 @@
       const res = await bookmarkPost(post.post_id);
       bookmarked = res.bookmarked ?? !bookmarked;
     } catch (e) {
-      actionError = e.message || 'Gagal bookmark.';
+      toastError(e.message || 'Gagal bookmark.');
     }
   }
 
@@ -112,8 +112,7 @@
     }
     try {
       await navigator.clipboard.writeText(window.location.origin + '/post');
-      actionError = 'Tautan disalin.';
-      setTimeout(() => (actionError = ''), 2000);
+      toastSuccess('Tautan disalin.');
     } catch {
       /* clipboard tak tersedia */
     }
@@ -141,7 +140,7 @@
       if (res.comment) comments = [...comments, res.comment];
       commentBody = '';
     } catch (e) {
-      actionError = e.message || 'Gagal mengirim komentar.';
+      toastError(e.message || 'Gagal mengirim komentar.');
     } finally {
       commentBusy = false;
     }
@@ -153,7 +152,7 @@
       await deletePost(post.post_id);
       onDelete?.(post.id);
     } catch (e) {
-      actionError = e.message || 'Gagal menghapus.';
+      toastError(e.message || 'Gagal menghapus.');
     }
   }
 
@@ -241,7 +240,6 @@
     </button>
     <button on:click={doShare} aria-label="Bagikan"><i class="fa-solid fa-share-nodes"></i> {shareCount}</button>
   </div>
-  {#if actionError}<p class="error">{actionError}</p>{/if}
 
   {#if showComments}
     <div class="comments">

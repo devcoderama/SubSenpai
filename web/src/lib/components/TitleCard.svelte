@@ -3,6 +3,7 @@
   import { posterUrl, getTitle } from '$lib/api.js';
   import { wlMap, wlPending, ensureWl, toggleWl } from '$lib/watchlist.js';
   import { user } from '$lib/auth.js';
+  import { toastError } from '$lib/toast.js';
 
   export let item;
   export let href = null;
@@ -26,7 +27,8 @@
     try {
       await toggleWl(item.id);
     } catch {
-      // Gagal: store tidak berubah (umpan balik toast menyusul di #4).
+      // Gagal: store tidak berubah.
+      toastError('Gagal mengubah Daftar Saya. Coba lagi.');
     }
   }
 

@@ -9,7 +9,6 @@
   // onToggleWatchlist null = tombol tak tampil (dipakai halaman lain).
   export let inWatchlist = false;
   export let wlBusy = false;
-  export let wlError = '';
   export let onToggleWatchlist = null;
   // Hero menjorok ke bawah navbar transparan (28 Nov 2026): padding
   // atas ditambah setinggi navbar + baris chip supaya teks tetap di
@@ -58,9 +57,6 @@
       {/if}
       <a class="btn ghost" href={'/judul/' + item.id}><i class="fa-solid fa-circle-info"></i> Detail</a>
     </div>
-    {#if wlError}
-      <p class="hero-wl-error">{wlError}</p>
-    {/if}
   </div>
 </section>
 
@@ -111,5 +107,4 @@
   .actions { display: flex; gap: 10px; flex-wrap: wrap; }
   .hero-wl.active { background: var(--red); }
   .hero-wl.active:hover { background: var(--red-dark); }
-  .hero-wl-error { margin: 10px 0 0; font-size: 13px; color: #ffb4b4; }
 </style>

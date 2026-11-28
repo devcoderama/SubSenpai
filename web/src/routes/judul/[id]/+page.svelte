@@ -10,6 +10,7 @@
   import TitleCard from '$lib/components/TitleCard.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { reveal } from '$lib/reveal.js';
+  import { toastError } from '$lib/toast.js';
 
   let loading = true;
   let error = '';
@@ -21,7 +22,6 @@
   let lockedEp = null; // episode terkunci yang dialognya sedang tampil
   let inWatchlist = false;
   let wlBusy = false;
-  let wlError = '';
 
   $: id = $page.params.id;
   $: firstLocked = episodes.length > 0 && episodes[0].locked;
@@ -124,7 +124,6 @@
     }
     if (wlBusy) return;
     wlBusy = true;
-    wlError = '';
     try {
       if (inWatchlist) {
         await removeWatchlist(id);
@@ -134,7 +133,7 @@
         inWatchlist = true;
       }
     } catch (e) {
-      wlError = e.message || 'Gagal mengubah Daftar Saya.';
+      toastError(e.message || 'Gagal mengubah Daftar Saya.');
     } finally {
       wlBusy = false;
     }
@@ -246,7 +245,6 @@
         {/if}
       </div>
     </div>
-    {#if wlError}<p class="error">{wlError}</p>{/if}
 
     {#if title.synopsis}
       <h2 class="sec">Sinopsis</h2>

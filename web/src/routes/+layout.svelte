@@ -3,6 +3,7 @@
   import '../app.css';
   import Navbar from '$lib/components/Navbar.svelte';
   import BottomNav from '$lib/components/BottomNav.svelte';
+  import Toasts from '$lib/components/Toasts.svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { logout } from '$lib/auth.js';
@@ -137,3 +138,5 @@
 {#if !immersive}
   <BottomNav />
 {/if}
+
+<Toasts />
