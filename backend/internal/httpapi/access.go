@@ -63,24 +63,27 @@ func deviceKey(r *http.Request) string {
 // anime & donghua BEBAS untuk semua tier: semua episode tanpa
 // premium dan tanpa iklan. Film khusus premium (atau dibuka lewat
 // iklan — ad-unlock diperiksa di gateEpisode, bukan di sini).
+// Serial TV BEBAS untuk semua tier (keputusan Rams 2026-11-28).
 // isFirst dipertahankan demi kompatibilitas pemanggil.
 func watchAllowed(t tier, titleType string, isFirst bool) bool {
 	if t == tierPremium {
 		return true
 	}
-	return titleType == "anime" || titleType == "donghua"
+	return titleType == "anime" || titleType == "donghua" || titleType == "series"
 }
 
 // episodeAccessInfo: tipe judul + apakah episode ini episode
-// pertamanya (episode_no terkecil pada judul tersebut).
-func (a *API) episodeAccessInfo(ctx context.Context, titleID string, episodeNo int) (string, bool, error) {
+// pertamanya ((season_no, episode_no) terkecil pada judul tersebut).
+func (a *API) episodeAccessInfo(ctx context.Context, titleID string, seasonNo, episodeNo int) (string, bool, error) {
 	var titleType string
 	var isFirst bool
 	err := a.pool.QueryRow(ctx, `
 		select t.type,
 		       not exists(select 1 from episodes e
-		                  where e.title_id = t.id and e.episode_no < $2 and not e.is_hidden)
-		from titles t where t.id = $1::uuid and not t.is_hidden`, titleID, episodeNo).Scan(&titleType, &isFirst)
+		                  where e.title_id = t.id
+		                    and (e.season_no < $2 or (e.season_no = $2 and e.episode_no < $3))
+		                    and not e.is_hidden)
+		from titles t where t.id = $1::uuid and not t.is_hidden`, titleID, seasonNo, episodeNo).Scan(&titleType, &isFirst)
 	return titleType, isFirst, err
 }
 
@@ -89,12 +92,13 @@ func (a *API) episodeAccessInfo(ctx context.Context, titleID string, episodeNo i
 // premium, akun gratis, maupun tamu — tanpa premium, tanpa iklan,
 // dan tanpa batas 1 episode tamu (batas tamu lama ikut dicabut
 // karena aturan "hanya episode pertama" sudah tidak ada).
+// Serial TV bebas juga (keputusan Rams 2026-11-28).
 // Film khusus premium, atau dibuka lewat iklan (Monetag) untuk
 // pemilik unlock-nya (hasAdUnlock diperiksa sebelum aturan ini).
-func (a *API) gateEpisode(w http.ResponseWriter, r *http.Request, episodeID, titleID string, episodeNo int) bool {
+func (a *API) gateEpisode(w http.ResponseWriter, r *http.Request, episodeID, titleID string, seasonNo, episodeNo int) bool {
 	// Info akses dibaca lebih dulu: judul yang disembunyikan admin
 	// (atau tidak ada) tidak bisa diputar siapa pun, termasuk premium.
-	titleType, isFirst, err := a.episodeAccessInfo(r.Context(), titleID, episodeNo)
+	titleType, isFirst, err := a.episodeAccessInfo(r.Context(), titleID, seasonNo, episodeNo)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "judul tidak ditemukan")
 		return false

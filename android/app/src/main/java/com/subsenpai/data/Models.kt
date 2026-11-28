@@ -44,6 +44,8 @@ data class EpisodeItem(
     val durationSec: Int?,
     /** Terkunci untuk tier penonton ini (non-premium: film; anime & donghua selalu terbuka). */
     val locked: Boolean = false,
+    /** Nomor season (serial TV; 1 untuk anime/donghua/film, 0 = Spesial ala TMDB). */
+    val seasonNo: Int = 1,
 ) {
     companion object {
         fun fromJson(o: JSONObject) = EpisodeItem(
@@ -52,6 +54,7 @@ data class EpisodeItem(
             title = o.optString("title").ifBlank { null },
             durationSec = if (o.has("duration_sec") && !o.isNull("duration_sec")) o.getInt("duration_sec") else null,
             locked = o.optBoolean("locked"),
+            seasonNo = o.optInt("season_no", 1),
         )
     }
 }
@@ -176,6 +179,8 @@ data class Playback(
     val titleId: String = "",
     /** Nomor episode ini (dari objek episode respons yang sama). */
     val episodeNo: Int = 0,
+    /** Nomor season episode ini (serial TV; 0 bila tak dikirim server). */
+    val seasonNo: Int = 0,
 ) {
     companion object {
         fun fromJson(o: JSONObject): Playback {
@@ -184,6 +189,7 @@ data class Playback(
                 episodeId = ep.getString("id"),
                 titleId = ep.optString("title_id"),
                 episodeNo = ep.optInt("episode_no"),
+                seasonNo = ep.optInt("season_no"),
                 sources = buildList {
                     val arr = o.optJSONArray("sources")
                     if (arr != null) for (i in 0 until arr.length()) {

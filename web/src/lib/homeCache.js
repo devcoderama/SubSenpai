@@ -17,13 +17,13 @@ function freshTab() {
 export const homeCache = {
   loaded: false,
   tab: '',
-  rails: { anime: [], donghua: [], film: [] },
+  rails: { anime: [], donghua: [], film: [], series: [] },
   trending: [],
-  filmYear: [], animeYear: [], donghuaYear: [],
-  filmPopuler: [],
+  filmYear: [], animeYear: [], donghuaYear: [], seriesYear: [],
+  filmPopuler: [], seriesPopuler: [],
   animeOngoing: [], donghuaOngoing: [],
   heroItems: [],
   continueWatching: [],
-  scroll: { '': 0, film: 0, anime: 0, donghua: 0 },
-  tabs: { '': freshTab(), film: freshTab(), anime: freshTab(), donghua: freshTab() },
+  scroll: { '': 0, film: 0, anime: 0, donghua: 0, series: 0 },
+  tabs: { '': freshTab(), film: freshTab(), anime: freshTab(), donghua: freshTab(), series: freshTab() },
 };

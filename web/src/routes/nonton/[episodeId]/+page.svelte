@@ -120,6 +120,10 @@
   $: idx = episodes.findIndex((e) => e.id === epId);
   $: curEp = idx >= 0 ? episodes[idx] : null;
   $: epTitle = curEp?.title || '';
+  $: epSeason = playback?.episode?.season_no ?? curEp?.season_no ?? null;
+  // Serial TV: judul episode backend sudah "Episode N" — jangan
+  // tampilkan dua kali sesudah "Season S · Episode N".
+  $: epTitleShown = title?.type === 'series' ? '' : epTitle;
   $: prevEp = idx > 0 ? episodes[idx - 1] : null;
   $: nextEp = idx >= 0 && idx < episodes.length - 1 ? episodes[idx + 1] : null;
   $: src = playback?.sources?.[current];
@@ -605,7 +609,7 @@
           <h1><i class="fa-solid fa-lock"></i> Episode ini khusus Premium</h1>
           <p class="muted">
             {#if title}{title.title} — Episode {playback?.episode?.episode_no || curEp?.episode_no || ''}{/if}
-            Anime &amp; donghua bebas ditonton semua episode. Film khusus Premium — atau buka episode
+            Anime, donghua &amp; serial TV bebas ditonton semua episode. Film khusus Premium — atau buka episode
             ini dengan menonton iklan 60 detik. Iklan dibuka di tab ini — setelah selesai, kembali
             ke halaman ini dengan tombol Kembali. Aturan ini ditegakkan server, sama seperti di aplikasi.
           </p>
@@ -667,7 +671,10 @@
           <div class="info">
             <h1 class="watch-title">{title.title}</h1>
             {#if playback.episode?.episode_no != null}
-              <div class="ep-sub">Episode {playback.episode.episode_no}{epTitle ? ' — ' + epTitle : ''}</div>
+              <div class="ep-sub">
+                {#if title?.type === 'series' && epSeason}Season {epSeason} · {/if}Episode {playback.episode
+                  .episode_no}{epTitleShown ? ' — ' + epTitleShown : ''}
+              </div>
             {/if}
             {#if metaLine}<div class="meta">{metaLine}</div>{/if}
             {#if title.genres?.length}

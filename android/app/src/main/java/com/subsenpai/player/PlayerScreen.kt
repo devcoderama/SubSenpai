@@ -1368,6 +1368,43 @@ private fun EpisodeSelector(
                 Text("Next ›", color = if (onNext != null) WatchText else WatchMuted)
             }
         }
+        // Serial TV: saring grid per season (chip di atas grid) agar
+        // 60+ episode lintas season tidak tercampur dalam satu grid
+        // datar. Default = season episode yang sedang diputar; pindah
+        // episode (Prev/Next/ketuk) mengembalikan saringan ke season
+        // episode baru itu.
+        val seasons = episodes.map { it.seasonNo }.distinct().sorted()
+        val currentSeason = episodes.firstOrNull { it.id == currentId }?.seasonNo
+            ?: seasons.firstOrNull() ?: 1
+        var pickedSeason by remember(currentId) { mutableStateOf<Int?>(null) }
+        val activeSeason = pickedSeason?.takeIf { it in seasons } ?: currentSeason
+        val shownEpisodes = if (seasons.size > 1) {
+            episodes.filter { it.seasonNo == activeSeason }
+        } else {
+            episodes
+        }
+        if (seasons.size > 1) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                seasons.forEach { s ->
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (s == activeSeason) WatchAccent else WatchSurface,
+                        modifier = Modifier.clickable { pickedSeason = s },
+                    ) {
+                        Text(
+                            if (s == 0) "Spesial" else "Season $s",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                        )
+                    }
+                }
+            }
+        }
         // Grid membungkus 5 per baris (1–5, 6–10, …) dengan scroll
         // vertikal sendiri — permintaan Rams 2026-11-24: deretan geser
         // menyamping menyiksa untuk judul berepisode puluhan sampai
@@ -1375,8 +1412,8 @@ private fun EpisodeSelector(
         // (awalan ▶ dibuang agar nomor 3 digit muat di sel sempit),
         // dan grid langsung melompat ke episode yang sedang diputar.
         val gridState = rememberLazyGridState()
-        LaunchedEffect(currentId, episodes.size) {
-            val idx = episodes.indexOfFirst { it.id == currentId }
+        LaunchedEffect(currentId, shownEpisodes.size) {
+            val idx = shownEpisodes.indexOfFirst { it.id == currentId }
             if (idx >= 0) gridState.scrollToItem(idx)
         }
         LazyVerticalGrid(
@@ -1389,7 +1426,7 @@ private fun EpisodeSelector(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            itemsIndexed(episodes, key = { _, ep -> ep.id }) { _, ep ->
+            itemsIndexed(shownEpisodes, key = { _, ep -> ep.id }) { _, ep ->
                 val active = ep.id == currentId
                 Surface(
                     shape = RoundedCornerShape(10.dp),

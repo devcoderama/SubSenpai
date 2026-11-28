@@ -22,7 +22,7 @@ func (a *API) handleShareEpisodePage(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	data := sharePageData{
 		Title:       "SubSenpai",
-		Description: "Nonton anime, donghua & film subtitle Indonesia di aplikasi SubSenpai.",
+		Description: "Nonton anime, donghua, film & serial TV subtitle Indonesia di aplikasi SubSenpai.",
 		PageURL:     "https://subsenpai.web.id/nonton/" + id,
 		ID:          id,
 	}

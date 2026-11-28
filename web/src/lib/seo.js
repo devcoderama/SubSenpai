@@ -8,6 +8,7 @@ export function typeLabel(t) {
   if (t === 'anime') return 'Anime';
   if (t === 'donghua') return 'Donghua';
   if (t === 'film') return 'Film';
+  if (t === 'series') return 'Serial TV';
   return '';
 }
 

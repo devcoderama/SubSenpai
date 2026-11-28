@@ -1,4 +1,4 @@
-<svelte:head><title>Cari Anime, Donghua &amp; Film Subtitle Indonesia — SubSenpai</title></svelte:head>
+<svelte:head><title>Cari Anime, Donghua, Film &amp; Serial TV Subtitle Indonesia — SubSenpai</title></svelte:head>
 
 <script>
   import { onMount } from 'svelte';
@@ -14,7 +14,8 @@
     { id: '', label: 'Semua' },
     { id: 'film', label: 'Film' },
     { id: 'anime', label: 'Anime' },
-    { id: 'donghua', label: 'Donghua' }
+    { id: 'donghua', label: 'Donghua' },
+    { id: 'series', label: 'Series' }
   ];
 
   let q = $page.url.searchParams.get('q') || '';
@@ -143,7 +144,7 @@
   <h1>Cari &amp; Genre</h1>
   <form class="searchbar" on:submit|preventDefault={search}>
     <!-- id dipakai navbar: ikon cari di /cari fokus ke kolom ini -->
-    <input id="cari-input" type="search" placeholder="Cari anime, donghua, film…" bind:value={q} />
+    <input id="cari-input" type="search" placeholder="Cari anime, donghua, film, serial TV…" bind:value={q} />
     <button class="btn" type="submit">Cari</button>
   </form>
 
@@ -227,7 +228,7 @@
         </div>
       {/if}
     {/if}
-    {#if type && !q.trim() && (genre || type === 'film')}
+    {#if type && !q.trim() && (genre || type === 'film' || type === 'series')}
       {#key type + '|' + genre + '|' + year}
         <LiveBrowseSection {type} {genre} year={year ? +year : 0} exclude={results} />
       {/key}

@@ -286,7 +286,7 @@ func EnrichTitles(ctx context.Context, pool *pgxpool.Pool) error {
 	var mu sync.Mutex
 	totalDone := 0
 	var firstErr error
-	for _, typ := range []string{"anime", "donghua", "film"} {
+	for _, typ := range []string{"anime", "donghua", "film", "series"} {
 		wg.Add(1)
 		go func(typ string) {
 			defer wg.Done()
@@ -366,7 +366,7 @@ func discoverTitles(ctx context.Context, pool *pgxpool.Pool, onlyType string) (i
 	posters := 0
 	devicePosters := 0        // percobaan HTTP backfill poster judul perangkat
 	seen := map[string]bool{} // resolver+base yang sudah ditemukan putaran ini
-	for _, ct := range []string{"anime", "donghua", "film", "manga", "manhua", "manhwa"} {
+	for _, ct := range []string{"anime", "donghua", "film", "series", "manga", "manhua", "manhwa"} {
 		if onlyType != "" && ct != onlyType {
 			continue
 		}
@@ -709,13 +709,13 @@ func selectSyncTitles(ctx context.Context, pool *pgxpool.Pool, typ string, limit
 }
 
 // daftar episode, dan menyelesaikan aliran + trek subtitle episode yang
-// belum punya sumber putar. Ketiga jenis (anime/donghua/film) berjalan
-// sebagai 3 jalur BERSAMAAN — situs sumbernya berbeda per jenis, jadi
-// tidak saling berebut; kegagalan satu jalur (mis. satu situs down)
-// hanya menghentikan jalur itu, dua jalur lain tetap jalan.
+// belum punya sumber putar. Keempat jenis (anime/donghua/film/series)
+// berjalan sebagai jalur BERSAMAAN — situs sumbernya berbeda per jenis,
+// jadi tidak saling berebut; kegagalan satu jalur (mis. satu situs
+// down) hanya menghentikan jalur itu, jalur lain tetap jalan.
 // Kegagalan per judul/sumber dicatat, tidak menghentikan putaran.
 func SyncSources(ctx context.Context, pool *pgxpool.Pool) error {
-	types := []string{"anime", "donghua", "film"}
+	types := []string{"anime", "donghua", "film", "series"}
 	lists := make([][]syncTitleItem, len(types))
 	for i, typ := range types {
 		list, err := selectSyncTitles(ctx, pool, typ, syncTitlesPerType)
@@ -863,24 +863,28 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 	// Satu query agregat menggantikan 2 query per episode (cari baris
 	// episode + hitung sumbernya): judul 100 episode tadinya butuh
 	// 200+ query hanya untuk menyimpulkan "tidak ada yang perlu
-	// dikerjakan". Peta episode_no → (id, sudah punya sumber?).
+	// dikerjakan". Peta (season_no, episode_no) → (id, sudah punya
+	// sumber?) — kunci ganda karena S1E1 dan S2E1 berbagi episode_no.
+	type epKey struct {
+		season, no int
+	}
 	type epState struct {
 		id         string
 		hasSources bool
 	}
-	existing := map[int]epState{}
+	existing := map[epKey]epState{}
 	erows, err := pool.Query(ctx, `
-		select e.episode_no, e.id,
+		select e.season_no, e.episode_no, e.id,
 		       exists (select 1 from episode_sources es where es.episode_id = e.id)
 		from episodes e where e.title_id = $1::uuid`, titleID)
 	if err != nil {
 		return 0, err
 	}
 	for erows.Next() {
-		var no int
+		var k epKey
 		var st epState
-		if err := erows.Scan(&no, &st.id, &st.hasSources); err == nil {
-			existing[no] = st
+		if err := erows.Scan(&k.season, &k.no, &st.id, &st.hasSources); err == nil {
+			existing[k] = st
 		}
 	}
 	erows.Close()
@@ -898,18 +902,25 @@ func syncTitle(ctx context.Context, pool *pgxpool.Pool, resolver sources.Resolve
 	}
 	var jobList []resolveJob
 	for _, ep := range eps {
-		st, ok := existing[ep.Number]
+		// Resolver tanpa season (anime/donghua/film) memakai 1 —
+		// sama dengan nilai default migrasi untuk episode lama.
+		season := ep.Season
+		if season < 1 {
+			season = 1
+		}
+		k := epKey{season: season, no: ep.Number}
+		st, ok := existing[k]
 		if !ok {
 			var epID string
 			if err := pool.QueryRow(ctx, `
-				insert into episodes (title_id, episode_no, title, video_url)
-				values ($1::uuid, $2, $3, $4) returning id`,
-				titleID, ep.Number, nullIfEmpty(ep.Title), ep.URL).Scan(&epID); err != nil {
+				insert into episodes (title_id, season_no, episode_no, title, video_url)
+				values ($1::uuid, $2, $3, $4, $5) returning id`,
+				titleID, season, ep.Number, nullIfEmpty(ep.Title), ep.URL).Scan(&epID); err != nil {
 				return 0, err
 			}
 			newEps = append(newEps, ep.Number)
 			st = epState{id: epID}
-			existing[ep.Number] = st
+			existing[k] = st
 		}
 		// 3) Kumpulkan episode yang belum punya sumber untuk
 		// diselesaikan alirannya (dibatasi anggaran panggilan ini).
@@ -1005,11 +1016,11 @@ func storeResolved(ctx context.Context, pool *pgxpool.Pool, epID string, res sou
 // sumber terpeta yang berhasil.
 func ResolveOneEpisode(ctx context.Context, pool *pgxpool.Pool, episodeID string) error {
 	var titleID, typ string
-	var epNo int
+	var epSeason, epNo int
 	if err := pool.QueryRow(ctx, `
-		select e.title_id, e.episode_no, t.type
+		select e.title_id, e.season_no, e.episode_no, t.type
 		from episodes e join titles t on t.id = e.title_id
-		where e.id = $1::uuid`, episodeID).Scan(&titleID, &epNo, &typ); err != nil {
+		where e.id = $1::uuid`, episodeID).Scan(&titleID, &epSeason, &epNo, &typ); err != nil {
 		return err
 	}
 	srcs, err := loadSources(ctx, pool, typ)
@@ -1035,7 +1046,14 @@ func ResolveOneEpisode(ctx context.Context, pool *pgxpool.Pool, episodeID string
 			continue
 		}
 		for _, ep := range eps {
-			if ep.Number != epNo {
+			// Cocokkan season + nomor (serial TV: S1E1 dan S2E1
+			// berbagi episode_no; resolver tanpa season memakai
+			// Season 0 yang dinormalkan ke 1 saat sinkron).
+			epSeason2 := ep.Season
+			if epSeason2 < 1 {
+				epSeason2 = 1
+			}
+			if epSeason2 != epSeason || ep.Number != epNo {
 				continue
 			}
 			res, err := resolver.Resolve(ctx, src, ep)
@@ -1052,7 +1070,7 @@ func ResolveOneEpisode(ctx context.Context, pool *pgxpool.Pool, episodeID string
 	if lastErr != nil {
 		return lastErr
 	}
-	return fmt.Errorf("episode %d tidak ditemukan di sumber mana pun", epNo)
+	return fmt.Errorf("episode S%dE%d tidak ditemukan di sumber mana pun", epSeason, epNo)
 }
 
 func nullIfEmpty(s string) any {

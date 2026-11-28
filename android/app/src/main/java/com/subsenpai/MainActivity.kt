@@ -173,6 +173,7 @@ class MainActivity : ComponentActivity() {
                         "anime" -> "Anime"
                         "donghua" -> "Donghua"
                         "film" -> "Film"
+                        "series" -> "Serial TV"
                         else -> "Umum"
                     }
                     val text = buildString {
@@ -190,7 +191,7 @@ class MainActivity : ComponentActivity() {
                             posterUrl = d.card.posterUrl,
                             titleId = d.card.id,
                             category = when (d.card.type) {
-                                "anime", "donghua", "film" -> d.card.type
+                                "anime", "donghua", "film", "series" -> d.card.type
                                 else -> "umum"
                             },
                         ),

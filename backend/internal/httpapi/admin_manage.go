@@ -121,7 +121,7 @@ func (a *API) handleAdminTitles(w http.ResponseWriter, r *http.Request) {
 		` + w
 	}
 	base := baseSQL(where)
-	baseTypes := baseSQL("where t.type in ('anime','donghua','film')")
+	baseTypes := baseSQL("where t.type in ('anime','donghua','film','series')")
 	var nTotal, nKomplit, nBelum, nKosong int
 	if err := a.pool.QueryRow(r.Context(), `
 		select count(*), count(*) filter (where complete),
@@ -133,11 +133,12 @@ func (a *API) handleAdminTitles(w http.ResponseWriter, r *http.Request) {
 	}
 	// Rincian per jenis (permintaan Rams 2026-11-25): halaman Kelola
 	// Judul menampilkan berapa komplit / belum komplit / judul saja
-	// untuk tiap Film, Anime, Donghua. Dihitung dari SELURUH katalog
-	// tiga jenis itu — tidak terpengaruh kata cari / pilihan jenis /
-	// filter di atas — agar angkanya stabil sebagai gambaran antrean.
+	// untuk tiap Film, Anime, Donghua, Serial TV. Dihitung dari
+	// SELURUH katalog empat jenis itu — tidak terpengaruh kata cari /
+	// pilihan jenis / filter di atas — agar angkanya stabil sebagai
+	// gambaran antrean.
 	byType := map[string]map[string]int{}
-	for _, typ := range []string{"anime", "donghua", "film"} {
+	for _, typ := range []string{"anime", "donghua", "film", "series"} {
 		byType[typ] = map[string]int{"total": 0, "komplit": 0, "belum": 0, "kosong": 0}
 	}
 	trows, err := a.pool.Query(r.Context(), `
@@ -270,7 +271,7 @@ func (a *API) handleAdminWorker(w http.ResponseWriter, r *http.Request) {
 		        and coalesce(e.video_url,'') = '')),
 		  count(*) filter (where coalesce(synopsis,'') = ''
 		     and not exists (select 1 from episodes e where e.title_id = titles.id))
-		from titles where type in ('anime','donghua','film')`).Scan(&total, &komplit, &kosong)
+		from titles where type in ('anime','donghua','film','series')`).Scan(&total, &komplit, &kosong)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": jobs.ReadWorkerStatus(ctx, a.pool),
 		"queue": map[string]any{

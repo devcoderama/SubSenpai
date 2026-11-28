@@ -43,6 +43,7 @@ type Candidate struct {
 // EpisodeRef adalah satu episode pada halaman judul sumber.
 type EpisodeRef struct {
 	Number int
+	Season int // nomor season (serial TV); 0 = tanpa season (film)
 	Title  string
 	URL    string
 	Ref    string // id episode internal situs sumber bila ada

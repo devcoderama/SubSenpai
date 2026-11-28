@@ -27,10 +27,10 @@ import (
 var shareIDRe = regexp.MustCompile(`^[A-Za-z0-9-]{8,64}$`)
 
 type sharePageData struct {
-	Title       string
-	SEOTitle    string // judul lengkap <title>/og:title: nama + tahun + tipe + "Subtitle Indonesia"
-	OGType      string // video.movie (film) / video.tv_show (anime/donghua)
-	JSONLD      template.JS // data terstruktur schema.org — template.JS agar tidak di-escape JS di dalam <script>
+	Title    string
+	SEOTitle string      // judul lengkap <title>/og:title: nama + tahun + tipe + "Subtitle Indonesia"
+	OGType   string      // video.movie (film) / video.tv_show (anime/donghua)
+	JSONLD   template.JS // data terstruktur schema.org — template.JS agar tidak di-escape JS di dalam <script>
 
 	Description string
 	PageURL     string
@@ -171,6 +171,8 @@ func typeLabelID(typ string) string {
 		return "Donghua"
 	case "film":
 		return "Film"
+	case "series":
+		return "Serial TV"
 	}
 	return ""
 }
@@ -255,7 +257,7 @@ func (a *API) handleSharePage(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	data := sharePageData{
 		Title:       "SubSenpai",
-		Description: "Nonton anime, donghua & film subtitle Indonesia di aplikasi SubSenpai.",
+		Description: "Nonton anime, donghua, film & serial TV subtitle Indonesia di aplikasi SubSenpai.",
 		PageURL:     "https://subsenpai.web.id/judul/" + id,
 		ID:          id,
 	}

@@ -108,7 +108,7 @@ func needsOnDemand(fetchMode, typ, synopsis string, episodeCount int) (needMeta,
 		return false, false
 	}
 	switch typ {
-	case "anime", "donghua", "film":
+	case "anime", "donghua", "film", "series":
 	default:
 		return false, false
 	}
@@ -129,7 +129,7 @@ func shouldDiscoverEmpty(typ, cursor string, count int) bool {
 		return false
 	}
 	switch typ {
-	case "anime", "donghua", "film":
+	case "anime", "donghua", "film", "series":
 		return true
 	}
 	return false
@@ -263,7 +263,7 @@ func (a *API) discoverOnDemand(r *http.Request, typ string) bool {
 func (a *API) liveSearch(ctx context.Context, typ, q string) {
 	types := []string{typ}
 	if typ == "" {
-		types = []string{"anime", "donghua", "film"}
+		types = []string{"anime", "donghua", "film", "series"}
 	}
 	for _, t := range types {
 		key := "search|" + t + "|" + strings.ToLower(strings.TrimSpace(q))

@@ -70,7 +70,7 @@ var liveCache = struct {
 func (a *API) handleLiveBrowse(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	typ := q.Get("type")
-	if typ != "anime" && typ != "donghua" && typ != "film" {
+	if typ != "anime" && typ != "donghua" && typ != "film" && typ != "series" {
 		writeErr(w, http.StatusBadRequest, "type tidak dikenal")
 		return
 	}
@@ -239,6 +239,11 @@ func importSlug(rawURL, title string) string {
 			return sources.SlugifyTitle(title) + "-" + parts[1]
 		}
 		return ""
+	case len(parts) == 2 && parts[0] == "tv" && parts[1] != "":
+		if _, err := strconv.Atoi(parts[1]); err == nil {
+			return sources.SlugifyTitle(title) + "-" + parts[1]
+		}
+		return ""
 	case len(parts) == 1 && parts[0] != "":
 		return parts[0]
 	}
@@ -259,7 +264,7 @@ func (a *API) handleTitleImport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "body tidak valid")
 		return
 	}
-	if req.Type != "anime" && req.Type != "donghua" && req.Type != "film" {
+	if req.Type != "anime" && req.Type != "donghua" && req.Type != "film" && req.Type != "series" {
 		writeErr(w, http.StatusBadRequest, "type tidak dikenal")
 		return
 	}

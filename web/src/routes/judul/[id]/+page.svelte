@@ -21,6 +21,10 @@
   let copied = false;
   let shareOpen = false;
   let lockedEp = null; // episode terkunci yang dialognya sedang tampil
+  // Pemilih season serial TV (28 Nov 2026): season diambil dari
+  // episode (season_no backend); default season pertama. Anime/
+  // donghua/film tak punya >1 season jadi pemilih tak tampil.
+  let selectedSeason = 0;
   let inWatchlist = false;
   let wlBusy = false;
 
@@ -29,7 +33,15 @@
   $: headTitle = seoTitle(title);
   $: headDesc = seoDescription(title);
   $: jsonLdTag = jsonLdScriptTag(seoJsonLd(title));
-  $: firstLocked = episodes.length > 0 && episodes[0].locked;
+  $: seasons =
+    title?.type === 'series'
+      ? [...new Set(episodes.map((e) => e.season_no || 1))].sort((a, b) => a - b)
+      : [];
+  $: shownEpisodes =
+    title?.type === 'series' && selectedSeason
+      ? episodes.filter((e) => (e.season_no || 1) === selectedSeason)
+      : episodes;
+  $: firstLocked = shownEpisodes.length > 0 && shownEpisodes[0].locked;
   // Baris meta ala aplikasi (DetailHeading): rating · tahun · durasi ·
   // jenis · status (Tamat/Berlanjut).
   $: durationLabel = (() => {
@@ -71,12 +83,14 @@
   // menampilkan daftar episode (jadi onEpisodeClick tak pernah terpanggil)
   // dan anime/donghua kini selalu terbuka untuk semua tier.
   function playFirst() {
-    if (!episodes.length) return;
-    if (episodes[0].locked) {
-      lockedEp = episodes[0];
+    // Serial TV: putar episode pertama season yang sedang dipilih.
+    const first = shownEpisodes[0];
+    if (!first) return;
+    if (first.locked) {
+      lockedEp = first;
       return;
     }
-    goto('/nonton/' + episodes[0].id);
+    goto('/nonton/' + first.id);
   }
 
   async function shareCopy() {
@@ -152,6 +166,9 @@
       const res = await getTitle(id);
       title = res.title || res;
       episodes = res.episodes || [];
+      // Serial TV: season awal = season terkecil yang ada.
+      const ss = [...new Set(episodes.map((e) => e.season_no || 1))].sort((a, b) => a - b);
+      selectedSeason = ss.length ? ss[0] : 0;
       if ($user) {
         try {
           const c = await checkWatchlist(id);
@@ -293,9 +310,18 @@
     {/if}
 
     {#if title.type !== 'film'}
+      {#if seasons.length > 1}
+        <div class="season-row">
+          {#each seasons as s}
+            <button class="season-chip" class:active={selectedSeason === s} on:click={() => (selectedSeason = s)}>
+              Season {s}
+            </button>
+          {/each}
+        </div>
+      {/if}
       {#if episodes.length}
         <div on:click={onEpisodeClick}>
-          <EpisodeList {episodes} titleId={title.id} />
+          <EpisodeList episodes={shownEpisodes} titleId={title.id} />
         </div>
       {:else}
         <p class="muted">Episode belum tersedia di sumber untuk judul ini.</p>
@@ -397,6 +423,14 @@
   }
   .menu button:hover { background: rgba(255, 255, 255, 0.08); }
   .sec { font-size: 15px; font-weight: 700; margin: 18px 0 6px; }
+  /* Pemilih season serial TV: chip ala baris genre Beranda. */
+  .season-row { display: flex; gap: 8px; overflow-x: auto; margin: 18px 0 4px; padding-bottom: 4px; }
+  .season-chip {
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 14px; font-size: 13px; color: var(--muted);
+    background: transparent; white-space: nowrap; cursor: pointer;
+  }
+  .season-chip.active { background: var(--red); color: #fff; border-color: var(--red); font-weight: 600; }
   .synopsis { margin: 0; line-height: 1.65; color: #e5e5e5; font-size: 15px; }
   .info-row { display: flex; padding: 2px 0; font-size: 15px; }
   .info-label { flex: 0 0 28%; color: var(--muted); }

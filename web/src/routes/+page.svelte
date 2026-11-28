@@ -25,7 +25,8 @@
     { id: '', label: 'Semua' },
     { id: 'film', label: 'Film' },
     { id: 'anime', label: 'Anime' },
-    { id: 'donghua', label: 'Donghua' }
+    { id: 'donghua', label: 'Donghua' },
+    { id: 'series', label: 'Series' }
   ];
 
   const THIS_YEAR = new Date().getFullYear();
@@ -43,6 +44,8 @@
   let animeYear = []; // anime tahun berjalan (Anime Terbaru)
   let donghuaYear = []; // donghua tahun berjalan (Donghua Terbaru)
   let filmPopuler = []; // film dari trending 24 jam (Film Populer)
+  let seriesYear = []; // serial TV tahun berjalan (Serial TV Terbaru)
+  let seriesPopuler = []; // serial TV dari trending 24 jam (Serial TV Populer)
   let animeOngoing = []; // anime berstatus ongoing (dimuat di latar)
   let donghuaOngoing = []; // donghua berstatus ongoing (dimuat di latar)
   let heroTimer = null;
@@ -55,7 +58,7 @@
   // Toggle Daftar Saya di hero: status mengikuti store bersama
   // ($lib/watchlist.js) — sama seperti kartu, supaya simpan dari hero
   // langsung tercermin di rel dan sebaliknya (28 Nov 2026).
-  let rails = { anime: [], donghua: [], film: [] };
+  let rails = { anime: [], donghua: [], film: [], series: [] };
   let grid = [];
   let nextCursor = '';
   let loadingMore = false;
@@ -193,6 +196,8 @@
     animeYear = homeCache.animeYear;
     donghuaYear = homeCache.donghuaYear;
     filmPopuler = homeCache.filmPopuler;
+    seriesYear = homeCache.seriesYear;
+    seriesPopuler = homeCache.seriesPopuler;
     animeOngoing = homeCache.animeOngoing;
     donghuaOngoing = homeCache.donghuaOngoing;
     heroItems = homeCache.heroItems;
@@ -470,22 +475,25 @@
       if (t === '') {
         // Rel dimuat terpisah: satu jenis yang gagal tidak boleh
         // mengosongkan seluruh Beranda.
-        const [a, d, f, h, fy, ay, dy] = await Promise.allSettled([
+        const [a, d, f, s, h, fy, ay, dy, sy] = await Promise.allSettled([
           getTitles({ type: 'anime' }),
           getTitles({ type: 'donghua' }),
           getTitles({ type: 'film' }),
+          getTitles({ type: 'series' }),
           getHome(),
           getTitles({ type: 'film', year: THIS_YEAR }),
           getTitles({ type: 'anime', year: THIS_YEAR }),
-          getTitles({ type: 'donghua', year: THIS_YEAR })
+          getTitles({ type: 'donghua', year: THIS_YEAR }),
+          getTitles({ type: 'series', year: THIS_YEAR })
         ]);
         if (seq !== loadTabSeq || tab !== t) return;
         rails = {
           anime: a.status === 'fulfilled' ? a.value.items || [] : [],
           donghua: d.status === 'fulfilled' ? d.value.items || [] : [],
-          film: f.status === 'fulfilled' ? f.value.items || [] : []
+          film: f.status === 'fulfilled' ? f.value.items || [] : [],
+          series: s.status === 'fulfilled' ? s.value.items || [] : []
         };
-        if (!rails.anime.length && !rails.donghua.length && !rails.film.length) {
+        if (!rails.anime.length && !rails.donghua.length && !rails.film.length && !rails.series.length) {
           const failed = [a, d, f].find((r) => r.status === 'rejected');
           if (failed && failed.status === 'rejected') throw failed.reason;
         }
@@ -493,7 +501,9 @@
         filmYear = fy.status === 'fulfilled' ? fy.value.items || [] : [];
         animeYear = ay.status === 'fulfilled' ? ay.value.items || [] : [];
         donghuaYear = dy.status === 'fulfilled' ? dy.value.items || [] : [];
+        seriesYear = sy.status === 'fulfilled' ? sy.value.items || [] : [];
         filmPopuler = trending.filter((x) => x.type === 'film');
+        seriesPopuler = trending.filter((x) => x.type === 'series');
         // Ongoing dimuat di latar (tidak menahan skeleton): rel muncul
         // saat siap. Donghua ongoing jarang di halaman teratas (8 dari
         // 100 judul terbaru), jadi dipindai sampai 8 halaman.
@@ -505,7 +515,7 @@
         // cadangan bila tren kosong: judul pertama tiap rel.
         const cands = trending.length
           ? trending
-          : [rails.anime[0], rails.donghua[0], rails.film[0]].filter(Boolean);
+          : [rails.anime[0], rails.donghua[0], rails.film[0], rails.series[0]].filter(Boolean);
         await loadHero(cands);
         if (seq !== loadTabSeq || tab !== t) return;
         saveHomeState();
@@ -652,6 +662,8 @@
     homeCache.animeYear = animeYear;
     homeCache.donghuaYear = donghuaYear;
     homeCache.filmPopuler = filmPopuler;
+    homeCache.seriesYear = seriesYear;
+    homeCache.seriesPopuler = seriesPopuler;
     homeCache.animeOngoing = animeOngoing;
     homeCache.donghuaOngoing = donghuaOngoing;
     homeCache.heroItems = heroItems;
@@ -673,7 +685,7 @@
       s.results.length ||
       s.searchResults.length ||
       s.facets ||
-      (t === '' && (rails.anime.length || rails.donghua.length || rails.film.length));
+      (t === '' && (rails.anime.length || rails.donghua.length || rails.film.length || rails.series.length));
     if (hadContent) {
       // Tab ini sudah pernah dimuat: pulihkan tanpa muat ulang.
       applyTabState(t);
@@ -689,7 +701,7 @@
             t === ''
               ? trending.length
                 ? trending
-                : [rails.anime[0], rails.donghua[0], rails.film[0]].filter(Boolean)
+                : [rails.anime[0], rails.donghua[0], rails.film[0], rails.series[0]].filter(Boolean)
               : trending.filter((x) => x.type === t).slice(0, 5);
           if (cands.length) loadHero(t === '' ? cands : cands.length >= 2 ? cands : grid.slice(0, 5));
         }
@@ -998,7 +1010,7 @@
       {#if trending.length}
         <Top10Rail items={trending.slice(0, 10)} />
       {/if}
-      <!-- Urutan rel (28 Nov 2026, permintaan Rams): 11 rel (10 + Top 10),
+      <!-- Urutan rel (28 Nov 2026, permintaan Rams): 14 rel (13 + Top 10),
            tiap rel punya Lihat semua kecuali Top 10. -->
       <Rail title="Film" items={rails.film.slice(0, 12)} moreHref="/cari?type=film" />
       {#if filmYear.length}
@@ -1010,6 +1022,19 @@
       {/if}
       {#if filmPopuler.length}
         <Rail title="Film Populer" items={filmPopuler.slice(0, 12)} moreHref="/cari?type=film" />
+      {/if}
+      <!-- Serial TV (28 Nov 2026): rel katalog + tahun berjalan + populer,
+           pola yang sama dengan Film. -->
+      <Rail title="Serial TV" items={rails.series.slice(0, 12)} moreHref="/cari?type=series" />
+      {#if seriesYear.length}
+        <Rail
+          title="Serial TV Terbaru"
+          items={seriesYear.slice(0, 12)}
+          moreHref={'/cari?type=series&year=' + THIS_YEAR}
+        />
+      {/if}
+      {#if seriesPopuler.length}
+        <Rail title="Serial TV Populer" items={seriesPopuler.slice(0, 12)} moreHref="/cari?type=series" />
       {/if}
       <Rail title="Anime" items={rails.anime.slice(0, 12)} moreHref="/cari?type=anime" />
       {#if animeOngoing.length}
@@ -1093,7 +1118,7 @@
             </div>
           {/if}
         {/if}
-        {#if tab && (genre || tab === 'film')}
+        {#if tab && (genre || tab === 'film' || tab === 'series')}
           {#key tab + '|' + genre + '|' + fYear + '|' + fCountry}
             <LiveBrowseSection
               type={tab}

@@ -14,7 +14,7 @@ import (
 )
 
 var titleTypes = map[string]bool{
-	"anime": true, "donghua": true, "film": true,
+	"anime": true, "donghua": true, "film": true, "series": true,
 	"manga": true, "manhua": true, "manhwa": true,
 }
 
@@ -453,6 +453,7 @@ type titleDetail struct {
 
 type episodeItem struct {
 	ID          string  `json:"id"`
+	SeasonNo    int     `json:"season_no"`
 	EpisodeNo   int     `json:"episode_no"`
 	Title       *string `json:"title,omitempty"`
 	DurationSec *int    `json:"duration_sec,omitempty"`
@@ -488,13 +489,13 @@ func (a *API) loadTitleDetail(ctx context.Context, id string) (titleDetail, []ep
 	}
 	episodes := []episodeItem{}
 	erows, err := a.pool.Query(ctx, `
-		select id, episode_no, title, duration_sec from episodes
-		where title_id = $1::uuid and not is_hidden order by episode_no`, id)
+		select id, season_no, episode_no, title, duration_sec from episodes
+		where title_id = $1::uuid and not is_hidden order by season_no, episode_no`, id)
 	if err == nil {
 		defer erows.Close()
 		for erows.Next() {
 			var e episodeItem
-			if err := erows.Scan(&e.ID, &e.EpisodeNo, &e.Title, &e.DurationSec); err == nil {
+			if err := erows.Scan(&e.ID, &e.SeasonNo, &e.EpisodeNo, &e.Title, &e.DurationSec); err == nil {
 				episodes = append(episodes, e)
 			}
 		}
@@ -543,14 +544,15 @@ func (a *API) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
 	// Tandai episode terkunci untuk tier penonton ini.
 	aksesTier, _ := a.viewerTier(r)
 	if len(episodes) > 0 {
-		minNo := episodes[0].EpisodeNo
+		// Episode pertama = (season_no, episode_no) terkecil.
+		minSeason, minNo := episodes[0].SeasonNo, episodes[0].EpisodeNo
 		for _, e := range episodes {
-			if e.EpisodeNo < minNo {
-				minNo = e.EpisodeNo
+			if e.SeasonNo < minSeason || (e.SeasonNo == minSeason && e.EpisodeNo < minNo) {
+				minSeason, minNo = e.SeasonNo, e.EpisodeNo
 			}
 		}
 		for i := range episodes {
-			episodes[i].Locked = !watchAllowed(aksesTier, detail.Type, episodes[i].EpisodeNo == minNo)
+			episodes[i].Locked = !watchAllowed(aksesTier, detail.Type, episodes[i].SeasonNo == minSeason && episodes[i].EpisodeNo == minNo)
 		}
 		// Episode yang sudah dibuka lewat iklan tidak tampil terkunci.
 		if aksesTier != tierPremium {
@@ -576,6 +578,7 @@ func (a *API) handlePlayback(w http.ResponseWriter, r *http.Request) {
 	var ep struct {
 		ID        string `json:"id"`
 		TitleID   string `json:"title_id"`
+		SeasonNo  int    `json:"season_no"`
 		EpisodeNo int    `json:"episode_no"`
 		VideoURL  string `json:"-"`
 		IntroS    *int   `json:"intro_start_sec,omitempty"`
@@ -584,17 +587,17 @@ func (a *API) handlePlayback(w http.ResponseWriter, r *http.Request) {
 		OutroE    *int   `json:"outro_end_sec,omitempty"`
 	}
 	err := a.pool.QueryRow(ctx, `
-		select id, title_id, episode_no, video_url, intro_start_sec, intro_end_sec,
+		select id, title_id, season_no, episode_no, video_url, intro_start_sec, intro_end_sec,
 		       outro_start_sec, outro_end_sec
 		from episodes where id = $1::uuid and not is_hidden`, id,
-	).Scan(&ep.ID, &ep.TitleID, &ep.EpisodeNo, &ep.VideoURL, &ep.IntroS, &ep.IntroE, &ep.OutroS, &ep.OutroE)
+	).Scan(&ep.ID, &ep.TitleID, &ep.SeasonNo, &ep.EpisodeNo, &ep.VideoURL, &ep.IntroS, &ep.IntroE, &ep.OutroS, &ep.OutroE)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "episode tidak ditemukan")
 		return
 	}
 	// Gerbang freemium: non-premium hanya episode pertama
 	// anime/donghua; film & episode lanjutan khusus premium.
-	if !a.gateEpisode(w, r, ep.ID, ep.TitleID, ep.EpisodeNo) {
+	if !a.gateEpisode(w, r, ep.ID, ep.TitleID, ep.SeasonNo, ep.EpisodeNo) {
 		return
 	}
 	aksesTier, _ := a.viewerTier(r)

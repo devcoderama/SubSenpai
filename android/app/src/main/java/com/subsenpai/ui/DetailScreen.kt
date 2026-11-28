@@ -3,6 +3,8 @@ package com.subsenpai.ui
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
@@ -86,6 +88,9 @@ fun DetailScreen(
     var inWatchlist by remember { mutableStateOf(false) }
     var wlBusy by remember { mutableStateOf(false) }
     var serupa by remember { mutableStateOf<List<TitleCard>>(emptyList()) }
+    // Serial TV: season yang dipilih di pemilih season (chip S1..Sn);
+    // null = season pertama yang tersedia. Direset tiap ganti judul.
+    var selectedSeason by remember(titleId) { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val detailContext = LocalContext.current
     val posterHiRes = remember { SettingsStore(detailContext).posterHiRes }
@@ -179,7 +184,7 @@ fun DetailScreen(
             // jendela pendek, dan halaman tidak boleh mandek
             // selamanya (keluhan Rams 2026-11-23).
             if (d.episodes.isEmpty() &&
-                (d.card.type == "anime" || d.card.type == "donghua" || d.card.type == "film")
+                (d.card.type == "anime" || d.card.type == "donghua" || d.card.type == "film" || d.card.type == "series")
             ) {
                 epLoading = true
                 epFailed = false
@@ -250,6 +255,18 @@ fun DetailScreen(
         }
         val d = detail
         if (d != null) {
+            // Serial TV: daftar season dari episode + episode yang
+            // tampil mengikuti season terpilih (default season
+            // pertama). Anime/donghua/film: semua episode tampil.
+            val seasons = d.episodes.map { it.seasonNo }.distinct().sorted()
+            val activeSeason = selectedSeason?.takeIf { it in seasons }
+                ?: seasons.firstOrNull() ?: 1
+            val shownEpisodes = if (d.card.type == "series") {
+                d.episodes.filter { it.seasonNo == activeSeason }
+            } else {
+                d.episodes
+            }
+            val playEpisode = shownEpisodes.firstOrNull() ?: d.episodes.firstOrNull()
             item {
                 // Kepala ala Netflix: latar buram dari poster yang
                 // sama memenuhi lebar layar, poster tajam (varian
@@ -263,14 +280,16 @@ fun DetailScreen(
                     // meta, genre bertitik, tombol Putar putih selebar
                     // layar, lalu baris ikon Daftar Saya / Bagikan.
                     DetailHeading(card = d.card, durationMin = d.durationMin)
-                    if (d.episodes.isNotEmpty()) {
-                        val firstLocked = d.episodes.first().locked
+                    if (playEpisode != null) {
+                        val firstLocked = playEpisode.locked
                         Button(
                             onClick = {
                                 // Tombol utama judul terkunci langsung
                                 // ke unlock iklan (permintaan Rams
                                 // 2026-11-23: labelnya "Buka dengan Iklan").
-                                if (firstLocked) onOpenAdUnlock(d.episodes.first().id) else onPlay(d.episodes.first().id)
+                                // Serial TV: memutar episode pertama
+                                // season terpilih, bukan S1E1 selalu.
+                                if (firstLocked) onOpenAdUnlock(playEpisode.id) else onPlay(playEpisode.id)
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.White,
@@ -404,7 +423,7 @@ fun DetailScreen(
                 }
             }
             if (d.episodes.isEmpty() &&
-                (d.card.type == "anime" || d.card.type == "donghua" || d.card.type == "film")
+                (d.card.type == "anime" || d.card.type == "donghua" || d.card.type == "film" || d.card.type == "series")
             ) {
                 item {
                     Text(
@@ -435,7 +454,26 @@ fun DetailScreen(
             }
             // Film tidak butuh daftar episode — tombol Putar di atas
             // sudah cukup (Netflix pun begitu untuk film).
-            if (d.episodes.isNotEmpty() && d.card.type != "film") {
+            // Serial TV: pemilih season (chip) di atas daftar; daftar
+            // hanya menampilkan episode season terpilih.
+            if (d.card.type == "series" && seasons.size > 1) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        seasons.forEach { s ->
+                            SeasonChip(
+                                label = if (s == 0) "Spesial" else "Season $s",
+                                selected = s == activeSeason,
+                                onClick = { selectedSeason = s },
+                            )
+                        }
+                    }
+                }
+            }
+            if (shownEpisodes.isNotEmpty() && d.card.type != "film") {
                 item {
                     Text(
                         "Episode",
@@ -444,7 +482,7 @@ fun DetailScreen(
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
                 }
-                items(d.episodes) { ep ->
+                items(shownEpisodes) { ep ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                             .clickable { if (ep.locked) lockedEp = ep else onPlay(ep.id) },
@@ -571,7 +609,10 @@ private fun DetailHeading(card: TitleCard, durationMin: Int?) {
                     else -> "$m mnt/ep"
                 }
             },
-            card.type.replaceFirstChar { it.uppercase() },
+            when (card.type) {
+                "series" -> "Serial TV"
+                else -> card.type.replaceFirstChar { it.uppercase() }
+            },
             when (card.status) {
                 "completed" -> "Tamat"
                 "ongoing" -> "Berlanjut"
@@ -644,6 +685,21 @@ private fun DetailBackdrop(url: String?, title: String, onBack: () -> Unit, hiRe
                 modifier = Modifier.size(20.dp),
             )
         }
+    }
+}
+
+/** Chip pemilih season untuk Serial TV (gaya GenreChip Beranda):
+ * merah bila terpilih, abu bila tidak. Season 0 = Spesial (TMDB). */
+@Composable
+private fun SeasonChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) NetflixRed else Color(0xFF2A2A2A))
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+    ) {
+        Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

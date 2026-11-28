@@ -84,10 +84,12 @@ import kotlinx.coroutines.withTimeout
 
 private val typeFilters = listOf(
     null to "Semua", "film" to "Film", "anime" to "Anime", "donghua" to "Donghua",
+    "series" to "Serial TV",
 )
 
 private val rowTypes = listOf(
     "anime" to "Anime Pilihan", "donghua" to "Donghua Pilihan", "film" to "Film Pilihan",
+    "series" to "Serial TV Pilihan",
 )
 
 /**
@@ -128,7 +130,7 @@ class HomeSession {
         tabs.getOrPut(type ?: "semua") { HomeTabSession() }
 }
 
-/** Keadaan satu tab kategori Beranda (Semua/Anime/Donghua/Film). */
+/** Keadaan satu tab kategori Beranda (Semua/Anime/Donghua/Film/Serial TV). */
 class HomeTabSession {
     val genre = mutableStateOf<String?>(null)
     val genreList = mutableStateOf<List<String>>(emptyList())
@@ -200,7 +202,7 @@ private suspend fun titlesFiltered(
  * Beranda ala Netflix (redesain 2026-11-22 atas contoh UI Netflix
  * dari Rams): header melayang transparan di atas hero — logo "S"
  * merah, ikon cari & akun, tab kategori teks (Semua/Anime/Donghua/
- * Film) — hero layar penuh dengan baris aksi Daftar Saya / Putar /
+ * Film/Serial TV) — hero layar penuh dengan baris aksi Daftar Saya / Putar /
  * Info, lalu baris-baris poster. Navigasi utama pindah ke bilah
  * bawah di MainActivity.
  */
@@ -257,6 +259,8 @@ fun HomeScreen(
     val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
     // Film Populer: film dari trending 24 jam (sama seperti web).
     val filmPopuler = trending.filter { it.type == "film" }
+    // Serial TV Populer: serial dari trending 24 jam (pola yang sama).
+    val seriesPopuler = trending.filter { it.type == "series" }
     var facets by tab.facets
     var filterOpen by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
@@ -937,6 +941,23 @@ fun HomeScreen(
                     item { SectionTitle("Donghua Terbaru", onSeeAll = { openBrowse("donghua", thisYear, null) }) }
                     item { PosterRow(perTypeYear["donghua"]!!.take(12), onOpenTitle) }
                 }
+                if (homeLive["series"].orEmpty().isNotEmpty() || perType["series"].orEmpty().isNotEmpty()) {
+                    item { SectionTitle("Serial TV", onSeeAll = { openBrowse("series", null, null) }) }
+                    item {
+                        TypeRow(
+                            homeLive["series"].orEmpty(), perType["series"].orEmpty(), "series",
+                            importingSlug, onOpenTitle, onHomeLiveTap,
+                        )
+                    }
+                }
+                if (perTypeYear["series"].orEmpty().isNotEmpty()) {
+                    item { SectionTitle("Serial TV Terbaru", onSeeAll = { openBrowse("series", thisYear, null) }) }
+                    item { PosterRow(perTypeYear["series"]!!.take(12), onOpenTitle) }
+                }
+                if (seriesPopuler.isNotEmpty()) {
+                    item { SectionTitle("Serial TV Populer", onSeeAll = { openBrowse("series", null, null) }) }
+                    item { PosterRow(seriesPopuler.take(12), onOpenTitle) }
+                }
                 item { Spacer(Modifier.height(24.dp)) }
             }
         }
@@ -1096,7 +1117,7 @@ fun HomeScreen(
                     country = country,
                     network = network,
                     status = status,
-                    showStatus = type == "anime" || type == "donghua",
+                    showStatus = type == "anime" || type == "donghua" || type == "series",
                     onGenre = { genre = it },
                     onYear = { year = it },
                     onCountry = { country = it },

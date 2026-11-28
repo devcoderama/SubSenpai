@@ -61,18 +61,20 @@ func (a *animestreamResolver) SearchTitles(ctx context.Context, src Source, quer
 }
 
 // SearchTitles Hashflix: endpoint pencarian TMDB-nya
-// (/database/search/movie?query=) — bentuk JSON-nya sama persis
-// dengan trending, jadi pengurainya dipakai ulang.
+// (/database/search/movie?query= atau /database/search/tv?query=
+// untuk serial) — bentuk JSON-nya sama persis dengan trending,
+// jadi pengurainya dipakai ulang.
 func (h *hashflixResolver) SearchTitles(ctx context.Context, src Source, query string) ([]DiscoveredTitle, error) {
 	q := strings.TrimSpace(query)
 	if q == "" {
 		return nil, nil
 	}
 	base := strings.TrimRight(src.BaseURL, "/")
-	body, err := Fetch(ctx, fmt.Sprintf("%s/database/search/movie?query=%s&page=1", base, url.QueryEscape(q)))
+	kind := hfKind(src)
+	body, err := Fetch(ctx, fmt.Sprintf("%s/database/search/%s?query=%s&page=1", base, kind, url.QueryEscape(q)))
 	if err != nil {
 		return nil, err
 	}
-	items, _ := parseHFTrending(body, base)
+	items, _ := parseHFTrending(body, base, kind)
 	return capSearchTitles(items), nil
 }

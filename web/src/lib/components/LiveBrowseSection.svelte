@@ -20,7 +20,7 @@
   import { toastError } from '$lib/toast.js';
   import Skeleton from '$lib/components/Skeleton.svelte';
 
-  export let type = ''; // film | anime | donghua
+  export let type = ''; // film | anime | donghua | series
   export let genre = '';
   export let year = 0;
   export let country = '';
@@ -60,23 +60,23 @@
     (it) => !(it.catalog_id && excludeIds.has(it.catalog_id)) && !excludeSlugs.has(it.slug)
   );
 
-  // Daftar genre film (19 genre TMDB) untuk chip multi-pilih.
-  $: if (type === 'film' && !filmGenres.length) {
-    getFilters('film')
+  // Daftar genre film/serial TV (19 genre TMDB) untuk chip multi-pilih.
+  $: if ((type === 'film' || type === 'series') && !filmGenres.length) {
+    getFilters(type)
       .then((f) => (filmGenres = f.genres || []))
       .catch(() => {});
   }
 
-  // Muat ulang halaman 1 setiap kali filter berubah. Film selalu
-  // muat (tanpa genre = semua film, urutan Populer — seperti
-  // bawaan donkey.to); anime/donghua butuh satu genre.
+  // Muat ulang halaman 1 setiap kali filter berubah. Film & serial
+  // TV selalu muat (tanpa genre = semua judul, urutan Populer —
+  // seperti bawaan donkey.to); anime/donghua butuh satu genre.
   $: filterKey = [type, selGenres.join(','), selYear, selCountry, selSort].join('|');
   // filterKey DIBACA di sini supaya Svelte memuat ulang saat salah
   // satu filter berubah — tanpanya (bug 28 Nov 2026) hanya ganti
   // genre yang memuat ulang, sementara tahun/negara/urutan diam
   // (kartu halaman 1 tak berubah; baru "Muat live lainnya" yang
   // memakai filter baru).
-  $: if (type && (type === 'film' || selGenres.length)) {
+  $: if (type && (type === 'film' || type === 'series' || selGenres.length)) {
     void filterKey;
     reloadLive();
   }
@@ -184,7 +184,7 @@
   <div class="live-section">
     <h2>Dari web — {source || 'situs sumber'}</h2>
     <p class="muted">
-      {#if type === 'film'}
+      {#if type === 'film' || type === 'series'}
         Filter ala donkey.to — genre, tahun, negara, urutan — langsung dari {source ||
           'situs sumber'}; yang belum ada di katalog tersimpan otomatis saat tampil.
       {:else}
@@ -192,7 +192,7 @@
         otomatis saat tampil.
       {/if}
     </p>
-    {#if type === 'film'}
+    {#if type === 'film' || type === 'series'}
       <div class="live-filters">
         {#if filmGenres.length}
           <div class="lf-genres">

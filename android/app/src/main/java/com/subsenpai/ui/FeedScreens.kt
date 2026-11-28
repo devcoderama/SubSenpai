@@ -147,6 +147,7 @@ fun LinkText(text: String, color: Color, style: TextStyle, modifier: Modifier = 
 private val feedCategories = listOf(
     null to "Semua", "umum" to "Umum", "rekomendasi" to "Rekomendasi",
     "anime" to "Anime", "donghua" to "Donghua", "film" to "Film",
+    "series" to "Serial TV",
 )
 
 private val avatarColors = listOf(
