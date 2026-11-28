@@ -25,6 +25,10 @@
   $: src = sources?.[current];
   $: isDirect = !!src?.url && /\.(mp4|m3u8|webm)(\?|$)/i.test(src.url);
   $: isHls = isDirect && /\.m3u8(\?|$)/i.test(src?.url || '');
+  // MPEG-DASH (.mpd): peramban tidak bisa memutarnya tanpa pustaka
+  // khusus — kanal DASH hanya jalan di aplikasi (ExoPlayer).
+  // Tanpa ini, URL .mpd jatuh ke cabang iframe dan tampil rusak.
+  $: isDash = !!src?.url && /\.mpd(\?|$)/i.test(src.url);
   // Mixed content: situs ini https, stream http:// diblokir peramban
   // sebelum sempat diputar — tampilkan catatan, bukan spinner rusak.
   $: isMixedContent =
@@ -223,12 +227,16 @@
 {:else}
   <div class="player">
     {#key src.url}
-      {#if isMixedContent}
+      {#if isMixedContent || isDash}
         <div class="blocked">
           <strong>Channel ini hanya bisa diputar di aplikasi.</strong>
           <p>
-            {mixedContentNote ||
-              'Stream kanal ini masih http://, sedangkan situs ini https:// — peramban memblokirnya sebelum sempat diputar.'}
+            {#if isDash}
+              Stream kanal ini memakai MPEG-DASH — peramban tidak bisa memutarnya, hanya aplikasi Android yang bisa.
+            {:else}
+              {mixedContentNote ||
+                'Stream kanal ini masih http://, sedangkan situs ini https:// — peramban memblokirnya sebelum sempat diputar.'}
+            {/if}
           </p>
           <p class="muted small">Coba channel lain, atau pasang aplikasi Android SubSenpai (unduh di menu Lainnya).</p>
         </div>

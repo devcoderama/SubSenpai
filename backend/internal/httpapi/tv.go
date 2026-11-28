@@ -30,10 +30,13 @@ type tvChannel struct {
 	Source        string  `json:"source"`
 	HTTPReferer   *string `json:"http_referer,omitempty"`
 	HTTPUserAgent *string `json:"http_user_agent,omitempty"`
+	// WebOK: true bila pemutar web (hls.js) punya peluang memutar
+	// kanal ini; false = hanya aplikasi (http mixed content / DASH).
+	WebOK bool `json:"web_ok"`
 }
 
 const tvChannelCols = `id, name, slug, logo_url, stream_url, country,
-	category, quality, stability, source, http_referer, http_user_agent`
+	category, quality, stability, source, http_referer, http_user_agent, web_ok`
 
 func scanTVChannel(rows interface {
 	Scan(...any) error
@@ -41,7 +44,7 @@ func scanTVChannel(rows interface {
 	var c tvChannel
 	err := rows.Scan(&c.ID, &c.Name, &c.Slug, &c.LogoURL, &c.StreamURL,
 		&c.Country, &c.Category, &c.Quality, &c.Stability, &c.Source,
-		&c.HTTPReferer, &c.HTTPUserAgent)
+		&c.HTTPReferer, &c.HTTPUserAgent, &c.WebOK)
 	return c, err
 }
 
@@ -93,14 +96,14 @@ func (a *API) handleTVChannel(w http.ResponseWriter, r *http.Request) {
 		 where is_active and slug = $1`, id).
 		Scan(&c.ID, &c.Name, &c.Slug, &c.LogoURL, &c.StreamURL,
 			&c.Country, &c.Category, &c.Quality, &c.Stability, &c.Source,
-			&c.HTTPReferer, &c.HTTPUserAgent)
+			&c.HTTPReferer, &c.HTTPUserAgent, &c.WebOK)
 	if err != nil {
 		err = a.pool.QueryRow(r.Context(),
 			`select `+tvChannelCols+` from tv_channels
 			 where is_active and id = $1::uuid`, id).
 			Scan(&c.ID, &c.Name, &c.Slug, &c.LogoURL, &c.StreamURL,
 				&c.Country, &c.Category, &c.Quality, &c.Stability, &c.Source,
-				&c.HTTPReferer, &c.HTTPUserAgent)
+				&c.HTTPReferer, &c.HTTPUserAgent, &c.WebOK)
 	}
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "kanal TV tidak ditemukan")

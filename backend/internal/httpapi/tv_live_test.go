@@ -49,30 +49,38 @@ func TestTVAPILive(t *testing.T) {
 		t.Fatalf("list: status %d body %v", code, body)
 	}
 	items, _ := body["items"].([]any)
-	if len(items) != 23 {
-		t.Fatalf("list: %d kanal, mau 23", len(items))
+	if len(items) != 38 {
+		t.Fatalf("list: %d kanal, mau 38", len(items))
 	}
 	seen := map[string]int{}
+	webOnly := 0
 	for _, it := range items {
 		m, _ := it.(map[string]any)
 		seen[m["stability"].(string)]++
+		if m["web_ok"] == false {
+			webOnly++
+		}
 		if m["stream_url"] == "" || m["name"] == "" {
 			t.Errorf("kanal tanpa nama/stream: %v", m)
 		}
 	}
-	if seen["bagus"] != 15 || seen["tidak stabil"] != 8 {
-		t.Fatalf("label: bagus=%d tidak stabil=%d, mau 15/8", seen["bagus"], seen["tidak stabil"])
+	if seen["bagus"] != 18 || seen["tidak stabil"] != 20 {
+		t.Fatalf("label: bagus=%d tidak stabil=%d, mau 18/20", seen["bagus"], seen["tidak stabil"])
+	}
+	// 16 kanal hanya-aplikasi (5 http + 11 DASH .mpd); sisanya web_ok=true.
+	if webOnly != 16 {
+		t.Fatalf("web_ok=false: %d kanal, mau 16", webOnly)
 	}
 
 	code, body = get("/api/v1/tv/channels?category=Berita")
 	items, _ = body["items"].([]any)
-	if code != http.StatusOK || len(items) != 4 {
-		t.Fatalf("filter Berita: status %d, %d kanal, mau 4", code, len(items))
+	if code != http.StatusOK || len(items) != 7 {
+		t.Fatalf("filter Berita: status %d, %d kanal, mau 7", code, len(items))
 	}
 	code, body = get("/api/v1/tv/channels?stability=tidak%20stabil")
 	items, _ = body["items"].([]any)
-	if code != http.StatusOK || len(items) != 8 {
-		t.Fatalf("filter tidak stabil: status %d, %d kanal, mau 8", code, len(items))
+	if code != http.StatusOK || len(items) != 20 {
+		t.Fatalf("filter tidak stabil: status %d, %d kanal, mau 20", code, len(items))
 	}
 
 	// Detail per slug (chi RouteContext disuntik manual).

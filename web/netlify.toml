@@ -19,3 +19,16 @@
   for = "/manifest.webmanifest"
   [headers.values]
     Content-Type = "application/manifest+json"
+
+# Halaman /tv: jangan kirim Referer (28 Nov 2026). Origin Trans Media
+# (live.cnbcindonesia.com) & detik (video.detik.com) menolak Referer
+# asing (403) tapi melayani tanpa Referer + CORS * — tanpa header ini
+# Trans TV/Trans7/CNN/CNBC gagal diputar di web (hls.js mengirim
+# Referer halaman secara bawaan). Meta referrer di +page.svelte
+# memperkuatnya dari sisi dokumen; header ini yang menjamin sejak
+# dokumen dimuat (SPA, ssr=false — meta dari JS datang belakangan).
+[[headers]]
+  for = "/tv"
+  [headers.values]
+    Referrer-Policy = "no-referrer"
+

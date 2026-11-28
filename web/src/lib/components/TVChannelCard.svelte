@@ -4,7 +4,7 @@
 
   // Kartu kanal TV Langsung: dipakai rel Beranda (TVRail) + grid /tv.
   // Klik -> /tv?channel=<slug> (halaman TV memutarnya di Player).
-  /** @type {{ id: string, name: string, slug: string, logo_url?: string | null, stream_url: string, country: string, category: string, quality?: string | null, stability: string, source: string } | null} */
+  /** @type {{ id: string, name: string, slug: string, logo_url?: string | null, stream_url: string, country: string, category: string, quality?: string | null, stability: string, source: string, web_ok?: boolean } | null} */
   export let channel = null;
 
   /** @type {string} */
@@ -35,6 +35,9 @@
         <span class="badge ok"><i class="fa-solid fa-circle-check"></i> Resmi</span>
       {:else}
         <span class="badge warn"><i class="fa-solid fa-triangle-exclamation"></i> Tidak stabil</span>
+      {/if}
+      {#if channel.web_ok === false}
+        <span class="badge app"><i class="fa-solid fa-mobile-screen"></i> Aplikasi saja</span>
       {/if}
     </span>
   </button>
@@ -114,5 +117,9 @@
   .badge.warn {
     background: rgba(245, 197, 24, 0.15);
     color: var(--gold);
+  }
+  .badge.app {
+    background: rgba(139, 92, 246, 0.15);
+    color: #a78bfa;
   }
 </style>

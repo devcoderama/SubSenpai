@@ -8,13 +8,49 @@ import (
 	"time"
 )
 
-// probeStream: sukses hanya bila 2xx + badan playlist HLS.
+// probeStream: sukses hanya bila 2xx + playlist berisi segmen
+// (atau master yang variannya berisi segmen), atau manifest DASH
+// valid yang tidak terenkripsi. Playlist kosong (0 segmen) gagal —
+// itu jebakan v0.24.40 (dens.tv 200 + #EXTM3U tanpa segmen).
 func TestProbeStream(t *testing.T) {
+	seg := "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXTINF:6.0,\nseg0.ts\n#EXTINF:6.0,\nseg1.ts\n"
 	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-VERSION:3\n"))
+		_, _ = w.Write([]byte(seg))
 	}))
 	defer good.Close()
+	// Playlist kosong: 200 + #EXTM3U tapi 0 segmen -> gagal.
+	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-VERSION:3\n"))
+	}))
+	defer empty.Close()
+	// Master playlist: varian bandwidth tertinggi berisi segmen.
+	master := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/variant.m3u8" {
+			_, _ = w.Write([]byte(seg))
+			return
+		}
+		_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=1280x720\nvariant.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=400000,RESOLUTION=854x480\nvariant.m3u8\n"))
+	}))
+	defer master.Close()
+	// Master yang variannya kosong -> gagal.
+	masterEmpty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/variant.m3u8" {
+			_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-VERSION:3\n"))
+			return
+		}
+		_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\nvariant.m3u8\n"))
+	}))
+	defer masterEmpty.Close()
+	// DASH valid (tidak terenkripsi) -> lolos; terenkripsi -> gagal.
+	dash := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/cenc.mpd" {
+			_, _ = w.Write([]byte(`<MPD><Period><AdaptationSet><ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011"/></AdaptationSet></Period></MPD>`))
+			return
+		}
+		_, _ = w.Write([]byte(`<MPD><Period><AdaptationSet><SegmentTemplate/></AdaptationSet></Period></MPD>`))
+	}))
+	defer dash.Close()
 	badStatus := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte("nope"))
@@ -26,13 +62,28 @@ func TestProbeStream(t *testing.T) {
 	defer notPlaylist.Close()
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(300 * time.Millisecond)
-		_, _ = w.Write([]byte("#EXTM3U\n"))
+		_, _ = w.Write([]byte(seg))
 	}))
 	defer slow.Close()
 
 	ctx := context.Background()
 	if !probeStream(ctx, good.URL, "", "") {
-		t.Error("playlist bagus harus lolos")
+		t.Error("playlist berisi segmen harus lolos")
+	}
+	if probeStream(ctx, empty.URL, "", "") {
+		t.Error("playlist kosong (0 segmen) harus gagal")
+	}
+	if !probeStream(ctx, master.URL, "", "") {
+		t.Error("master yang variannya berisi segmen harus lolos")
+	}
+	if probeStream(ctx, masterEmpty.URL, "", "") {
+		t.Error("master yang variannya kosong harus gagal")
+	}
+	if !probeStream(ctx, dash.URL+"/x.mpd", "", "") {
+		t.Error("MPD valid harus lolos")
+	}
+	if probeStream(ctx, dash.URL+"/cenc.mpd", "", "") {
+		t.Error("MPD terenkripsi harus gagal")
 	}
 	if probeStream(ctx, badStatus.URL, "", "") {
 		t.Error("403 harus gagal")
@@ -54,7 +105,7 @@ func TestProbeStream(t *testing.T) {
 	var gotRef, gotUA string
 	hdr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotRef, gotUA = r.Header.Get("Referer"), r.Header.Get("User-Agent")
-		_, _ = w.Write([]byte("#EXTM3U\n"))
+		_, _ = w.Write([]byte(seg))
 	}))
 	defer hdr.Close()
 	if !probeStream(ctx, hdr.URL, "https://contoh.id/live", "UA-Uji/1.0") {

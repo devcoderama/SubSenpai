@@ -1,4 +1,13 @@
-<svelte:head><title>TV Langsung — SubSenpai</title></svelte:head>
+<svelte:head>
+  <title>TV Langsung — SubSenpai</title>
+  <!-- 28 Nov 2026: no-referrer di halaman ini saja. Origin Trans Media
+       (live.cnbcindonesia.com) & detik (video.detik.com) menolak
+       Referer asing (403) tapi melayani tanpa Referer + CORS * — tanpa
+       meta ini Trans TV/Trans7/CNN/CNBC gagal diputar di web (hls.js
+       mengirim Referer halaman secara bawaan). Peramban tetap mengirim
+       Origin (tidak bisa dihapus), dan itu mereka izinkan. -->
+  <meta name="referrer" content="no-referrer" />
+</svelte:head>
 
 <script>
   import { onMount } from 'svelte';
@@ -14,7 +23,7 @@
   // (VPS tidak mem-proxy video). Gratis semua tier.
   // Lencana: "Resmi" (hijau) bila stability 'bagus', "Tidak stabil"
   // (kuning) bila 'tidak stabil' — lihat TVChannelCard.
-  const CATEGORIES = ['', 'Nasional', 'Berita', 'Olahraga', 'Daerah', 'Internasional'];
+  const CATEGORIES = ['', 'Nasional', 'Berita', 'Olahraga', 'Daerah', 'Internasional', 'Anak'];
 
   /** @type {any[]} */
   let channels = [];
@@ -77,6 +86,12 @@
         </button>
       </div>
       <Player sources={tvSources} title={selected.name} />
+      {#if selected.web_ok === false}
+        <p class="note warn">
+          <i class="fa-solid fa-mobile-screen"></i> Channel ini hanya bisa diputar di aplikasi Android SubSenpai
+          (stream http:// atau MPEG-DASH — peramban tidak bisa memutarnya).
+        </p>
+      {/if}
       {#if selected.stability !== 'bagus'}
         <p class="note warn"><i class="fa-solid fa-triangle-exclamation"></i> Stream ini tidak stabil — kadang mati.</p>
       {/if}

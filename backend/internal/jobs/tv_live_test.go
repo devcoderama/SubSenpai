@@ -12,8 +12,8 @@ import (
 	"subsenpai/backend/internal/db"
 )
 
-// TestTVChannelsLive: migrasi 0029 men-seed 23 kanal kurasi (15 bagus
-// + 8 tidak stabil), dan CheckTVChannels memperbarui status kanal
+// TestTVChannelsLive: migrasi 0030 men-seed 38 kanal kurasi (18 bagus
+// + 20 tidak stabil), dan CheckTVChannels memperbarui status kanal
 // uji yang menunjuk ke server lokal: yang hidup fail_count=0 +
 // last_ok_at terisi; yang mati fail_count naik dan setelah 3x gagal
 // beruntun is_active=false.
@@ -42,13 +42,15 @@ func TestTVChannelsLive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if total != 23 || bagus != 15 || tidakStabil != 8 {
-		t.Fatalf("seed: total=%d bagus=%d tidak stabil=%d, mau 23/15/8", total, bagus, tidakStabil)
+	if total != 38 || bagus != 18 || tidakStabil != 20 {
+		t.Fatalf("seed: total=%d bagus=%d tidak stabil=%d, mau 38/18/20", total, bagus, tidakStabil)
 	}
 
 	// Kanal uji: satu hidup (server lokal), satu mati (port tertutup).
+	// Sejak v2 probe wajib menemukan segmen — server hidup mengembalikan
+	// playlist berisi #EXTINF, bukan sekadar #EXTM3U kosong.
 	alive := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-VERSION:3\n"))
+		_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:6.0,\nseg0.ts\n"))
 	}))
 	defer alive.Close()
 	var aliveID, deadID string
