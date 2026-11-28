@@ -17,6 +17,7 @@
   import Top10Rail from '$lib/components/Top10Rail.svelte';
   import Rail from '$lib/components/Rail.svelte';
   import TitleCard from '$lib/components/TitleCard.svelte';
+  import LiveBrowseSection from '$lib/components/LiveBrowseSection.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { reveal, infiniteScroll } from '$lib/reveal.js';
 
@@ -1091,6 +1092,9 @@
               <button class="btn ghost" on:click={loadMoreFilter}>Muat lagi</button>
             </div>
           {/if}
+        {/if}
+        {#if tab && genre}
+          <LiveBrowseSection type={tab} {genre} exclude={results} />
         {/if}
       {/if}
     {:else}

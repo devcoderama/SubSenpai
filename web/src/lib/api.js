@@ -303,6 +303,22 @@ export const getLiveBrowse = (type, genre, page = 1) =>
     `/api/v1/live-browse?type=${encodeURIComponent(type)}&genre=${encodeURIComponent(genre)}&page=${page}`
   );
 
+// Impor satu judul hasil telusur live ke katalog (cermin
+// Models.importTitle aplikasi); mengembalikan {id, slug, created}.
+export const importTitle = (type, item, genre = '') =>
+  api('/api/v1/titles/import', {
+    method: 'POST',
+    body: {
+      type,
+      url: item.url,
+      title: item.title,
+      poster_url: item.poster_url || '',
+      year: item.year || 0,
+      genres: item.genres || [],
+      ...(genre ? { genre } : {})
+    }
+  });
+
 export const getPlans = () => api('/api/v1/plans');
 export const getPaymentMethods = () => api('/api/v1/payment-methods');
 export const getAppConfig = () => api('/api/v1/app-config');

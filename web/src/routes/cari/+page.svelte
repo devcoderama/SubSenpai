@@ -6,6 +6,7 @@
   import { goto } from '$app/navigation';
   import { getTitles, getGenres } from '$lib/api.js';
   import TitleCard from '$lib/components/TitleCard.svelte';
+  import LiveBrowseSection from '$lib/components/LiveBrowseSection.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { reveal, infiniteScroll } from '$lib/reveal.js';
 
@@ -225,6 +226,9 @@
           <button class="btn ghost" on:click={loadMore}>Muat lagi</button>
         </div>
       {/if}
+    {/if}
+    {#if type && genre && !q.trim()}
+      <LiveBrowseSection {type} {genre} exclude={results} />
     {/if}
   {/if}
 </div>
