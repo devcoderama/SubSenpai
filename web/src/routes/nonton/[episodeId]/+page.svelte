@@ -15,6 +15,7 @@
   import Rail from '$lib/components/Rail.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { toastInfo, toastSuccess, toastError } from '$lib/toast.js';
+  import { seoEpisodeTitle, seoDescription, seoEpisodeJsonLd, jsonLdScriptTag, SITE_URL } from '$lib/seo.js';
 
   const AD_URL = 'https://uplcm.com/4/12330317';
   const REPORT_REASONS = [
@@ -110,6 +111,11 @@
   let adTimer = null;
 
   $: epId = $page.params.episodeId;
+  // SEO (28 Nov 2026): <title> + meta + JSON-LD per episode.
+  $: epNo = playback?.episode?.episode_no ?? curEp?.episode_no ?? null;
+  $: headTitle = seoEpisodeTitle(title, epNo);
+  $: headDesc = seoDescription(title);
+  $: jsonLdTag = jsonLdScriptTag(seoEpisodeJsonLd(title, epNo, epId));
   $: titleParam = $page.url.searchParams.get('title') || '';
   $: idx = episodes.findIndex((e) => e.id === epId);
   $: curEp = idx >= 0 ? episodes[idx] : null;
@@ -555,6 +561,23 @@
     if ($user) reportHistory(epId, pos).catch(() => {});
   }
 </script>
+
+<svelte:head>
+  <title>{headTitle}</title>
+  <meta name="description" content={headDesc} />
+  <link rel="canonical" href={SITE_URL + '/nonton/' + epId} />
+  <meta property="og:type" content="video.episode" />
+  <meta property="og:site_name" content="SubSenpai" />
+  <meta property="og:title" content={headTitle} />
+  <meta property="og:description" content={headDesc} />
+  <meta property="og:url" content={SITE_URL + '/nonton/' + epId} />
+  {#if title?.poster_url}
+    <meta property="og:image" content={title.poster_url} />
+    <meta name="twitter:image" content={title.poster_url} />
+  {/if}
+  <meta name="twitter:card" content="summary_large_image" />
+  {@html jsonLdTag}
+</svelte:head>
 
 <div class="watch">
   <div class="watch-inner">

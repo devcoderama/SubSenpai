@@ -16,6 +16,8 @@ import (
 func TestSharePageNoAutoOpen(t *testing.T) {
 	data := sharePageData{
 		Title:      "Film Uji — Episode 3",
+		SEOTitle:   "Film Uji — Episode 3 (2026) — Anime Subtitle Indonesia | SubSenpai",
+		OGType:     "video.tv_show",
 		MetaLine:   "Episode 3 · 2026 · Anime",
 		GenresLine: "Action • Drama",
 		Synopsis:   "Sinopsis uji.",

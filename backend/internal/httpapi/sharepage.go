@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"encoding/json"
+	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -17,7 +19,7 @@ import (
 // WhatsApp / Telegram / X — yang tidak menjalankan JS — melihat tag
 // Open Graph berisi poster + sinopsis judul ini saat tautannya
 // dibagikan. Netlify mem-proxy domain resmi
-// https://www.subsenpai.web.id/judul/{id} ke endpoint ini (rewrite
+// https://subsenpai.web.id/judul/{id} ke endpoint ini (rewrite
 // status 200), jadi URL publiknya tetap domain resmi sementara isi
 // halamannya datang dari sini. Halaman yang sama juga yang dibuka
 // manusia di peramban: poster, info, dan tombol membuka aplikasi.
@@ -26,6 +28,10 @@ var shareIDRe = regexp.MustCompile(`^[A-Za-z0-9-]{8,64}$`)
 
 type sharePageData struct {
 	Title       string
+	SEOTitle    string // judul lengkap <title>/og:title: nama + tahun + tipe + "Subtitle Indonesia"
+	OGType      string // video.movie (film) / video.tv_show (anime/donghua)
+	JSONLD      template.JS // data terstruktur schema.org — template.JS agar tidak di-escape JS di dalam <script>
+
 	Description string
 	PageURL     string
 	ImageURL    string
@@ -44,20 +50,21 @@ var shareTpl = template.Must(template.New("share").Parse(`<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{.Title}} — SubSenpai</title>
+<title>{{.SEOTitle}}</title>
 <meta name="description" content="{{.Description}}">
 <link rel="canonical" href="{{.PageURL}}">
-<meta property="og:type" content="website">
+<meta property="og:type" content="{{.OGType}}">
 <meta property="og:site_name" content="SubSenpai">
-<meta property="og:title" content="{{.Title}} — SubSenpai">
+<meta property="og:title" content="{{.SEOTitle}}">
 <meta property="og:description" content="{{.Description}}">
 <meta property="og:url" content="{{.PageURL}}">
 {{if .ImageURL}}<meta property="og:image" content="{{.ImageURL}}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="{{.ImageURL}}">{{end}}
-<meta name="twitter:title" content="{{.Title}} — SubSenpai">
+<meta name="twitter:title" content="{{.SEOTitle}}">
 <meta name="twitter:description" content="{{.Description}}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' fill='%23E50914' font-weight='900'>S</text></svg>">
+{{if .JSONLD}}<script type="application/ld+json">{{.JSONLD}}</script>{{end}}
 <style>
   body{background:#141414;color:#fff;font-family:system-ui,'Segoe UI',sans-serif;line-height:1.6;margin:0;min-height:100vh}
   .wrap{max-width:880px;margin:0 auto;padding:0 4%}
@@ -90,7 +97,7 @@ var shareTpl = template.Must(template.New("share").Parse(`<!DOCTYPE html>
 </style>
 </head>
 <body>
-<header><div class="wrap bar"><a class="wordmark" href="https://www.subsenpai.web.id/">SubSenpai</a></div></header>
+<header><div class="wrap bar"><a class="wordmark" href="https://subsenpai.web.id/">SubSenpai</a></div></header>
 <main class="wrap">
 {{if .Found}}
   <div class="detail">
@@ -101,13 +108,13 @@ var shareTpl = template.Must(template.New("share").Parse(`<!DOCTYPE html>
       {{if .GenresLine}}<div class="genres">{{.GenresLine}}</div>{{end}}
       {{if .Synopsis}}<p class="syn">{{.Synopsis}}</p>{{end}}
       <a class="btn" id="openBtn" href="{{.IntentURL}}">▶ Buka di Aplikasi SubSenpai</a>
-      <a class="btn ghost" href="https://www.subsenpai.web.id/">Download Aplikasi</a>
+      <a class="btn ghost" href="https://subsenpai.web.id/">Download Aplikasi</a>
       <div class="note">Ketuk tombol merah atau poster untuk membuka episode ini di aplikasi. Belum punya aplikasinya? Download dulu — gratis.</div>
     </div>
   </div>
   <div class="stickybar">
     <a class="btn" id="openBtn2" href="{{.IntentURL}}">▶ Buka di Aplikasi</a>
-    <a class="btn ghost" href="https://www.subsenpai.web.id/">Unduh Aplikasi</a>
+    <a class="btn ghost" href="https://subsenpai.web.id/">Unduh Aplikasi</a>
   </div>
   <script>
   // Buka aplikasi HANYA saat diketuk (tombol merah, bar bawah,
@@ -139,7 +146,7 @@ var shareTpl = template.Must(template.New("share").Parse(`<!DOCTYPE html>
   })();
   </script>
 {{else}}
-  <div class="err"><b>Judul tidak ditemukan</b>Tautan ini mungkin sudah tidak berlaku. Jelajahi katalog lengkapnya di halaman utama.<div style="margin-top:16px"><a class="btn" href="https://www.subsenpai.web.id/">Ke Halaman Utama</a></div></div>
+  <div class="err"><b>Judul tidak ditemukan</b>Tautan ini mungkin sudah tidak berlaku. Jelajahi katalog lengkapnya di halaman utama.<div style="margin-top:16px"><a class="btn" href="https://subsenpai.web.id/">Ke Halaman Utama</a></div></div>
 {{end}}
 </main>
 </body>
@@ -155,12 +162,101 @@ func trimDesc(s string, max int) string {
 	return string(r[:max]) + "…"
 }
 
+// typeLabelID: label Indonesia untuk tipe konten.
+func typeLabelID(typ string) string {
+	switch typ {
+	case "anime":
+		return "Anime"
+	case "donghua":
+		return "Donghua"
+	case "film":
+		return "Film"
+	}
+	return ""
+}
+
+// seoTitle: judul yang tampil di hasil pencarian Google — nama +
+// tahun + tipe + kata kunci "Subtitle Indonesia" (permintaan Rams
+// 28 Nov 2026). epNo > 0 → halaman episode.
+func seoTitle(title string, year *int, typ string, epNo int) string {
+	s := title
+	if epNo > 0 {
+		s = fmt.Sprintf("%s — Episode %d", title, epNo)
+	}
+	if year != nil {
+		s += " (" + strconv.Itoa(*year) + ")"
+	}
+	if lbl := typeLabelID(typ); lbl != "" {
+		s += " — " + lbl + " Subtitle Indonesia"
+	}
+	return s + " | SubSenpai"
+}
+
+// seoDescription: sinopsis bila ada; bila kosong, bangun dari
+// metadata agar halaman tetap punya deskripsi unik.
+func seoDescription(title string, year *int, typ string, genres []string, synopsis *string) string {
+	if synopsis != nil && strings.TrimSpace(*synopsis) != "" {
+		return trimDesc(*synopsis, 200)
+	}
+	s := "Nonton " + title
+	if year != nil {
+		s += " (" + strconv.Itoa(*year) + ")"
+	}
+	if lbl := typeLabelID(typ); lbl != "" {
+		s += " " + lbl
+	}
+	s += " subtitle Indonesia di SubSenpai."
+	if len(genres) > 0 {
+		s += " " + strings.Join(genres, ", ") + "."
+	}
+	return s
+}
+
+// shareJSONLD: data terstruktur schema.org (Movie / TVSeries /
+// TVEpisode) untuk rich result Google.
+func shareJSONLD(name, pageURL, image, desc string, year *int, genres []string, typ string, epNo int, seriesName, seriesURL string) template.JS {
+	v := map[string]any{
+		"@context":   "https://schema.org",
+		"@type":      "Movie",
+		"name":       name,
+		"url":        pageURL,
+		"inLanguage": "id",
+	}
+	if typ != "film" {
+		v["@type"] = "TVSeries"
+	}
+	if epNo > 0 {
+		v["@type"] = "TVEpisode"
+		v["episodeNumber"] = epNo
+		if seriesName != "" {
+			v["partOfSeries"] = map[string]any{"@type": "TVSeries", "name": seriesName, "url": seriesURL}
+		}
+	}
+	if image != "" {
+		v["image"] = image
+	}
+	if desc != "" {
+		v["description"] = desc
+	}
+	if year != nil {
+		v["datePublished"] = strconv.Itoa(*year)
+	}
+	if len(genres) > 0 {
+		v["genre"] = genres
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return template.JS(b)
+}
+
 func (a *API) handleSharePage(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	data := sharePageData{
 		Title:       "SubSenpai",
 		Description: "Nonton anime, donghua & film subtitle Indonesia di aplikasi SubSenpai.",
-		PageURL:     "https://www.subsenpai.web.id/judul/" + id,
+		PageURL:     "https://subsenpai.web.id/judul/" + id,
 		ID:          id,
 	}
 	status := http.StatusOK
@@ -178,7 +274,6 @@ func (a *API) handleSharePage(w http.ResponseWriter, r *http.Request) {
 			data.Title = title
 			if synopsis != nil && strings.TrimSpace(*synopsis) != "" {
 				data.Synopsis = *synopsis
-				data.Description = trimDesc(*synopsis, 200)
 			}
 			meta := []string{}
 			if year != nil {
@@ -201,8 +296,15 @@ func (a *API) handleSharePage(w http.ResponseWriter, r *http.Request) {
 			}
 			data.IntentURL = template.URL("intent://title/" + id +
 				"#Intent;scheme=subsenpai;package=com.subsenpai;S.browser_fallback_url=" +
-				url.QueryEscape("https://www.subsenpai.web.id/#download") + ";end")
+				url.QueryEscape("https://subsenpai.web.id/#download") + ";end")
 			data.SchemeURL = template.JS(strconv.Quote("subsenpai://title/" + id))
+			data.SEOTitle = seoTitle(title, year, typ, 0)
+			data.Description = seoDescription(title, year, typ, genres, synopsis)
+			data.OGType = "video.tv_show"
+			if typ == "film" {
+				data.OGType = "video.movie"
+			}
+			data.JSONLD = shareJSONLD(title, data.PageURL, data.ImageURL, data.Description, year, genres, typ, 0, "", "")
 		} else {
 			status = http.StatusNotFound
 		}

@@ -11,6 +11,7 @@
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { reveal } from '$lib/reveal.js';
   import { toastError } from '$lib/toast.js';
+  import { seoTitle, seoDescription, seoJsonLd, jsonLdScriptTag, SITE_URL } from '$lib/seo.js';
 
   let loading = true;
   let error = '';
@@ -24,6 +25,10 @@
   let wlBusy = false;
 
   $: id = $page.params.id;
+  // SEO (28 Nov 2026): <title> + meta + JSON-LD per judul.
+  $: headTitle = seoTitle(title);
+  $: headDesc = seoDescription(title);
+  $: jsonLdTag = jsonLdScriptTag(seoJsonLd(title));
   $: firstLocked = episodes.length > 0 && episodes[0].locked;
   // Baris meta ala aplikasi (DetailHeading): rating · tahun · durasi ·
   // jenis · status (Tamat/Berlanjut).
@@ -193,6 +198,23 @@
     loadDetail();
   }
 </script>
+
+<svelte:head>
+  <title>{headTitle}</title>
+  <meta name="description" content={headDesc} />
+  <link rel="canonical" href={SITE_URL + '/judul/' + id} />
+  <meta property="og:type" content={title?.type === 'film' ? 'video.movie' : 'video.tv_show'} />
+  <meta property="og:site_name" content="SubSenpai" />
+  <meta property="og:title" content={headTitle} />
+  <meta property="og:description" content={headDesc} />
+  <meta property="og:url" content={SITE_URL + '/judul/' + id} />
+  {#if title?.poster_url}
+    <meta property="og:image" content={title.poster_url} />
+    <meta name="twitter:image" content={title.poster_url} />
+  {/if}
+  <meta name="twitter:card" content="summary_large_image" />
+  {@html jsonLdTag}
+</svelte:head>
 
 {#if loading}
   <Skeleton kind="detail" />

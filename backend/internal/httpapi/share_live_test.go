@@ -64,11 +64,11 @@ func TestSharePageLive(t *testing.T) {
 		t.Fatalf("share page: status %d", code)
 	}
 	for _, want := range []string{
-		`property="og:title" content="Film Bagikan Uji — SubSenpai"`,
+		`property="og:title" content="Film Bagikan Uji (2024) — Film Subtitle Indonesia | SubSenpai"`,
 		`property="og:image" content="`,
 		"/api/v1/img-proxy?u=https%3A%2F%2Fcdn.example.com%2Fposter.jpg",
 		"Sinopsis film bagikan uji untuk pratinjau.",
-		"https://www.subsenpai.web.id/judul/" + id,
+		"https://subsenpai.web.id/judul/" + id,
 		"intent://title/" + id,
 		"subsenpai://title/" + id,
 	} {
@@ -91,7 +91,7 @@ func TestSharePageLive(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Film Bagikan Uji — Episode 3",
-		"https://www.subsenpai.web.id/nonton/" + epID,
+		"https://subsenpai.web.id/nonton/" + epID,
 		"intent://episode/" + epID,
 		"subsenpai://episode/" + epID,
 	} {

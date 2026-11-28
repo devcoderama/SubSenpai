@@ -116,7 +116,7 @@
 </script>
 
 <svelte:head>
-  <title>Jadwal Rilis — SubSenpai</title>
+  <title>Jadwal Rilis Anime &amp; Donghua Subtitle Indonesia — SubSenpai</title>
 </svelte:head>
 
 <div class="container">

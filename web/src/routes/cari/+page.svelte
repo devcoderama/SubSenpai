@@ -1,4 +1,4 @@
-<svelte:head><title>Cari — SubSenpai</title></svelte:head>
+<svelte:head><title>Cari Anime, Donghua &amp; Film Subtitle Indonesia — SubSenpai</title></svelte:head>
 
 <script>
   import { onMount } from 'svelte';
