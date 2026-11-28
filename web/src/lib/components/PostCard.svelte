@@ -1,12 +1,14 @@
 <script>
-  import { API_BASE, likePost, repostPost, bookmarkPost, sharePost, deletePost, getComments, createComment } from '$lib/api.js';
+  import { API_BASE, likePost, repostPost, bookmarkPost, sharePost, deletePost, createComment } from '$lib/api.js';
   import { user } from '$lib/auth.js';
   import { fmtWhen } from '$lib/history.js';
+  import { goto } from '$app/navigation';
   import { toastError, toastSuccess } from '$lib/toast.js';
 
   export let post;
   export let onDelete = null;
   export let onHide = null;
+  export let hideComments = false; // di halaman Komentar: pratinjau + kotak kirim disembunyikan
 
   let menuOpen = false;
   let lightbox = '';
@@ -40,9 +42,7 @@
   let repostCount = post.repost_count;
   let bookmarked = post.bookmarked;
   let shareCount = post.share_count;
-  let showComments = false;
   let comments = post.comments_preview || [];
-  let commentsLoaded = false;
   let commentBody = '';
   let commentBusy = false;
 
@@ -115,19 +115,6 @@
       toastSuccess('Tautan disalin.');
     } catch {
       /* clipboard tak tersedia */
-    }
-  }
-
-  async function toggleComments() {
-    showComments = !showComments;
-    if (showComments && !commentsLoaded) {
-      try {
-        const res = await getComments(post.post_id);
-        comments = res.items || res.comments || [];
-        commentsLoaded = true;
-      } catch {
-        comments = post.comments_preview || [];
-      }
     }
   }
 
@@ -231,7 +218,7 @@
     <button class:on={liked} on:click={toggleLike} disabled={!$user} aria-label="Suka">
       <i class={liked ? 'fa-solid fa-heart' : 'fa-regular fa-heart'}></i> {likeCount}
     </button>
-    <button on:click={toggleComments} aria-label="Komentar"><i class="fa-regular fa-comment"></i> {post.comment_count}</button>
+    <button on:click={() => goto('/post/' + post.post_id + '/komentar')} aria-label="Komentar"><i class="fa-regular fa-comment"></i> {post.comment_count}</button>
     <button class:on={reposted} on:click={toggleRepost} disabled={!$user} aria-label="Repost">
       <i class="fa-solid fa-retweet"></i> {repostCount}
     </button>
@@ -241,7 +228,7 @@
     <button on:click={doShare} aria-label="Bagikan"><i class="fa-solid fa-share-nodes"></i> {shareCount}</button>
   </div>
 
-  {#if showComments}
+  {#if !hideComments}
     <div class="comments">
       {#each comments as c (c.id)}
         <div class="comment">
@@ -249,10 +236,9 @@
           <span>{c.body}</span>
         </div>
       {/each}
-      {#if !comments.length}<p class="muted">Belum ada komentar.</p>{/if}
       {#if $user}
         <div class="comment-form">
-          <input type="text" placeholder="Tulis komentar…" bind:value={commentBody} maxlength="1000" />
+          <input type="text" placeholder="Tulis komentar…" bind:value={commentBody} maxlength="500" />
           <button class="btn" on:click={sendComment} disabled={commentBusy || !commentBody.trim()}>Kirim</button>
         </div>
       {/if}

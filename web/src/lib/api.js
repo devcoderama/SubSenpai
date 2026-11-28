@@ -437,14 +437,23 @@ export const sharePost = (id) =>
 export const deletePost = (id) =>
   api(`/api/v1/feed/posts/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
+export const getPost = (id) =>
+  api(`/api/v1/feed/posts/${encodeURIComponent(id)}`);
+
 export const getComments = (id) =>
   api(`/api/v1/feed/posts/${encodeURIComponent(id)}/comments`);
 
-export const createComment = (id, body) =>
+export const createComment = (id, body, parentId = null) =>
   api(`/api/v1/feed/posts/${encodeURIComponent(id)}/comments`, {
     method: 'POST',
-    body: { body }
+    body: parentId ? { body, parent_id: parentId } : { body }
   });
+
+export const likeComment = (id) =>
+  api(`/api/v1/feed/comments/${encodeURIComponent(id)}/like`, { method: 'POST' });
+
+export const deleteComment = (id) =>
+  api(`/api/v1/feed/comments/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
 /** Unggah gambar/video feed (multipart — tidak lewat envelope JSON). */
 export async function uploadFeedImage(file) {
