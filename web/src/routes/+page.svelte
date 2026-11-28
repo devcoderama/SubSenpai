@@ -1,3 +1,5 @@
+<svelte:head><title>SubSenpai — Nonton Anime, Donghua &amp; Film</title></svelte:head>
+
 <script>
   import { onMount, onDestroy, tick } from 'svelte';
   import { goto } from '$app/navigation';

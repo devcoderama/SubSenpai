@@ -1,3 +1,5 @@
+<svelte:head><title>Cari — SubSenpai</title></svelte:head>
+
 <script>
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
