@@ -338,5 +338,4 @@
     border-radius: 999px; color: #fff; padding: 9px 14px; font-size: 14px;
   }
   .small { font-size: 13px; padding: 6px 12px; }
-  .error { color: #ff8a8a; font-size: 13px; }
 </style>
