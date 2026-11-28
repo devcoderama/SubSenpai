@@ -8,6 +8,7 @@
   import { goto } from '$app/navigation';
   import { logout } from '$lib/auth.js';
   import { maybeLoadAds } from '$lib/ads.js';
+  import { initPWA } from '$lib/pwa.js';
 
   // Banner satu kali: login ini menendang perangkat lain (flag
   // ssweb.revoked_device dari auth.js, dibaca tiap navigasi).
@@ -39,6 +40,7 @@
   // dimuat sekali di sini sehingga berlaku di semua halaman, termasuk
   // Detail (/judul/*) dan Nonton (/nonton/*).
   onMount(() => {
+    initPWA();
     maybeLoadAds();
     window.addEventListener('session-revoked', onSessionRevoked);
     window.addEventListener('session-expired', onSessionExpired);

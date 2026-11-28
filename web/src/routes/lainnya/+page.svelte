@@ -3,6 +3,18 @@
   import { user, logout } from '$lib/auth.js';
   import { api } from '$lib/api.js';
   import { goto } from '$app/navigation';
+  import { canInstall, isIOS, isStandalone, promptInstall } from '$lib/pwa.js';
+
+  let installing = false;
+  async function install() {
+    if (installing) return;
+    installing = true;
+    try {
+      await promptInstall();
+    } finally {
+      installing = false;
+    }
+  }
 
   // Kode Teman: dari profil tersimpan (respons login sudah memuat
   // friend_code); bila profil lama belum punya, ambil via GET /api/v1/me
@@ -92,6 +104,15 @@
     <a href="/unduh"
       ><span class="ic"><i class="fa-solid fa-download"></i></span><span class="lbl">Unduh Aplikasi Android</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a
     >
+    {#if !$isStandalone}
+      {#if $canInstall}
+        <button class="menu-btn" on:click={install}
+          ><span class="ic"><i class="fa-solid fa-download"></i></span><span class="lbl">Install Aplikasi</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></button
+        >
+      {:else if isIOS}
+        <a href="/unduh"><span class="ic"><i class="fa-solid fa-download"></i></span><span class="lbl">Install Aplikasi</span><span class="chev"><i class="fa-solid fa-chevron-right"></i></span></a>
+      {/if}
+    {/if}
   </div>
 
   <p class="muted small">SubSenpai Web — nonton anime, donghua &amp; film subtitle Indonesia.</p>
@@ -128,6 +149,21 @@
   }
   .menu a:last-child { border-bottom: 0; }
   .menu a:hover { background: var(--panel-2); text-decoration: none; }
+  .menu button {
+    all: unset;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    color: #fff;
+    font-size: 15px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    box-sizing: border-box;
+    width: 100%;
+  }
+  .menu button:last-child { border-bottom: 0; }
+  .menu button:hover { background: var(--panel-2); }
   .ic { width: 24px; text-align: center; }
   .ic .fa-crown { color: var(--gold); }
   .ic .fa-bookmark { color: var(--red); }

@@ -1,6 +1,18 @@
 <script>
   import { onMount } from 'svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import { canInstall, isStandalone, isIOS, promptInstall } from '$lib/pwa.js';
+
+  let installing = false;
+  async function install() {
+    if (installing) return;
+    installing = true;
+    try {
+      await promptInstall();
+    } finally {
+      installing = false;
+    }
+  }
 
   // FALLBACK — BUMP saat rilis APK baru (samakan dengan
   // landing-src/index.src.html). Dipakai bila API GitHub gagal.
@@ -122,6 +134,31 @@
     {/if}
   </div>
 
+  <div class="card pwa">
+    <strong>Atau install versi web</strong>
+    <span class="muted"
+      >Ikon SubSenpai di home screen, dibuka fullscreen kayak aplikasi — tanpa APK, tanpa Play
+      Store. Tetap butuh internet untuk nonton.</span
+    >
+    {#if $isStandalone}
+      <span class="muted small">✓ Kamu sedang membuka versi web yang sudah terinstall.</span>
+    {:else if $canInstall}
+      <div>
+        <button class="btn" disabled={installing} on:click={install}
+          >{installing ? 'Membuka…' : 'Install aplikasi'}</button
+        >
+      </div>
+    {:else if isIOS}
+      <span class="muted small"
+        >Di iPhone/iPad: buka situs ini di Safari → ketuk Bagikan → "Tambah ke Layar Utama".</span
+      >
+    {:else}
+      <span class="muted small"
+        >Tombol install muncul otomatis di Chrome/Brave Android bila perangkat mendukung.</span
+      >
+    {/if}
+  </div>
+
   <ol class="steps">
     <li><strong>Unduh APK-nya</strong><span class="muted"> — tombol merah di atas, satu file saja.</span></li>
     <li>
@@ -156,6 +193,7 @@
   .tag { background: var(--red); color: #fff; font-weight: 700; border-radius: 4px; padding: 2px 10px; }
   .btn.big { display: inline-block; font-size: 17px; padding: 12px 36px; }
   .dl p { margin-top: 12px; }
+  .pwa { display: flex; flex-direction: column; gap: 8px; padding: 20px; margin-bottom: 20px; }
   .warn { color: #f5c518; }
   .steps { display: flex; flex-direction: column; gap: 12px; margin: 0 0 20px; padding-left: 22px; }
   .steps li { line-height: 1.5; }
