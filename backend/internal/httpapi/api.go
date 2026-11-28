@@ -9,6 +9,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -73,6 +74,18 @@ func (a *API) Router() http.Handler {
 	})
 	r.Get("/healthz", func(w http.ResponseWriter, req *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	// Root domain API (permintaan Rams 28 Nov 2026): peramban yang
+	// membuka https://api.subsenpai.web.id diarahkan ke web resmi.
+	// Klien non-peramban (curl, monitor) tetap dapat JSON status
+	// supaya health check yang menembak / tak rusak. Redirect 302
+	// (bukan 301) supaya tidak tercache permanen di peramban.
+	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+		if strings.Contains(req.Header.Get("Accept"), "text/html") {
+			http.Redirect(w, req, "https://subsenpai.web.id", http.StatusFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "subsenpai-api"})
 	})
 	r.With(middleware.RateLimit(30)).Post("/api/v1/session", a.handleSession)
 	// Webhook gateway pembayaran: polos, tanpa envelope & tanpa JWT —
