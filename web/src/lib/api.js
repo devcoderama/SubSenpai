@@ -366,11 +366,14 @@ function webDeviceName() {
   }
 }
 
-export const googleLogin = (idToken) =>
-  api('/api/v1/auth/google', {
-    method: 'POST',
-    body: { id_token: idToken, device_id: getDeviceId(), device_name: webDeviceName() }
-  });
+// Login Google; referralCode (kode teman pengundang) hanya dikirim bila
+// ada — backend hanya memakainya untuk akun BARU (voucher referral
+// 3 hari ke pengundang + pendaftar, auth.go).
+export const googleLogin = (idToken, referralCode) => {
+  const body = { id_token: idToken, device_id: getDeviceId(), device_name: webDeviceName() };
+  if (referralCode) body.referral_code = referralCode;
+  return api('/api/v1/auth/google', { method: 'POST', body });
+};
 
 /* ================= Perangkat login (batas sesi) ================= */
 // GET /api/v1/devices → {devices: [{device_id, device_name?,

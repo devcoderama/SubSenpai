@@ -2,19 +2,22 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { GOOGLE_CLIENT_ID } from '$lib/api.js';
-  import { loginWithGoogle, user } from '$lib/auth.js';
+  import { loginWithGoogle, user, storeReferral, getStoredReferral } from '$lib/auth.js';
 
   let error = '';
   let busy = false;
   let gisReady = false;
   // null = tidak ada flag; '' = flag ada tapi nama perangkat tak diketahui.
   let revokedName = null;
+  // Kode referral: dari tautan undangan (?ref=) atau diketik manual.
+  let refCode = '';
+  let refFromLink = false;
 
   async function onCredential(resp) {
     busy = true;
     error = '';
     try {
-      await loginWithGoogle(resp.credential);
+      await loginWithGoogle(resp.credential, refCode.trim().toUpperCase() || undefined);
       goto('/');
     } catch (e) {
       error = e.message || 'Login gagal.';
@@ -77,6 +80,22 @@
     } catch {
       /* abaikan — mode privat */
     }
+    // Tautan undangan (?ref=KODE): simpan kodenya supaya ikut terkirim
+    // saat login Google pertama kali (backend memberi voucher referral
+    // 3 hari ke pengundang + pendaftar bila akun ini baru).
+    try {
+      const q = new URLSearchParams(window.location.search).get('ref');
+      if (q) {
+        refCode = q.trim().toUpperCase();
+        refFromLink = true;
+        storeReferral(refCode);
+      } else {
+        refCode = getStoredReferral();
+        if (refCode) refFromLink = true;
+      }
+    } catch {
+      /* abaikan */
+    }
     if ($user) {
       goto('/');
       return;
@@ -112,6 +131,16 @@
       </p>
     {/if}
     <div id="googleBtn" class="gbtn"></div>
+    {#if refFromLink}
+      <p class="invite">
+        <i class="fa-solid fa-gift"></i>
+        Kamu diundang! Daftar dan kamu + pengundang masing-masing dapat Premium 3 hari.
+      </p>
+    {/if}
+    <label class="ref-field">
+      <span class="muted small">Punya kode referral? (opsional)</span>
+      <input type="text" bind:value={refCode} placeholder="Kode teman pengundang" maxlength="16" autocomplete="off" />
+    </label>
     {#if busy}<p class="muted">Memproses login…</p>{/if}
     {#if error}<p class="error">{error}</p>{/if}
     {#if !gisReady && !error}
@@ -140,5 +169,20 @@
     line-height: 1.5; text-align: left; margin: 16px 0 0;
   }
   .notice i { margin-right: 6px; }
+  .invite {
+    background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.45);
+    color: #a7f3d0; border-radius: 4px; padding: 12px 14px; font-size: 14px;
+    line-height: 1.5; text-align: left; margin: 16px 0 0;
+  }
+  .invite i { margin-right: 6px; }
+  .ref-field { display: block; margin: 16px 0 0; text-align: left; }
+  .ref-field span { display: block; margin-bottom: 6px; }
+  .ref-field input {
+    width: 100%; box-sizing: border-box; padding: 10px 12px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 4px; color: #fff; font-size: 15px;
+    letter-spacing: 2px; text-transform: uppercase; text-align: center;
+  }
+  .ref-field input:focus { outline: none; border-color: var(--red); }
   .small { font-size: 12px; }
 </style>

@@ -5,6 +5,34 @@ import { api, googleLogin as apiGoogleLogin, setJwt } from './api.js';
 
 const JWT_KEY = 'ssweb.jwt';
 const PROFILE_KEY = 'ssweb.profile';
+const REF_KEY = 'ssweb.ref';
+
+// Kode referral dari tautan undangan (?ref=) — disimpan supaya tetap
+// kebawa walau pengguna sempat pindah halaman sebelum menekan tombol
+// Google. Satu kali pakai: dihapus sesudah login berhasil.
+export function storeReferral(code) {
+  try {
+    if (code) localStorage.setItem(REF_KEY, code);
+  } catch {
+    /* abaikan — mode privat */
+  }
+}
+
+export function getStoredReferral() {
+  try {
+    return localStorage.getItem(REF_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function clearStoredReferral() {
+  try {
+    localStorage.removeItem(REF_KEY);
+  } catch {
+    /* abaikan — mode privat */
+  }
+}
 
 function loadStored() {
   try {
@@ -26,8 +54,8 @@ export function isLoggedIn() {
   return !!stored.token;
 }
 
-export async function loginWithGoogle(idToken) {
-  const res = await apiGoogleLogin(idToken);
+export async function loginWithGoogle(idToken, referralCode) {
+  const res = await apiGoogleLogin(idToken, referralCode || getStoredReferral() || undefined);
   const t = res.token || res.jwt;
   const profile = res.profile || null;
   if (!t) throw new Error('Login gagal: server tidak mengembalikan token.');
@@ -51,6 +79,7 @@ export async function loginWithGoogle(idToken) {
   stored.profile = profile;
   token.set(t);
   user.set(profile);
+  clearStoredReferral();
   return profile;
 }
 
