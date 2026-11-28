@@ -43,6 +43,8 @@
                 <data android:scheme="https" android:host="subsenpai.web.id" android:pathPrefix="/judul/" />
                 <data android:scheme="https" android:host="www.subsenpai.web.id" android:pathPrefix="/nonton/" />
                 <data android:scheme="https" android:host="subsenpai.web.id" android:pathPrefix="/nonton/" />
+                <data android:scheme="https" android:host="www.subsenpai.web.id" android:pathPrefix="/masuk" />
+                <data android:scheme="https" android:host="subsenpai.web.id" android:pathPrefix="/masuk" />
             </intent-filter>
         </activity>
     </application>

@@ -368,7 +368,7 @@ class CatalogRepository(
     }
 
     /** Tukar token ID Google dengan JWT backend; sesi disimpan di AuthStore. */
-    suspend fun loginGoogle(idToken: String): UserProfile {
+    suspend fun loginGoogle(idToken: String, referralCode: String? = null): UserProfile {
         // Batas perangkat: registerDevice backend membaca device_id /
         // device_name dari BODY login (auth.go) — BUKAN dari header
         // X-Device-Id (header itu hanya dipakai pengecekan per-request).
@@ -378,6 +378,9 @@ class CatalogRepository(
         val body = JSONObject().put("id_token", idToken)
         auth?.deviceId?.let { body.put("device_id", it) }
         body.put("device_name", deviceName())
+        // Referral: kode teman pengundang — backend hanya memakainya
+        // untuk akun BARU (voucher 3 hari ke pengundang + pendaftar).
+        referralCode?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }?.let { body.put("referral_code", it) }
         val o = api.post("/api/v1/auth/google", body)
         val token = o.getString("token")
         val p = o.getJSONObject("profile")

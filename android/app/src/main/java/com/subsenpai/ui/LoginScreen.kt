@@ -15,6 +15,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -134,6 +135,9 @@ fun LoginScreen(
     // "revoked_device") — MainActivity menampilkan pesannya
     // sebagai Toast satu kali.
     onRevokedDeviceNote: (String) -> Unit = {},
+    // Kode referral dari tautan undangan (/masuk?ref=) — dibawa ke
+    // login Google pertama kali (hanya berlaku untuk akun baru).
+    initialReferralCode: String? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -145,6 +149,7 @@ fun LoginScreen(
     // callback asinkron; itu yang menyebabkan crash 25 Nov 2026).
     var pendingLegacyIntent by remember { mutableStateOf<Intent?>(null) }
     var loggedIn by remember { mutableStateOf(repo.isLoggedIn) }
+    var refCode by remember { mutableStateOf(initialReferralCode ?: "") }
     var premium by remember { mutableStateOf<PremiumStatus?>(null) }
     val auth = repo.auth
 
@@ -177,7 +182,7 @@ fun LoginScreen(
             } else {
                 scope.launch {
                     try {
-                        repo.loginGoogle(token)
+                        repo.loginGoogle(token, refCode.trim().ifBlank { null })
                         repo.takeRevokedDevice()?.let {
                             onRevokedDeviceNote(
                                 com.subsenpai.data.revokedDeviceMessage(it.deviceName),
@@ -297,6 +302,20 @@ fun LoginScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (refCode.isNotBlank()) {
+                Text(
+                    "Kamu diundang! Daftar dan kamu + pengundang masing-masing dapat Premium 3 hari.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF4CAF50),
+                )
+            }
+            OutlinedTextField(
+                value = refCode,
+                onValueChange = { refCode = it.uppercase().filter { c -> c in "ABCDEFGHJKMNPQRSTUVWXYZ23456789" } },
+                label = { Text("Kode referral (opsional)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
             Spacer(Modifier.height(14.dp))
             Button(
                 enabled = clientConfigured && !busy,
@@ -307,7 +326,7 @@ fun LoginScreen(
                     scope.launch {
                         try {
                             val idToken = fetchGoogleIdToken(context)
-                            repo.loginGoogle(idToken)
+                            repo.loginGoogle(idToken, refCode.trim().ifBlank { null })
                             repo.takeRevokedDevice()?.let {
                                 onRevokedDeviceNote(
                                     com.subsenpai.data.revokedDeviceMessage(it.deviceName),

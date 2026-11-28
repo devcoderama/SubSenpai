@@ -70,6 +70,10 @@ class MainActivity : ComponentActivity() {
     // notifikasi jadwal rilis): id episode yang menunggu diputar.
     private val deepLinkEpisode = mutableStateOf<String?>(null)
 
+    // Tautan undangan referral (/masuk?ref=KODE): kode menunggu
+    // dibawa ke layar login (hanya berlaku untuk akun baru).
+    private val pendingReferralCode = mutableStateOf<String?>(null)
+
     private fun captureDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
         // Dua bentuk tautan resmi:
@@ -101,6 +105,16 @@ class MainActivity : ComponentActivity() {
             else -> ""
         }
         if (epId.matches(Regex("[A-Za-z0-9-]{8,}"))) deepLinkEpisode.value = epId
+        // 5) https://subsenpai.web.id/masuk?ref=KODE — tautan undangan
+        //    referral (App Links): kode dibawa ke layar login.
+        if (data.scheme == "https" &&
+            (data.host == "www.subsenpai.web.id" || data.host == "subsenpai.web.id") &&
+            data.pathSegments.firstOrNull() == "masuk"
+        ) {
+            data.getQueryParameter("ref")?.trim()?.uppercase()
+                ?.takeIf { it.matches(Regex("[A-Z0-9]{4,16}")) }
+                ?.let { pendingReferralCode.value = it }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -483,6 +497,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenSettings = { nav.navigate("settings") },
                                 onOpenTransactions = { nav.navigate("transactions") },
                                 onOpenMyVouchers = { nav.navigate("myvouchers") },
+                                onOpenReferral = { nav.navigate("referral") },
                             )
                         }
                         composable("schedule") {
@@ -592,12 +607,16 @@ class MainActivity : ComponentActivity() {
                                 onBack = { nav.popBackStack() },
                             )
                         }
-                        composable("login") {
+                        composable(
+                            "login?ref={ref}",
+                            arguments = listOf(navArgument("ref") { type = NavType.StringType; defaultValue = "" }),
+                        ) { entry ->
                             LoginScreen(
                                 repo,
                                 onBack = { nav.popBackStack() },
                                 onAuthChanged = { authVersion++ },
                                 onRevokedDeviceNote = { deviceRevokedNotice = it },
+                                initialReferralCode = entry.arguments?.getString("ref")?.takeIf { it.isNotBlank() },
                             )
                         }
                         composable("watchlist") {
@@ -609,6 +628,13 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("devices") {
                             com.subsenpai.ui.DevicesScreen(
+                                repo,
+                                onBack = { nav.popBackStack() },
+                                onNeedLogin = { nav.navigate("login") },
+                            )
+                        }
+                        composable("referral") {
+                            com.subsenpai.ui.ReferralScreen(
                                 repo,
                                 onBack = { nav.popBackStack() },
                                 onNeedLogin = { nav.navigate("login") },
@@ -696,6 +722,20 @@ class MainActivity : ComponentActivity() {
                         if (pendingEpisode != null) {
                             nav.navigate("player/$pendingEpisode")
                             deepLinkEpisode.value = null
+                        }
+                    }
+                    // Tautan undangan referral: akun baru dibawa ke login
+                    // dengan kode terisi; pengguna yang sudah login dibawa
+                    // ke halaman Undang Teman.
+                    val pendingReferral = pendingReferralCode.value
+                    LaunchedEffect(pendingReferral) {
+                        if (pendingReferral != null) {
+                            pendingReferralCode.value = null
+                            if (repo.isLoggedIn) {
+                                nav.navigate("referral")
+                            } else {
+                                nav.navigate("login?ref=$pendingReferral")
+                            }
                         }
                     }
                         }

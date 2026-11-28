@@ -71,6 +71,7 @@ fun MoreScreen(
     onOpenSettings: () -> Unit,
     onOpenTransactions: () -> Unit,
     onOpenMyVouchers: () -> Unit,
+    onOpenReferral: () -> Unit,
 ) {
     val context = LocalContext.current
     val auth = remember { AuthStore(context) }
@@ -154,6 +155,9 @@ fun MoreScreen(
         }
         item {
             MoreRow(R.drawable.ic_ticket, "Voucher Saya", "Kode voucher untuk dibagikan & ditukar", onOpenMyVouchers)
+        }
+        item {
+            MoreRow(R.drawable.ic_share, "Undang Teman", "Undang teman, berdua dapat Premium 3 hari", onOpenReferral)
         }
         item {
             MoreRow(R.drawable.ic_person, "Teman", "Kode teman & daftar teman", onOpenFriends)
