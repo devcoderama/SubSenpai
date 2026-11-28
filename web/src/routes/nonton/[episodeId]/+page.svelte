@@ -52,8 +52,11 @@
   let popPos = { top: 0, left: 0 };
   function togglePop(which, ev) {
     const r = ev.currentTarget.getBoundingClientRect();
+    // Bila tombol dekat tepi bawah viewport, panel dipotong ke atas supaya
+    // kepalanya selalu terlihat (temuan verifikasi #8, 09:53) — sisanya
+    // digulir di dalam panel (max-height + overflow di .pop).
     popPos = {
-      top: r.bottom + 8,
+      top: Math.max(8, Math.min(r.bottom + 8, window.innerHeight - 160)),
       left: Math.max(8, Math.min(r.left, window.innerWidth - 268))
     };
     serverOpen = which === 'server' ? !serverOpen : false;
@@ -867,6 +870,7 @@
     min-width: 240px; max-width: 320px; background: var(--surface);
     border: 1px solid var(--border); border-radius: 12px; padding: 8px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+    max-height: calc(100dvh - 16px); overflow-y: auto;
   }
   .pop-title { font-weight: 700; font-size: 15px; padding: 6px 10px 8px; }
   .pop-row {
