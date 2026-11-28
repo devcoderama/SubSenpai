@@ -206,7 +206,11 @@ func parseHFDetails(body string) (*SeriesMeta, error) {
 		meta.Studio = d.ProductionCompanies[0].Name
 	}
 	if len(d.ProductionCountries) > 0 {
-		meta.Country = d.ProductionCountries[0].ISO
+		// Simpan NAMA Indonesia ("Indonesia"), bukan kode ISO ("ID"):
+		// kolom country katalog berisi nama, dan filter negara
+		// membandingkan dengan nama — kode membuat film tak ketemu
+		// (diagnosis 2026-11-28: Ghost in the Cell tersimpan "ID").
+		meta.Country = CountryName(d.ProductionCountries[0].ISO)
 	}
 	if meta.Synopsis == "" && meta.DurationMin == 0 && len(meta.Genres) == 0 {
 		return nil, fmt.Errorf("hashflix: detail film kosong")

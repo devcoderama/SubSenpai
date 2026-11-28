@@ -273,13 +273,20 @@ func storeSearchHit(ctx context.Context, pool *pgxpool.Pool, contentType string,
 	if h.year > 0 {
 		year = h.year
 	}
+	// Film adalah karya tunggal yang tamat — bukan serial berjalan:
+	// statusnya 'completed', bukan 'ongoing' (yang membuat halaman
+	// Detail film menulis "Berlanjut" untuk film 2016 sekalipun).
+	status := "ongoing"
+	if contentType == "film" {
+		status = "completed"
+	}
 	var id, typ string
 	err := pool.QueryRow(ctx, `
 		insert into titles (slug, type, title, poster_url, year, genres, status)
-		values ($1, $2, $3, $4, $5, $6, 'ongoing')
+		values ($1, $2, $3, $4, $5, $6, $7)
 		on conflict (slug) do nothing
 		returning id, type`,
-		h.slug, contentType, h.title, nullIfEmpty(h.poster), year, genres).Scan(&id, &typ)
+		h.slug, contentType, h.title, nullIfEmpty(h.poster), year, genres, status).Scan(&id, &typ)
 	if err != nil {
 		// Sudah ada di katalog dengan slug sama: petakan saja
 		// bila jenisnya sama.

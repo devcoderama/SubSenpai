@@ -155,11 +155,23 @@
           /* abaikan — Daftar Saya tetap bisa diketuk */
         }
       }
-      const g = title.genres?.[0];
-      if (g) {
+      // Judul Serupa: gabung 2 genre pertama, lalu urutkan menurut
+      // jumlah genre yang sama — bukan sekadar 10 terbaru dari genre
+      // pertama saja (itu yang membuat film horor Indonesia dapat
+      // "serupa" Austin Powers: komedi yang cuma berbagi tag Crime).
+      const gs = (title.genres || []).slice(0, 2);
+      if (gs.length) {
         try {
-          const r = await getTitles({ genre: g, type: title.type || '', limit: 10 });
-          serupa = (r.items || []).filter((t) => t.id !== id).slice(0, 9);
+          const rs = await Promise.all(
+            gs.map((g) => getTitles({ genre: g, type: title.type || '', limit: 30 }))
+          );
+          const pool = new Map();
+          for (const r of rs)
+            for (const t of r.items || []) if (t.id !== id) pool.set(t.id, t);
+          const shared = (t) => (t.genres || []).filter((g) => title.genres.includes(g)).length;
+          serupa = [...pool.values()]
+            .sort((a, b) => shared(b) - shared(a) || (b.year || 0) - (a.year || 0))
+            .slice(0, 9);
         } catch {
           /* abaikan — Judul Serupa opsional */
         }

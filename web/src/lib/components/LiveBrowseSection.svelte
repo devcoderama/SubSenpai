@@ -71,7 +71,15 @@
   // muat (tanpa genre = semua film, urutan Populer — seperti
   // bawaan donkey.to); anime/donghua butuh satu genre.
   $: filterKey = [type, selGenres.join(','), selYear, selCountry, selSort].join('|');
-  $: if (type && (type === 'film' || selGenres.length)) reloadLive();
+  // filterKey DIBACA di sini supaya Svelte memuat ulang saat salah
+  // satu filter berubah — tanpanya (bug 28 Nov 2026) hanya ganti
+  // genre yang memuat ulang, sementara tahun/negara/urutan diam
+  // (kartu halaman 1 tak berubah; baru "Muat live lainnya" yang
+  // memakai filter baru).
+  $: if (type && (type === 'film' || selGenres.length)) {
+    void filterKey;
+    reloadLive();
+  }
 
   function liveOpts() {
     return { genres: selGenres, year: selYear, country: selCountry, sort: selSort };

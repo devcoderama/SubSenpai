@@ -175,6 +175,16 @@ func (a *API) handleLiveBrowse(w http.ResponseWriter, r *http.Request) {
 		for _, d := range found {
 			slugs = append(slugs, d.Slug)
 		}
+		// Stempel negara filter (film): discover dengan
+		// with_origin_country menjamin film-film ini memang dari
+		// negara itu — jadi yang baru tersimpan langsung bisa
+		// ditemukan grid database lewat filter negara, tanpa
+		// menunggu enrich. Hanya isi yang masih kosong.
+		if country != "" {
+			if name := sources.CountryName(country); name != "" {
+				_, _ = a.pool.Exec(r.Context(), `update titles set country = $1 where slug = any($2) and country is null`, name, slugs)
+			}
+		}
 		inCatalog := map[string]string{}
 		rows, err := a.pool.Query(r.Context(), `
 			select slug, id from titles where type = $1 and slug = any($2)`, typ, slugs)
