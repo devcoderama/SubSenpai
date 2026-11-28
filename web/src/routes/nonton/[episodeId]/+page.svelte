@@ -49,14 +49,17 @@
   // dari tombol yang diklik (27 Nov 2026). Sebelumnya popover itu
   // absolute di dalam .actions-row yang overflow-x:auto, sehingga
   // terpotong tak terlihat — tombol tampak "tidak bisa diklik".
-  let popPos = { top: 0, left: 0 };
+  let popPos = { top: 0, maxH: 400, left: 0 };
   function togglePop(which, ev) {
     const r = ev.currentTarget.getBoundingClientRect();
-    // Bila tombol dekat tepi bawah viewport, panel dipotong ke atas supaya
-    // kepalanya selalu terlihat (temuan verifikasi #8, 09:53) — sisanya
-    // digulir di dalam panel (max-height + overflow di .pop).
+    // Panel harus muat di sisa ruang viewport di bawah tombol (temuan
+    // verifikasi #8, 09:57 — v1 gagal: max-height tetap 100dvh tak
+    // membatasi panel setinggi konten). maxH dihitung per buka supaya
+    // panel bisa digulir di dalam viewport (overflow-y di .pop).
+    const top = Math.max(8, Math.min(r.bottom + 8, window.innerHeight - 160));
     popPos = {
-      top: Math.max(8, Math.min(r.bottom + 8, window.innerHeight - 160)),
+      top,
+      maxH: Math.max(120, window.innerHeight - top - 8),
       left: Math.max(8, Math.min(r.left, window.innerWidth - 268))
     };
     serverOpen = which === 'server' ? !serverOpen : false;
@@ -629,7 +632,7 @@
               Server: {sourceLabel}
             </button>
             {#if serverOpen}
-              <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px">
+              <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px; max-height: {popPos.maxH}px">
                 <div class="pop-title">Pilih Server</div>
                 {#each playback.sources || [] as s, i}
                   <button class="pop-row" on:click={() => { current = i; serverOpen = false; }}>
@@ -645,7 +648,7 @@
               {subLabel}
             </button>
             {#if subOpen}
-              <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px">
+              <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px; max-height: {popPos.maxH}px">
                 <div class="pop-title">Subtitle</div>
                 {#if readySubs.length}
                   <button class="pop-row" on:click={() => { selectedSub = null; subOpen = false; }}>
@@ -669,7 +672,7 @@
               Bagikan
             </button>
             {#if shareOpen}
-              <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px">
+              <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px; max-height: {popPos.maxH}px">
                 <button class="pop-row" on:click={() => { shareOpen = false; shareNative(); }}>
                   <span>Bagikan…</span>
                 </button>
@@ -688,7 +691,7 @@
                 {partyCode ? 'Party ' + partyCode : 'Nonton Bareng'}
               </button>
               {#if partyOpen}
-                <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px">
+                <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px; max-height: {popPos.maxH}px">
                   <div class="pop-title">Nonton Bareng</div>
                   {#if !partyCode}
                     <button class="pop-row" on:click={() => createParty()}>
