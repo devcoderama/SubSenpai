@@ -251,7 +251,7 @@
   .row:hover .row-title { text-decoration: underline; }
   .row img, .row .no-poster {
     width: 54px; height: 76px; flex-shrink: 0;
-    border-radius: 6px; object-fit: cover; background: #2a2a2a;
+    border-radius: 4px; object-fit: cover; background: #2a2a2a;
   }
   .row .no-poster {
     display: flex; align-items: center; justify-content: center;

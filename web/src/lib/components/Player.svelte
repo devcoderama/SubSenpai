@@ -134,7 +134,7 @@
 <style>
   .player {
     position: relative; width: 100%; aspect-ratio: 16 / 9;
-    background: #000; border-radius: 10px; overflow: hidden;
+    background: #000; border-radius: 4px; overflow: hidden;
   }
   .player video, .player iframe { width: 100%; height: 100%; border: 0; display: block; }
   .blocked {

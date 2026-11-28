@@ -679,7 +679,7 @@
   .actions-row::-webkit-scrollbar { display: none; }
   .action-btn {
     flex-shrink: 0; background: var(--surface); color: #fff; border: 0;
-    border-radius: 10px; padding: 9px 14px; font-size: 14px; white-space: nowrap;
+    border-radius: 4px; padding: 9px 14px; font-size: 14px; white-space: nowrap;
   }
   .pop-wrap { position: relative; flex-shrink: 0; }
   .pop {
@@ -692,7 +692,7 @@
   .pop-row {
     display: flex; justify-content: space-between; align-items: center; gap: 12px;
     width: 100%; text-align: left; background: none; border: 0; color: #fff;
-    font-size: 14px; padding: 10px; border-radius: 8px;
+    font-size: 14px; padding: 10px; border-radius: 4px;
   }
   .pop-row:hover { background: rgba(255, 255, 255, 0.08); }
   .pop-row .fa-check { color: var(--purple); }
@@ -731,7 +731,7 @@
   .reason input { accent-color: var(--purple); width: 18px; height: 18px; }
   .modal textarea {
     width: 100%; background: var(--panel-2); border: 1px solid var(--border);
-    border-radius: 10px; color: #fff; padding: 12px; font-size: 15px; resize: vertical;
+    border-radius: 4px; color: #fff; padding: 12px; font-size: 15px; resize: vertical;
     font-family: inherit;
   }
   .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }

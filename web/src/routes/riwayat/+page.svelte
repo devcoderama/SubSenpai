@@ -145,7 +145,7 @@
   .list { display: flex; flex-direction: column; gap: 12px; }
   .row { display: flex; gap: 12px; padding: 12px; align-items: center; }
   .row:hover { text-decoration: none; border-color: #555; }
-  .thumb { width: 64px; height: 96px; flex-shrink: 0; border-radius: 6px; overflow: hidden; background: #000; }
+  .thumb { width: 64px; height: 96px; flex-shrink: 0; border-radius: 4px; overflow: hidden; background: #000; }
   .thumb img { width: 100%; height: 100%; object-fit: cover; }
   .no-poster {
     width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;

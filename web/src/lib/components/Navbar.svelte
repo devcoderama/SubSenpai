@@ -7,6 +7,10 @@
   import { unreadCount, refreshUnread } from '$lib/notifications.js';
 
   let showMenu = false;
+  let scrollY = 0;
+
+  // Navbar transparan di puncak Beranda (28 Nov 2026): backdrop hero
+  // terlihat di baliknya; sesudah scroll 40px kembali solid.
 
   // Lencana lonceng: muat ulang jumlah belum dibaca tiap status login
   // berubah (termasuk saat pertama kali tampil). Halaman /notifikasi
@@ -23,6 +27,7 @@
   // tombol cari memfilter halaman itu sendiri; di halaman lain, cari
   // tetap membuka /cari seperti dulu.
   $: path = $page.url.pathname;
+  $: transparent = path === '/' && scrollY < 40;
   $: scope =
     path === '/'
       ? 'beranda'
@@ -82,7 +87,9 @@
   }
 </script>
 
-<header class="nav">
+<svelte:window bind:scrollY />
+
+<header class="nav" class:transparent>
   <div class="container nav-inner">
     <a href="/" class="logo">SUB<span>SENPAI</span></a>
     <nav class="links">
@@ -170,6 +177,14 @@
     background: linear-gradient(to bottom, rgba(0,0,0,.9), rgba(20,20,20,.85));
     backdrop-filter: blur(8px);
     border-bottom: 1px solid rgba(255,255,255,.08);
+    transition: background .3s, border-color .3s, backdrop-filter .3s;
+  }
+  /* Di puncak Beranda: transparan (gradient tipis saja supaya logo &
+     tautan tetap terbaca di atas backdrop hero) — tanpa blur & garis. */
+  .nav.transparent {
+    background: linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,0));
+    backdrop-filter: none;
+    border-bottom-color: transparent;
   }
   .nav-inner {
     display: flex; align-items: center; gap: 20px;
@@ -187,12 +202,12 @@
   .search { margin-left: auto; }
   .search input {
     background: rgba(0,0,0,.6); border: 1px solid #555; color: #fff;
-    border-radius: 6px; padding: 8px 12px; font-size: 14px; width: 180px;
+    border-radius: 4px; padding: 8px 12px; font-size: 14px; width: 180px;
   }
   .search input:focus { outline: none; border-color: #fff; }
   .userbox { position: relative; }
   .avatar {
-    width: 34px; height: 34px; border-radius: 6px; overflow: hidden;
+    width: 34px; height: 34px; border-radius: 4px; overflow: hidden;
     border: 0; padding: 0; background: var(--red);
     color: #fff; font-weight: 700; font-size: 16px;
   }
@@ -200,7 +215,7 @@
   .menu {
     position: absolute; right: 0; top: 44px; min-width: 220px;
     background: var(--panel); border: 1px solid var(--border);
-    border-radius: 8px; padding: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.6);
+    border-radius: 4px; padding: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.6);
   }
   .menu-head {
     display: flex; flex-direction: column; gap: 2px;
@@ -238,7 +253,7 @@
   }
   .search-row form {
     flex: 1; display: flex; align-items: center; gap: 8px;
-    background: rgba(0,0,0,.6); border: 1px solid #555; border-radius: 8px;
+    background: rgba(0,0,0,.6); border: 1px solid #555; border-radius: 4px;
     padding: 0 12px;
   }
   .search-row form:focus-within { border-color: #fff; }

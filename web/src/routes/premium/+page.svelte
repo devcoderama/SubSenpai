@@ -557,7 +557,7 @@
   /* Tiga kategori seperti di aplikasi: kartu sejajar, aktif berbingkai merah. */
   .tabs3 { display: flex; gap: 8px; margin: 16px 0 8px; }
   .tab3 {
-    flex: 1; padding: 12px 6px; border-radius: 10px; border: 2px solid transparent;
+    flex: 1; padding: 12px 6px; border-radius: 4px; border: 2px solid transparent;
     background: var(--panel); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer;
   }
   .tab3.active { border-color: var(--red); background: #2a1f24; }
@@ -584,7 +584,7 @@
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field-label { font-size: 13px; color: var(--muted); }
   .field input {
-    background: rgba(0,0,0,.6); border: 1px solid #555; color: #fff; border-radius: 6px;
+    background: rgba(0,0,0,.6); border: 1px solid #555; color: #fff; border-radius: 4px;
     padding: 10px 12px; font-size: 15px; width: 100%;
   }
   .field input:focus { outline: none; border-color: #fff; }
@@ -600,7 +600,7 @@
   }
   .method:hover { border-color: #777; }
   .method.selected { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
-  .method-icon { width: 30px; height: 30px; object-fit: contain; background: #fff; border-radius: 6px; padding: 3px; }
+  .method-icon { width: 30px; height: 30px; object-fit: contain; background: #fff; border-radius: 4px; padding: 3px; }
   .method-letter {
     width: 30px; height: 30px; border-radius: 50%; background: #3a3a44; color: #fff;
     display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0;
@@ -612,13 +612,13 @@
   .pay-result h2 { margin-top: 0; font-size: 18px; }
   .pay-total { font-size: 32px; font-weight: 800; margin: 4px 0 12px; }
   .pay-va { font-size: 22px; font-weight: 800; margin: 4px 0 12px; letter-spacing: 1px; }
-  .qr { width: 220px; max-width: 100%; background: #fff; padding: 8px; border-radius: 8px; display: block; margin: 12px auto; }
+  .qr { width: 220px; max-width: 100%; background: #fff; padding: 8px; border-radius: 4px; display: block; margin: 12px auto; }
   .pay-result .row { justify-content: center; }
   .panduan { white-space: pre-line; text-align: left; }
   .codes { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
   .code-row {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+    background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px;
   }
   .code-row code { font-size: 15px; }
 

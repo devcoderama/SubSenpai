@@ -44,7 +44,7 @@
   .ep-row-wrap { display: block; }
   .ep-row {
     display: flex; align-items: center; gap: 14px;
-    background: #1f1f1f; border-radius: 8px; padding: 12px 14px;
+    background: #1f1f1f; border-radius: 4px; padding: 12px 14px;
   }
   .ep-row:hover { text-decoration: none; background: #262626; }
   .ep-row .num {

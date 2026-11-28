@@ -112,7 +112,7 @@
     flex-direction: column;
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 4px;
     overflow: hidden;
     margin-bottom: 16px;
   }

@@ -27,6 +27,7 @@
   const THIS_YEAR = new Date().getFullYear();
 
   let tab = '';
+  let scrollY = 0;
   let loading = true;
   let error = '';
   // Hero berganti otomatis (27 Nov 2026): daftar putar dari judul
@@ -736,7 +737,9 @@
   });
 </script>
 
-<div class="container tabs-top">
+<svelte:window bind:scrollY />
+
+<div class="container tabs-top" class:at-top={tab === '' && scrollY < 40}>
   <div class="tabs">
     {#each TABS as t}
       <button class="chip" class:active={tab === t.id} on:click={() => setTab(t.id)}>{t.label}</button>
@@ -901,6 +904,7 @@
   {#if heroItems.length && !filterMode}
     <div
       class="hero-wrap"
+      class:under={tab === ''}
       role="region"
       aria-label="Hero judul populer"
       use:observeHero
@@ -920,6 +924,7 @@
           <Hero
             item={h.title}
             firstEpisodeId={h.firstEp}
+            underNav={tab === ''}
             inWatchlist={$user ? $wlMap[h.title.id] : undefined}
             wlBusy={!!$wlPending[h.title.id]}
             wlError={heroWlError}
@@ -1128,13 +1133,23 @@
     position: sticky; top: 60px; z-index: 40;
     padding-top: 12px; padding-bottom: 12px;
     background: var(--bg);
+    transition: background .3s;
   }
+  /* Di puncak tab Semua (28 Nov 2026): baris chip transparan supaya
+     backdrop hero terlihat di balik navbar + chip; sesudah scroll
+     kembali solid seperti biasa. */
+  .tabs-top.at-top { background: transparent; }
   @media (min-width: 1280px) { .tabs-top { padding-top: 16px; } }
   .tabs { display: flex; gap: 8px; margin: 0; overflow-x: auto; justify-content: safe center; }
   .more { text-align: center; margin: 24px 0; }
 
   /* Hero berganti otomatis: slide ditumpuk, crossfade via opacity. */
   .hero-wrap { position: relative; }
+  /* Tab Semua (28 Nov 2026): hero menjorok 120px ke atas (setinggi
+     navbar 60 + baris chip ~60) supaya backdrop-nya terlihat di balik
+     navbar & chip yang transparan; tepi bawah hero tidak bergerak
+     karena Hero menambah padding atas yang sama (underNav). */
+  .hero-wrap.under { margin-top: -120px; }
   .hero-slide {
     opacity: 0;
     transition: opacity 0.6s ease;
@@ -1216,7 +1231,7 @@
   }
   .filter-fields select {
     background: var(--bg); color: #fff; border: 1px solid var(--border);
-    border-radius: 8px; padding: 9px 10px; font-size: 14px;
+    border-radius: 4px; padding: 9px 10px; font-size: 14px;
   }
   .filter-actions { display: flex; gap: 8px; margin-top: 12px; }
   .results-title { font-size: 18px; font-weight: 700; margin: 8px 0 14px; }

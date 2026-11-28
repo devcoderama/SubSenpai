@@ -61,7 +61,7 @@
   }
   .poster {
     position: relative; z-index: 1; width: 110px; aspect-ratio: 2 / 3;
-    background: #000; overflow: hidden; border-radius: 6px;
+    background: #000; overflow: hidden; border-radius: 4px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5); flex: 0 0 auto;
   }
   .poster img { width: 100%; height: 100%; object-fit: cover; display: block; }

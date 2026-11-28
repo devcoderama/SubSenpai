@@ -113,7 +113,7 @@
   /* Banner satu kali sesudah login menendang perangkat lain. */
   .kicked-banner {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    margin-top: 12px; padding: 10px 14px; border-radius: 10px;
+    margin-top: 12px; padding: 10px 14px; border-radius: 4px;
     background: rgba(245, 197, 24, 0.12); border: 1px solid rgba(245, 197, 24, 0.45);
     color: #fde68a; font-size: 14px; line-height: 1.5;
   }

@@ -128,7 +128,7 @@
   .dev-row {
     display: flex; gap: 12px; align-items: center;
     background: var(--panel); border: 1px solid var(--border);
-    border-radius: 10px; padding: 14px 16px;
+    border-radius: 4px; padding: 14px 16px;
   }
   .dev-row.mine {
     border-color: rgba(139, 92, 246, 0.5);

@@ -338,7 +338,7 @@
   .meta .fa-star, .meta .rate { color: var(--gold); }
   .genres { margin-top: 4px; color: var(--muted); font-size: 15px; }
   .play-btn {
-    width: 100%; height: 48px; margin-top: 14px; border: 0; border-radius: 6px;
+    width: 100%; height: 48px; margin-top: 14px; border: 0; border-radius: 4px;
     background: #fff; color: #000; font-size: 17px; font-weight: 700;
     display: flex; align-items: center; justify-content: center; gap: 6px;
   }
@@ -356,12 +356,12 @@
   .menu {
     position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
     z-index: 41; min-width: 190px; background: var(--panel-2);
-    border: 1px solid var(--border); border-radius: 10px; padding: 6px;
+    border: 1px solid var(--border); border-radius: 4px; padding: 6px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
   }
   .menu button {
     display: block; width: 100%; text-align: left; background: none; border: 0;
-    color: #fff; font-size: 14px; padding: 10px 12px; border-radius: 6px;
+    color: #fff; font-size: 14px; padding: 10px 12px; border-radius: 4px;
   }
   .menu button:hover { background: rgba(255, 255, 255, 0.08); }
   .sec { font-size: 15px; font-weight: 700; margin: 18px 0 6px; }

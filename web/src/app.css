@@ -1,3 +1,5 @@
+@import '@fontsource-variable/inter';
+
 /* SubSenpai Web — tema Netflix (palet yang sama dengan dashboard admin
    dan aplikasi Android: bg #141414, panel #1d1d1d, merah #E50914). */
 
@@ -26,9 +28,17 @@ html, body { margin: 0; padding: 0; }
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Scrollbar tipis gelap (28 Nov 2026) + fokus keyboard yang terlihat. */
+html { scrollbar-width: thin; scrollbar-color: #444 transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
 
 a { color: inherit; text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -51,7 +61,7 @@ img { display: block; }
 
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
-  border: 0; border-radius: 6px; padding: 10px 18px;
+  border: 0; border-radius: 4px; padding: 10px 18px;
   font-size: 15px; font-weight: 600; color: #fff;
   background: var(--red); transition: background .15s;
 }
@@ -71,7 +81,7 @@ img { display: block; }
 
 .card {
   background: var(--panel); border: 1px solid var(--border);
-  border-radius: 10px; padding: 16px;
+  border-radius: 4px; padding: 16px;
 }
 
 .muted { color: var(--muted); }
@@ -80,7 +90,7 @@ img { display: block; }
 .search-results { padding-top: 4px; padding-bottom: 32px; }
 .error {
   background: #3d0a0d; border: 1px solid #7a1f24; color: #ffb4b8;
-  border-radius: 8px; padding: 12px 14px; font-size: 14px;
+  border-radius: 4px; padding: 12px 14px; font-size: 14px;
 }
 .loading { color: var(--muted); padding: 32px 0; text-align: center; }
 
@@ -126,23 +136,23 @@ img { display: block; }
 .sk-poster { aspect-ratio: 2 / 3; border-radius: 0; }
 .sk-line { height: 12px; margin-top: 8px; }
 .sk-line.short { width: 62%; }
-.sk-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; padding-bottom: 10px; }
+.sk-card { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; padding-bottom: 10px; }
 .sk-card .sk-line { margin-left: 10px; margin-right: 10px; }
 .sk-hero { height: min(80vh, 520px); border-radius: 0; }
 .sk-hero-lines { position: absolute; left: 4vw; bottom: 64px; width: min(560px, 80vw); }
 .sk-hero-lines .sk-line { height: 18px; margin-top: 12px; background: rgba(255,255,255,.14); }
 .sk-hero-lines .sk-line:first-child { height: 34px; width: 72%; }
 .sk-hero-lines .sk-line:nth-child(2) { width: 48%; }
-.sk-player { aspect-ratio: 16 / 9; border-radius: 8px; }
+.sk-player { aspect-ratio: 16 / 9; border-radius: 4px; }
 .sk-thumb { width: 64px; height: 96px; flex-shrink: 0; }
-.sk-row { display: flex; gap: 12px; align-items: center; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.sk-row { display: flex; gap: 12px; align-items: center; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 12px; margin-bottom: 12px; }
 .sk-row-lines { flex: 1; min-width: 0; }
 .sk-row-lines .sk-line:first-child { margin-top: 0; }
-.sk-plan { height: 118px; border-radius: 10px; }
-.sk-post { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.sk-plan { height: 118px; border-radius: 4px; }
+.sk-post { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 16px; margin-bottom: 16px; }
 .sk-post-head { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
 .sk-avatar { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; }
-.sk-post-img { height: 200px; margin-top: 12px; border-radius: 8px; }
+.sk-post-img { height: 200px; margin-top: 12px; border-radius: 4px; }
 .sk-detail { display: block; }
 .sk-detail-backdrop { width: 100%; height: 340px; border-radius: 0; }
 .sk-detail-body { max-width: 720px; margin: 0 auto; padding: 16px; }
@@ -152,7 +162,7 @@ img { display: block; }
   .sk-detail-body { max-width: 1024px; padding: 16px 48px; }
 }
 .sk-detail-body .sk-line:first-child { margin-top: 0; }
-.sk-btn { display: inline-block; width: 140px; height: 40px; border-radius: 6px; margin: 16px 10px 0 0; }
+.sk-btn { display: inline-block; width: 140px; height: 40px; border-radius: 4px; margin: 16px 10px 0 0; }
 
 .reveal { opacity: 0; transform: translateY(14px); transition: opacity .45s ease, transform .45s ease; transition-delay: var(--rd, 0ms); }
 .reveal.in { opacity: 1; transform: translateY(0); }

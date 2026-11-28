@@ -153,7 +153,7 @@
   .hero p { font-size: 15px; line-height: 1.6; }
   .dl { text-align: center; padding: 24px 20px; margin-bottom: 20px; }
   .ver { display: flex; gap: 8px; justify-content: center; align-items: baseline; flex-wrap: wrap; margin-bottom: 16px; }
-  .tag { background: var(--red); color: #fff; font-weight: 700; border-radius: 6px; padding: 2px 10px; }
+  .tag { background: var(--red); color: #fff; font-weight: 700; border-radius: 4px; padding: 2px 10px; }
   .btn.big { display: inline-block; font-size: 17px; padding: 12px 36px; }
   .dl p { margin-top: 12px; }
   .warn { color: #f5c518; }

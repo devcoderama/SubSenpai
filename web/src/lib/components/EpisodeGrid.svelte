@@ -49,7 +49,7 @@
   .cell {
     display: block; text-align: center; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; background: var(--surface); color: #fff;
-    border-radius: 10px; padding: 8px 4px; font-size: 14px;
+    border-radius: 4px; padding: 8px 4px; font-size: 14px;
   }
   .cell:hover { text-decoration: none; background: #232328; }
   .cell.active { background: var(--purple); font-weight: 700; }

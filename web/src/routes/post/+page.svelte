@@ -424,18 +424,18 @@
   .share-attach {
     display: flex; align-items: center; gap: 8px;
     background: var(--panel-2); border: 1px solid var(--border);
-    border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; font-size: 14px;
+    border-radius: 4px; padding: 10px 12px; margin-bottom: 10px; font-size: 14px;
   }
   .share-attach i.fa-tv { color: var(--purple); }
   .share-attach span { flex: 1; min-width: 0; }
   .attach-x { background: none; border: 0; color: var(--muted); font-size: 15px; padding: 2px 6px; }
   .composer textarea {
     width: 100%; background: var(--panel-2); border: 1px solid var(--border);
-    border-radius: 10px; color: #fff; padding: 12px; font-size: 15px; resize: vertical;
+    border-radius: 4px; color: #fff; padding: 12px; font-size: 15px; resize: vertical;
     font-family: inherit;
   }
   .preview { margin-top: 10px; }
-  .preview img, .preview video { width: 100%; max-height: 360px; object-fit: contain; background: #000; border-radius: 10px; }
+  .preview img, .preview video { width: 100%; max-height: 360px; object-fit: contain; background: #000; border-radius: 4px; }
   .composer-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
   .composer-foot select {
     background: var(--panel-2); border: 1px solid var(--border); color: #fff;

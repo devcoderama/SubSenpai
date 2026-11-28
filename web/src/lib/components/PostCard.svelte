@@ -295,17 +295,17 @@
   .menu-wrap { position: relative; }
   .menu {
     position: absolute; right: 0; top: 100%; z-index: 20; min-width: 180px;
-    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); padding: 4px; display: flex; flex-direction: column;
   }
   .menu button {
     display: flex; align-items: center; gap: 8px; background: none; border: 0;
     color: #fff; font-size: 14px; text-align: left; padding: 9px 12px;
-    border-radius: 8px; cursor: pointer;
+    border-radius: 4px; cursor: pointer;
   }
   .menu button:hover { background: var(--panel-2); }
   .menu button i { color: var(--muted); width: 16px; text-align: center; }
-  .yt-embed { margin: 4px 0 8px; border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 9; background: #000; }
+  .yt-embed { margin: 4px 0 8px; border-radius: 4px; overflow: hidden; aspect-ratio: 16 / 9; background: #000; }
   .yt-embed iframe { width: 100%; height: 100%; border: 0; display: block; }
   .lightbox {
     position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.92);
@@ -321,7 +321,7 @@
   .lb-hint { margin: 10px 0 0; font-size: 12px; text-align: center; }
   .media img { cursor: zoom-in; }
   .body { white-space: pre-wrap; word-break: break-word; line-height: 1.55; margin: 12px 0; }
-  .media { margin: 4px 0 8px; border-radius: 10px; overflow: hidden; }
+  .media { margin: 4px 0 8px; border-radius: 4px; overflow: hidden; }
   .media img, .media video { width: 100%; display: block; max-height: 520px; object-fit: contain; background: #000; }
   .actions { display: flex; gap: 4px; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
   .actions button {

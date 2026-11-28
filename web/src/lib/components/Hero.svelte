@@ -11,6 +11,10 @@
   export let wlBusy = false;
   export let wlError = '';
   export let onToggleWatchlist = null;
+  // Hero menjorok ke bawah navbar transparan (28 Nov 2026): padding
+  // atas ditambah setinggi navbar + baris chip supaya teks tetap di
+  // tempat yang sama, sementara backdrop naik ke balik navbar.
+  export let underNav = false;
 
   $: typeLabel = item.type === 'donghua' ? 'Donghua' : item.type === 'anime' ? 'Anime' : 'Film';
 </script>
@@ -22,7 +26,7 @@
     {/if}
     <div class="shade"></div>
   </div>
-  <div class="container hero-body">
+  <div class="container hero-body" class:under-nav={underNav}>
     <div class="eyebrow">SUBSENPAI • {typeLabel.toUpperCase()}</div>
     <h1>{item.title}</h1>
     <div class="alt">{item.title_alt || ''}</div>
@@ -76,6 +80,7 @@
      di atas sudah memberi padding 4vw di desktop, jadi tidak perlu lagi
      trik margin-left yang mengikuti lebar 1280px lama. */
   .hero-body { position: relative; padding-top: 72px; padding-bottom: 64px; max-width: 640px; margin-left: 0; }
+  .hero-body.under-nav { padding-top: 192px; }
   .eyebrow { color: var(--red); font-weight: 800; letter-spacing: 2px; font-size: 13px; }
   /* Ukuran hero SAMA di semua slide (28 Nov 2026, permintaan Rams):
      tiap blok teks punya tinggi tetap — judul 2 baris, judul lain 1,

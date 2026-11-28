@@ -136,7 +136,7 @@
   .gbtn { display: flex; justify-content: center; margin: 20px 0; min-height: 44px; }
   .notice {
     background: rgba(245, 197, 24, 0.12); border: 1px solid rgba(245, 197, 24, 0.45);
-    color: #fde68a; border-radius: 10px; padding: 12px 14px; font-size: 14px;
+    color: #fde68a; border-radius: 4px; padding: 12px 14px; font-size: 14px;
     line-height: 1.5; text-align: left; margin: 16px 0 0;
   }
   .notice i { margin-right: 6px; }

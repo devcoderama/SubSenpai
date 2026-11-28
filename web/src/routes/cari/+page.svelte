@@ -232,7 +232,7 @@
   .searchbar { display: flex; gap: 8px; margin-bottom: 16px; max-width: 720px; }
   .searchbar input {
     flex: 1; background: var(--panel); border: 1px solid var(--border);
-    color: #fff; border-radius: 6px; padding: 12px 14px; font-size: 15px;
+    color: #fff; border-radius: 4px; padding: 12px 14px; font-size: 15px;
   }
   .searchbar input:focus { outline: none; border-color: #fff; }
   .tabs { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }

@@ -149,7 +149,7 @@
      + titik penanda; sudah dibaca polos. */
   .row {
     display: flex; gap: 12px; align-items: flex-start;
-    padding: 12px 8px; color: #fff; border-radius: 8px;
+    padding: 12px 8px; color: #fff; border-radius: 4px;
   }
   .row:hover { text-decoration: none; background: rgba(255, 255, 255, 0.04); }
   .row.no-link { cursor: default; }
