@@ -51,6 +51,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.subsenpai.data.CatalogRepository
@@ -327,6 +328,28 @@ fun PremiumScreen(repo: CatalogRepository, onBack: () -> Unit, onNeedLogin: () -
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(plan.label, style = MaterialTheme.typography.titleMedium, color = Color.White)
+                                if (plan.originalPrice > plan.price && plan.discountPercent > 0) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            rp(plan.originalPrice),
+                                            style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.LineThrough),
+                                            color = Color(0xFF8A8A8E),
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Box(
+                                            modifier = Modifier.background(Color(0xFFE50914), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                "-${plan.discountPercent}%",
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                        }
+                                    }
+                                }
                                 Text(rp(plan.price), color = Color(0xFFB3B3B3))
                                 if (plan.days > 30) {
                                     Text(

@@ -67,7 +67,7 @@ data class WatchHistoryItem(
 
 // ---------- Fase 4: premium, sosial ----------
 
-data class PlanItem(val id: String, val days: Int, val price: Int, val label: String)
+data class PlanItem(val id: String, val days: Int, val price: Int, val label: String, val originalPrice: Int = 0, val discountPercent: Int = 0)
 
 /** Konfigurasi aplikasi dari server (dashboard admin › Pengaturan). */
 data class AppConfig(

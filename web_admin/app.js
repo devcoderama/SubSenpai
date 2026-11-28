@@ -431,29 +431,84 @@ async function pageMetode() {
 }
 
 /* ----- Paket Premium ----- */
+// Harga jual = harga asli sesudah diskon (bila keduanya diisi).
+// Kosongkan harga asli/diskon bila paket tanpa diskon.
+function calcJual(orig, disc) {
+  return Math.round(orig * (100 - disc) / 100);
+}
 async function pagePaket() {
   $('pageBody').innerHTML = '<p class="muted">Memuat…</p>';
   const r = await api('/api/v1/admin/plans');
   if (r.status !== 200) return bodyError(r);
-  let html = '<p class="muted">Harga & status paket dibaca aplikasi dari tabel ini — perubahan langsung berlaku tanpa rilis ulang.</p>' +
-    '<div class="tscroll"><table><tr><th>Paket</th><th>Durasi</th><th>Harga (Rp)</th><th>Aktif</th><th></th></tr>';
+  let html = '<p class="muted">Harga & status paket dibaca aplikasi dari tabel ini — perubahan langsung berlaku tanpa rilis ulang. Isi Harga Asli + Diskon untuk promo event (mis. 40%): Harga Jual terhitung otomatis, dan aplikasi/web menampilkan harga asli dicoret + badge -40%.</p>' +
+    '<div class="tscroll"><table><tr><th>Paket</th><th>Durasi</th><th>Harga Asli (Rp)</th><th>Diskon %</th><th>Harga Jual (Rp)</th><th>Aktif</th><th></th></tr>';
   for (const p of r.body.plans || []) {
     html += '<tr><td>' + esc(p.label) + '<div class="muted small">' + esc(p.id) + '</div></td>' +
       '<td>' + p.days + ' hari</td>' +
-      '<td><input type="number" min="0" step="500" value="' + p.price + '" id="price-' + esc(p.id) + '" style="width:130px"></td>' +
+      '<td><input type="number" min="0" step="500" value="' + (p.original_price || '') + '" placeholder="—" id="orig-' + esc(p.id) + '" style="width:120px"></td>' +
+      '<td><input type="number" min="0" max="100" value="' + (p.discount_percent || '') + '" placeholder="0" id="disc-' + esc(p.id) + '" style="width:70px"></td>' +
+      '<td><input type="number" min="0" step="500" value="' + p.price + '" id="price-' + esc(p.id) + '" style="width:120px"></td>' +
       '<td><label class="switch"><input type="checkbox" id="active-' + esc(p.id) + '"' + (p.is_active ? ' checked' : '') + '><span class="slider"></span></label></td>' +
       '<td><button class="btn small" data-save-plan="' + esc(p.id) + '">Simpan</button></td></tr>';
   }
-  $('pageBody').innerHTML = html + '</table></div>';
+  html += '</table></div>' +
+    '<div class="card" style="margin-top:20px"><h2 style="margin-top:0">Tambah Paket</h2>' +
+    '<p class="muted">Paket baru langsung tampil di aplikasi & web setelah disimpan — tanpa rilis ulang. ID unik, huruf kecil/angka/-/_ saja. Contoh event: id <code>premium-gjls-30</code>, label <code>Premium Event GJLS 1 Bulan</code>.</p>' +
+    '<div class="toolbar">' +
+    '<label>Label<br><input type="text" id="np-label" placeholder="Premium Event GJLS 1 Bulan" style="width:240px"></label>' +
+    '<label>ID<br><input type="text" id="np-id" placeholder="premium-gjls-30" style="width:200px"></label>' +
+    '<label>Durasi (hari)<br><input type="number" id="np-days" value="30" min="1" style="width:110px"></label>' +
+    '</div><div class="toolbar">' +
+    '<label>Harga Asli (Rp)<br><input type="number" id="np-orig" min="0" step="500" placeholder="13333" style="width:140px"></label>' +
+    '<label>Diskon %<br><input type="number" id="np-disc" min="0" max="100" placeholder="40" style="width:90px"></label>' +
+    '<label>Harga Jual (Rp)<br><input type="number" id="np-price" min="0" step="500" placeholder="8000" style="width:140px"></label>' +
+    '<div>Aktif<br><label class="switch"><input type="checkbox" id="np-active" checked><span class="slider"></span></label></div>' +
+    '</div><button class="btn" id="np-create">Tambah Paket</button></div>';
+  $('pageBody').innerHTML = html;
+  const recalc = (id) => {
+    const orig = parseInt($('orig-' + id).value, 10) || 0;
+    const disc = parseInt($('disc-' + id).value, 10) || 0;
+    if (orig > 0 && disc > 0) $('price-' + id).value = calcJual(orig, disc);
+  };
   document.querySelectorAll('button[data-save-plan]').forEach((el) => {
+    const id = el.dataset.savePlan;
+    $('orig-' + id).addEventListener('input', () => recalc(id));
+    $('disc-' + id).addEventListener('input', () => recalc(id));
     el.addEventListener('click', async () => {
-      const id = el.dataset.savePlan;
-      const price = parseInt($('price-' + id).value, 10);
+      const orig = parseInt($('orig-' + id).value, 10) || 0;
+      const disc = parseInt($('disc-' + id).value, 10) || 0;
+      let price = parseInt($('price-' + id).value, 10) || 0;
+      if (orig > 0 && disc > 0) price = calcJual(orig, disc);
       const rr = await api('/api/v1/admin/plans/' + encodeURIComponent(id), {
-        method: 'PATCH', body: { price: price, is_active: $('active-' + id).checked },
+        method: 'PATCH',
+        body: { price: price, original_price: orig, discount_percent: disc, is_active: $('active-' + id).checked },
       });
       toast(rr.status === 200 ? 'Paket ' + id + ' disimpan' : 'Gagal: ' + ((rr.body && rr.body.error) || rr.status));
     });
+  });
+  const recalcNew = () => {
+    const orig = parseInt($('np-orig').value, 10) || 0;
+    const disc = parseInt($('np-disc').value, 10) || 0;
+    if (orig > 0 && disc > 0) $('np-price').value = calcJual(orig, disc);
+  };
+  $('np-orig').addEventListener('input', recalcNew);
+  $('np-disc').addEventListener('input', recalcNew);
+  $('np-create').addEventListener('click', async () => {
+    const orig = parseInt($('np-orig').value, 10) || 0;
+    const disc = parseInt($('np-disc').value, 10) || 0;
+    let price = parseInt($('np-price').value, 10) || 0;
+    if (orig > 0 && disc > 0) price = calcJual(orig, disc);
+    const body = {
+      id: $('np-id').value.trim().toLowerCase(),
+      label: $('np-label').value.trim(),
+      days: parseInt($('np-days').value, 10) || 0,
+      price: price, original_price: orig, discount_percent: disc,
+      is_active: $('np-active').checked,
+    };
+    if (!body.id || !body.label || body.days <= 0) { toast('Isi ID, Label & Durasi dulu.'); return; }
+    const rr = await api('/api/v1/admin/plans', { method: 'POST', body });
+    if (rr.status === 201) { toast('Paket ' + body.id + ' dibuat.'); pagePaket(); }
+    else toast('Gagal: ' + ((rr.body && rr.body.error) || rr.status));
   });
 }
 

@@ -545,7 +545,7 @@ class CatalogRepository(
             val arr = o.optJSONArray("plans")
             if (arr != null) for (i in 0 until arr.length()) {
                 val p = arr.getJSONObject(i)
-                add(PlanItem(p.getString("id"), p.getInt("days"), p.getInt("price"), p.optString("label")))
+                add(PlanItem(p.getString("id"), p.getInt("days"), p.getInt("price"), p.optString("label"), p.optInt("original_price"), p.optInt("discount_percent")))
             }
         }
     }

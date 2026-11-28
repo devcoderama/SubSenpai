@@ -153,6 +153,7 @@ func (a *API) Router() http.Handler {
 			r.Post("/api/v1/admin/vouchers", a.handleAdminVoucherCreate)
 			r.Delete("/api/v1/admin/vouchers/{id}", a.handleAdminVoucherDelete)
 			r.Get("/api/v1/admin/plans", a.handleAdminPlans)
+			r.Post("/api/v1/admin/plans", a.handleAdminPlanCreate)
 			r.Get("/api/v1/admin/titles", a.handleAdminTitles)
 			r.Get("/api/v1/admin/titles/{id}", a.handleAdminTitleGet)
 			r.Get("/api/v1/admin/worker", a.handleAdminWorker)

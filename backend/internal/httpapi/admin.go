@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -584,12 +585,14 @@ func (a *API) handleAdminVoucherDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 type adminPlan struct {
-	ID        string `json:"id"`
-	Days      int    `json:"days"`
-	Price     int    `json:"price"`
-	Label     string `json:"label"`
-	IsActive  bool   `json:"is_active"`
-	SortOrder int    `json:"sort_order"`
+	ID              string `json:"id"`
+	Days            int    `json:"days"`
+	Price           int    `json:"price"`
+	Label           string `json:"label"`
+	IsActive        bool   `json:"is_active"`
+	SortOrder       int    `json:"sort_order"`
+	OriginalPrice   int    `json:"original_price"`
+	DiscountPercent int    `json:"discount_percent"`
 }
 
 // handleAdminPlans: daftar paket premium (tabel subscription_plans).
@@ -598,7 +601,7 @@ func (a *API) handleAdminPlans(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := a.pool.Query(r.Context(), `
-		select id, days, price, label, is_active, sort_order
+		select id, days, price, label, is_active, sort_order, coalesce(original_price, 0), coalesce(discount_percent, 0)
 		from subscription_plans order by sort_order, days`)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "gagal memuat paket")
@@ -609,7 +612,7 @@ func (a *API) handleAdminPlans(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var pl adminPlan
 		if err := rows.Scan(&pl.ID, &pl.Days, &pl.Price, &pl.Label,
-			&pl.IsActive, &pl.SortOrder); err != nil {
+			&pl.IsActive, &pl.SortOrder, &pl.OriginalPrice, &pl.DiscountPercent); err != nil {
 			writeErr(w, http.StatusInternalServerError, "gagal membaca paket")
 			return
 		}
@@ -618,7 +621,85 @@ func (a *API) handleAdminPlans(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"plans": out})
 }
 
-// handleAdminPlanUpdate: ubah harga/label/status aktif satu paket.
+// handleAdminPlanCreate: tambah paket premium baru (untuk promo event,
+// mis. paket khusus film GJLS). id unik, pola [a-z0-9_-].
+func (a *API) handleAdminPlanCreate(w http.ResponseWriter, r *http.Request) {
+	p, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		ID              string `json:"id"`
+		Label           string `json:"label"`
+		Days            int    `json:"days"`
+		Price           int    `json:"price"`
+		OriginalPrice   int    `json:"original_price"`
+		DiscountPercent int    `json:"discount_percent"`
+		IsActive        *bool  `json:"is_active"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "format permintaan tidak valid")
+		return
+	}
+	req.ID = strings.TrimSpace(strings.ToLower(req.ID))
+	req.Label = strings.TrimSpace(req.Label)
+	if req.ID == "" || len(req.ID) > 64 || !validPlanID(req.ID) {
+		writeErr(w, http.StatusBadRequest, "id paket tidak valid (huruf kecil, angka, - atau _)")
+		return
+	}
+	if req.Label == "" || req.Days <= 0 || req.Price < 0 || req.OriginalPrice < 0 ||
+		req.DiscountPercent < 0 || req.DiscountPercent > 100 {
+		writeErr(w, http.StatusBadRequest, "label/durasi/harga/diskon tidak valid")
+		return
+	}
+	ctx := r.Context()
+	var exists bool
+	if err := a.pool.QueryRow(ctx, `select exists(select 1 from subscription_plans where id = $1)`, req.ID).Scan(&exists); err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal memeriksa paket")
+		return
+	}
+	if exists {
+		writeErr(w, http.StatusConflict, "id paket sudah dipakai")
+		return
+	}
+	active := true
+	if req.IsActive != nil {
+		active = *req.IsActive
+	}
+	var pl adminPlan
+	err := a.pool.QueryRow(ctx, `
+		insert into subscription_plans (id, days, price, label, is_active, sort_order, original_price, discount_percent)
+		values ($1, $2, $3, $4, $5, coalesce((select max(sort_order) from subscription_plans), 0) + 1, $6, $7)
+		returning id, days, price, label, is_active, sort_order, original_price, discount_percent`,
+		req.ID, req.Days, req.Price, req.Label, active, req.OriginalPrice, req.DiscountPercent,
+	).Scan(&pl.ID, &pl.Days, &pl.Price, &pl.Label, &pl.IsActive, &pl.SortOrder, &pl.OriginalPrice, &pl.DiscountPercent)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "gagal membuat paket")
+		return
+	}
+	_, _ = a.pool.Exec(ctx, `
+		insert into admin_logs (admin_id, action, target, detail)
+		values ($1::uuid, 'plan_create', $2, $3)`,
+		p.ID, req.ID, map[string]any{
+			"days": req.Days, "price": req.Price, "label": req.Label,
+			"original_price": req.OriginalPrice, "discount_percent": req.DiscountPercent,
+		})
+	writeJSON(w, http.StatusCreated, map[string]any{"plan": pl})
+}
+
+func validPlanID(id string) bool {
+	for i, c := range id {
+		ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_'
+		if !ok || (i == 0 && (c == '-' || c == '_')) {
+			return false
+		}
+	}
+	return true
+}
+
+// handleAdminPlanUpdate: ubah harga/label/status aktif/harga asli/
+// diskon satu paket. price tetap harga yang ditagih; dashboard
+// menghitungnya dari harga asli + diskon sebelum mengirim.
 func (a *API) handleAdminPlanUpdate(w http.ResponseWriter, r *http.Request) {
 	p, ok := requireAdmin(w, r)
 	if !ok {
@@ -626,9 +707,11 @@ func (a *API) handleAdminPlanUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	var req struct {
-		Price    *int    `json:"price"`
-		Label    *string `json:"label"`
-		IsActive *bool   `json:"is_active"`
+		Price           *int    `json:"price"`
+		Label           *string `json:"label"`
+		IsActive        *bool   `json:"is_active"`
+		OriginalPrice   *int    `json:"original_price"`
+		DiscountPercent *int    `json:"discount_percent"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "format permintaan tidak valid")
@@ -638,6 +721,14 @@ func (a *API) handleAdminPlanUpdate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "harga tidak boleh negatif")
 		return
 	}
+	if req.OriginalPrice != nil && *req.OriginalPrice < 0 {
+		writeErr(w, http.StatusBadRequest, "harga asli tidak boleh negatif")
+		return
+	}
+	if req.DiscountPercent != nil && (*req.DiscountPercent < 0 || *req.DiscountPercent > 100) {
+		writeErr(w, http.StatusBadRequest, "diskon harus 0-100%")
+		return
+	}
 	ctx := r.Context()
 	var pl adminPlan
 	err := a.pool.QueryRow(ctx, `
@@ -645,11 +736,13 @@ func (a *API) handleAdminPlanUpdate(w http.ResponseWriter, r *http.Request) {
 		set price = coalesce($2, price),
 		    label = coalesce($3, label),
 		    is_active = coalesce($4, is_active),
+		    original_price = coalesce($5, original_price),
+		    discount_percent = coalesce($6, discount_percent),
 		    updated_at = now()
 		where id = $1
-		returning id, days, price, label, is_active, sort_order`,
-		id, req.Price, req.Label, req.IsActive,
-	).Scan(&pl.ID, &pl.Days, &pl.Price, &pl.Label, &pl.IsActive, &pl.SortOrder)
+		returning id, days, price, label, is_active, sort_order, original_price, discount_percent`,
+		id, req.Price, req.Label, req.IsActive, req.OriginalPrice, req.DiscountPercent,
+	).Scan(&pl.ID, &pl.Days, &pl.Price, &pl.Label, &pl.IsActive, &pl.SortOrder, &pl.OriginalPrice, &pl.DiscountPercent)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "paket tidak ditemukan")
 		return
@@ -659,6 +752,7 @@ func (a *API) handleAdminPlanUpdate(w http.ResponseWriter, r *http.Request) {
 		values ($1::uuid, 'plan_update', $2, $3)`,
 		p.ID, id, map[string]any{
 			"price": req.Price, "label": req.Label, "is_active": req.IsActive,
+			"original_price": req.OriginalPrice, "discount_percent": req.DiscountPercent,
 		})
 	writeJSON(w, http.StatusOK, map[string]any{"plan": pl})
 }

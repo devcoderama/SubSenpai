@@ -369,7 +369,13 @@
       <div class="plans">
         {#each plans as p (p.id)}
           <button class="plan card" class:selected={selectedPlan?.id === p.id} on:click={() => (selectedPlan = p)}>
+            {#if p.original_price > p.price && p.discount_percent > 0}
+              <span class="plan-disc">-{p.discount_percent}%</span>
+            {/if}
             <div class="plan-name">{planName(p)}</div>
+            {#if p.original_price > p.price && p.discount_percent > 0}
+              <div class="plan-orig">{rp(p.original_price)}</div>
+            {/if}
             <div class="plan-price">{rp(p.price)}</div>
             {#if planDays(p)}<div class="muted">{planDays(p)} hari</div>{/if}
             {#if perMonth(p)}<div class="per-month">≈ {rp(perMonth(p))}/bulan</div>{/if}
@@ -571,6 +577,18 @@
   .plan.selected { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
   .plan-name { font-weight: 700; font-size: 16px; }
   .plan-price { font-size: 22px; font-weight: 800; margin: 6px 0; }
+  .plan-orig { text-decoration: line-through; color: var(--muted); font-size: 14px; }
+  .plan-disc {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: var(--red);
+    color: #fff;
+    font-weight: 800;
+    font-size: 13px;
+    padding: 3px 8px;
+    border-radius: 999px;
+  }
   .per-month { color: #c9a7ff; font-size: 13px; margin-top: 4px; }
   .plan-check {
     position: absolute; top: 10px; right: 10px; width: 24px; height: 24px; border-radius: 50%;

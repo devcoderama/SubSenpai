@@ -27,11 +27,15 @@ type dbTX interface {
 }
 
 // Plan adalah paket premium yang dijual (harga rupiah).
+// Price adalah harga yang DITAGIH; OriginalPrice + DiscountPercent
+// hanya pajangan (harga coret + badge -X%). Keduanya 0 = tanpa diskon.
 type Plan struct {
-	ID    string `json:"id"`
-	Days  int    `json:"days"`
-	Price int    `json:"price"`
-	Label string `json:"label"`
+	ID              string `json:"id"`
+	Days            int    `json:"days"`
+	Price           int    `json:"price"`
+	Label           string `json:"label"`
+	OriginalPrice   int    `json:"original_price"`
+	DiscountPercent int    `json:"discount_percent"`
 }
 
 // Plans adalah daftar bawaan yang dipakai HANYA bila tabel
@@ -59,7 +63,7 @@ func PlanByID(id string) (Plan, bool) {
 // ada atau masih kosong.
 func LoadPlans(ctx context.Context, db dbTX) []Plan {
 	rows, err := db.Query(ctx, `
-		select id, days, price, label
+		select id, days, price, label, coalesce(original_price, 0), coalesce(discount_percent, 0)
 		from subscription_plans
 		where is_active
 		order by sort_order, days`)
@@ -70,7 +74,7 @@ func LoadPlans(ctx context.Context, db dbTX) []Plan {
 	var out []Plan
 	for rows.Next() {
 		var p Plan
-		if err := rows.Scan(&p.ID, &p.Days, &p.Price, &p.Label); err != nil {
+		if err := rows.Scan(&p.ID, &p.Days, &p.Price, &p.Label, &p.OriginalPrice, &p.DiscountPercent); err != nil {
 			return Plans
 		}
 		out = append(out, p)
