@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import {
@@ -50,13 +50,13 @@
   // absolute di dalam .actions-row yang overflow-x:auto, sehingga
   // terpotong tak terlihat — tombol tampak "tidak bisa diklik".
   let popPos = { top: 0, maxH: 400, left: 0 };
-  function togglePop(which, ev) {
+  async function togglePop(which, ev) {
     const r = ev.currentTarget.getBoundingClientRect();
     // Panel harus muat di sisa ruang viewport di bawah tombol (temuan
     // verifikasi #8, 09:57 — v1 gagal: max-height tetap 100dvh tak
     // membatasi panel setinggi konten). maxH dihitung per buka supaya
     // panel bisa digulir di dalam viewport (overflow-y di .pop).
-    const top = Math.max(8, Math.min(r.bottom + 8, window.innerHeight - 160));
+    let top = Math.max(8, Math.min(r.bottom + 8, window.innerHeight - 160));
     popPos = {
       top,
       maxH: Math.max(120, window.innerHeight - top - 8),
@@ -66,6 +66,21 @@
     subOpen = which === 'sub' ? !subOpen : false;
     shareOpen = which === 'share' ? !shareOpen : false;
     partyOpen = which === 'party' ? !partyOpen : false;
+    // v3 (temuan 10:05): bila panel tetap menjulur keluar bawah dan muat
+    // di atas tombol, balik ke atas tombol supaya seluruh isinya terlihat
+    // sekaligus. scrollHeight = tinggi penuh konten meski sedang dibatasi
+    // maxH. Bila di atas pun tak muat, tetap di bawah + gulir internal.
+    const open = serverOpen || subOpen || shareOpen || partyOpen;
+    if (!open) return;
+    await tick();
+    const el = document.querySelector('.pop');
+    if (el) {
+      const h = el.scrollHeight;
+      if (popPos.top + h > window.innerHeight - 8 && r.top - h - 8 >= 8) {
+        const top = r.top - h - 8;
+        popPos = { ...popPos, top, maxH: Math.max(120, window.innerHeight - top - 8) };
+      }
+    }
   }
   let showReport = false;
   let reportReason = 'link_rusak';
