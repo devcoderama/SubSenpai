@@ -7,13 +7,14 @@
     adUnlockStart, adUnlockComplete, isPremiumRequired,
     reportHistory, createReport
   } from '$lib/api.js';
-  import { user } from '$lib/auth.js';
+  import { user, token } from '$lib/auth.js';
   import { addLocalHistory, updateLocalPosition, getLocalHistory, fmtPosition } from '$lib/history.js';
   import Player from '$lib/components/Player.svelte';
+  import { PartySocket } from '$lib/party.js';
   import EpisodeGrid from '$lib/components/EpisodeGrid.svelte';
   import Rail from '$lib/components/Rail.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
-  import { toastInfo } from '$lib/toast.js';
+  import { toastInfo, toastSuccess, toastError } from '$lib/toast.js';
 
   const AD_URL = 'https://uplcm.com/4/12330317';
   const REPORT_REASONS = [
@@ -37,6 +38,7 @@
   let descExpanded = false;
   let copied = false;
   let shareOpen = false;
+  let partyOpen = false;
   let serverOpen = false;
   let subOpen = false;
   let playerWrap = null; // pembungkus pemutar (target fullscreen)
@@ -57,6 +59,7 @@
     serverOpen = which === 'server' ? !serverOpen : false;
     subOpen = which === 'sub' ? !subOpen : false;
     shareOpen = which === 'share' ? !shareOpen : false;
+    partyOpen = which === 'party' ? !partyOpen : false;
   }
   let showReport = false;
   let reportReason = 'link_rusak';
@@ -89,6 +92,83 @@
   $: sourceLabel = src?.label || (src?.lang ? 'Video ' + src.lang.toUpperCase() : 'Server');
   $: readySubs = (playback?.subtitles || []).filter((s) => s.status === 'done' && s.file_url);
   $: subLabel = selectedSub ? 'Sub ' + selectedSub.toUpperCase() : 'Subtitle';
+  // --- Nonton Bareng (#8, cermin PartySheet aplikasi) ---
+  // Ruang efemer lewat WebSocket /ws (auth ?token=): server hanya
+  // meneruskan sinyal putar/jeda/lompat ke anggota lain — tak ada daftar
+  // anggota, tak ada chat, tak ada ikatan episode (episode dibawa klien
+  // lewat tautan undangan). Sinkron putar hanya untuk video langsung;
+  // embed tak bisa dikendalikan lintas-origin (catatan yang sama ada di
+  // sheet aplikasi: "(pemutar langsung)").
+  let partyCode = null;
+  let partyJoinCode = '';
+  let partySocket = null;
+  let partyStatus = '';
+  let partyGone = false; // koneksi putus sesudah 3x coba sambung ulang
+  let syncAction = null; // perintah sinkron ke Player (video langsung)
+  $: isDirect = !!src?.url && /\.(mp4|m3u8|webm)(\?|$)/i.test(src.url);
+
+  function partyConnect() {
+    if (!$user || !$token || partySocket) return;
+    const socket = new PartySocket($token, onPartyEvent);
+    partySocket = socket;
+    socket.connect();
+  }
+
+  function onPartyEvent(ev) {
+    if (ev.type === 'party_created' || ev.type === 'party_joined') {
+      partyCode = ev.code;
+      if (partySocket) partySocket.code = ev.code;
+      partyGone = false;
+      toastSuccess(ev.type === 'party_created' ? 'Ruang dibuat — kode ' + ev.code : 'Masuk ruang ' + ev.code);
+    } else if (ev.type === 'party_sync') {
+      const pos = ev.position_sec || 0;
+      partyStatus =
+        (ev.action === 'play' ? 'Memutar di ' : ev.action === 'pause' ? 'Dijeda di ' : 'Lompat ke ') +
+        fmtPosition(pos);
+      if (isDirect) syncAction = { action: ev.action, position: pos, at: Date.now() };
+    } else if (ev.type === 'error') {
+      toastError(ev.error || 'Gagal Nonton Bareng.');
+    } else if (ev.type === 'party_disconnected') {
+      partyGone = true;
+      toastError('Koneksi Nonton Bareng terputus.');
+    }
+  }
+
+  function createParty() {
+    if (!partySocket) return;
+    partySocket.create(epId);
+  }
+
+  function joinParty(code) {
+    const c = (code || '').trim().toUpperCase();
+    if (!partySocket || c.length !== 6) return;
+    partySocket.join(c);
+  }
+
+  function leaveParty() {
+    if (partySocket && partyCode) partySocket.leave(partyCode);
+    if (partySocket) partySocket.code = null;
+    partyCode = null;
+    partyStatus = '';
+    partyGone = false;
+  }
+
+  function copyParty(text, msg) {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(
+        () => toastSuccess(msg),
+        () => window.prompt('Salin ini:', text)
+      );
+    } else {
+      window.prompt('Salin ini:', text);
+    }
+  }
+
+  function onPlayState(e) {
+    if (!partyCode || !isDirect || !partySocket) return;
+    partySocket.sync(partyCode, e.detail.action, Math.floor(e.detail.position || 0));
+  }
+
   // Meta ala aplikasi — bedanya dengan Detail, status di sini mentah
   // ("ongoing"), persis seperti PlayerScreen.kt.
   $: metaLine = title
@@ -120,9 +200,21 @@
     fsSupported = !!document.fullscreenEnabled;
     const onFsChange = () => { isFullscreen = !!document.fullscreenElement; };
     document.addEventListener('fullscreenchange', onFsChange);
+    // Nonton Bareng (#8): tautan undangan ?party=XXXXXX.
+    const inviteCode = $page.url.searchParams.get('party');
+    if ($user) {
+      partyConnect();
+      if (inviteCode) joinParty(inviteCode);
+    } else if (inviteCode) {
+      toastInfo('Masuk dulu untuk gabung Nonton Bareng (kode ' + inviteCode.trim().toUpperCase() + ').');
+    }
     return () => {
       window.removeEventListener('pageshow', onShow);
       document.removeEventListener('fullscreenchange', onFsChange);
+      if (partySocket) {
+        if (partyCode) partySocket.leave(partyCode);
+        partySocket.close();
+      }
     };
   });
 
@@ -504,8 +596,10 @@
           bind:selectedSub
           title={title?.title || ''}
           resumeAt={resumeAt}
+          syncAction={syncAction}
           on:progress={onProgress}
           on:resumed={onResumed}
+          on:playstate={onPlayState}
         />
       </div>
 
@@ -585,6 +679,60 @@
               </div>
             {/if}
           </div>
+          {#if $user}
+            <div class="pop-wrap">
+              <button class="action-btn" class:on={partyCode} on:click={(e) => togglePop('party', e)}>
+                {partyCode ? 'Party ' + partyCode : 'Nonton Bareng'}
+              </button>
+              {#if partyOpen}
+                <div class="pop" style="top: {popPos.top}px; left: {popPos.left}px">
+                  <div class="pop-title">Nonton Bareng</div>
+                  {#if !partyCode}
+                    <button class="pop-row" on:click={() => createParty()}>
+                      <span>Buat Ruang Baru</span>
+                    </button>
+                    <div class="party-join">
+                      <input
+                        type="text"
+                        placeholder="Kode party (6 karakter)"
+                        value={partyJoinCode}
+                        maxlength="6"
+                        on:input={(e) => (partyJoinCode = e.currentTarget.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+                      />
+                      <button class="btn" on:click={() => joinParty(partyJoinCode)} disabled={partyJoinCode.trim().length !== 6}>
+                        Gabung
+                      </button>
+                    </div>
+                    <p class="pop-note">Bagikan kode atau tautan undangan ke temanmu — pastikan semua menonton episode yang sama.</p>
+                  {:else}
+                    <div class="party-code">{partyCode}</div>
+                    <p class="pop-note">Bagikan kode ini — teman gabung dari halaman Nonton episode yang sama.</p>
+                    <button class="pop-row" on:click={() => copyParty(partyCode, 'Kode disalin.')}>
+                      <span>Salin kode</span>
+                    </button>
+                    <button
+                      class="pop-row"
+                      on:click={() => copyParty(window.location.origin + '/nonton/' + epId + '?party=' + partyCode, 'Tautan undangan disalin.')}
+                    >
+                      <span>Salin tautan undangan</span>
+                    </button>
+                    {#if partyStatus}<p class="pop-note">Terakhir: {partyStatus}</p>{/if}
+                    {#if !isDirect}
+                      <p class="pop-note">Sinkron putar hanya untuk video langsung — embed tak bisa dikendalikan dari luar.</p>
+                    {/if}
+                    {#if partyGone}
+                      <p class="pop-note">
+                        Koneksi terputus — <button class="linklike" on:click={() => partySocket?.connect()}>sambungkan lagi</button>.
+                      </p>
+                    {/if}
+                    <button class="pop-row" on:click={() => { leaveParty(); partyOpen = false; }}>
+                      <span>Keluar dari party</span>
+                    </button>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/if}
           <button class="action-btn" on:click={() => { showReport = true; reportDone = ''; }}>Laporkan</button>
           {#if fsSupported}
             <button class="action-btn" on:click={toggleFullscreen} aria-label={isFullscreen ? 'Keluar dari layar penuh' : 'Layar penuh'}>
@@ -593,10 +741,10 @@
             </button>
           {/if}
         </div>
-        {#if serverOpen || subOpen || shareOpen}
+        {#if serverOpen || subOpen || shareOpen || partyOpen}
           <button
             class="pop-backdrop"
-            on:click={() => { serverOpen = false; subOpen = false; shareOpen = false; }}
+            on:click={() => { serverOpen = false; subOpen = false; shareOpen = false; partyOpen = false; }}
             aria-label="Tutup menu"
           ></button>
         {/if}
@@ -731,6 +879,15 @@
   .pop-note { font-size: 13px; color: var(--watch-muted); padding: 6px 10px 10px; line-height: 1.5; }
   .pop-backdrop { position: fixed; inset: 0; background: transparent; border: 0; z-index: 40; }
   .report-done { color: #4ade80; font-size: 14px; margin: 8px 0 0; }
+  .action-btn.on { background: var(--purple); }
+  .party-code { font-size: 28px; font-weight: 800; letter-spacing: 6px; text-align: center; padding: 10px 0 2px; }
+  .party-join { display: flex; gap: 8px; padding: 6px 10px 10px; }
+  .party-join input {
+    flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 4px; color: var(--text); font: inherit; font-size: 14px;
+    padding: 9px 10px; text-transform: uppercase; letter-spacing: 2px;
+  }
+  .linklike { background: none; border: 0; padding: 0; color: var(--purple); font: inherit; cursor: pointer; }
   .ep-head { display: flex; align-items: center; margin-top: 14px; }
   .ep-head h2 { flex: 1; font-size: 19px; font-weight: 700; margin: 0; }
   .ep-nav { display: flex; gap: 2px; }

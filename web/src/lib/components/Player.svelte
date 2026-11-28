@@ -10,6 +10,7 @@
   export let subtitles = /** @type {{ lang: string, file_url: string, status: string }[]} */ ([]); // subtitle siap pakai {lang, file_url, status}
   export let selectedSub = /** @type {string | null} */ (null); // lang subtitle terpilih, atau null
   export let resumeAt = 0; // detik — posisi tersimpan untuk video langsung (iframe tak bisa di-seek)
+  export let syncAction = null; // {action, position, at} — perintah sinkron dari ruang party (video langsung saja)
 
   const dispatch = createEventDispatcher();
   let videoEl = null;
@@ -62,6 +63,7 @@
     if (resumed || !videoEl) return;
     const dur = videoEl.duration;
     if (resumeAt > 5 && (!Number.isFinite(dur) || resumeAt < dur - 10)) {
+      suppressSeeked = true;
       videoEl.currentTime = resumeAt;
       resumed = true;
       dispatch('resumed', { position: resumeAt });
@@ -71,6 +73,38 @@
   function onMeta() {
     applySubTrack();
     seekResume();
+  }
+
+  // --- Nonton Bareng (#8): sinkron putar video langsung ---
+  // Perintah dari ruang party (play/pause/seek) diterapkan ke <video>.
+  // Toleransi 2 detik seperti aplikasi (PlayerScreen.kt). applyingRemote
+  // menahan event lokal supaya tidak diteruskan balik ke ruang (gema).
+  let applyingRemote = false;
+  let suppressSeeked = false; // seek resume sekali — bukan lompatan pengguna
+  function applySync(a) {
+    if (!videoEl || !isDirect || !a) return;
+    applyingRemote = true;
+    if ((a.action === 'seek' || a.action === 'play') && Math.abs(videoEl.currentTime - (a.position || 0)) > 2) {
+      videoEl.currentTime = a.position || 0;
+    }
+    if (a.action === 'play') videoEl.play().catch(() => {});
+    else if (a.action === 'pause') videoEl.pause();
+    setTimeout(() => (applyingRemote = false), 500);
+  }
+  $: if (syncAction) applySync(syncAction);
+
+  function onPlay() {
+    if (!applyingRemote) dispatch('playstate', { action: 'play', position: videoEl?.currentTime || 0 });
+  }
+  function onPause() {
+    if (!applyingRemote) dispatch('playstate', { action: 'pause', position: videoEl?.currentTime || 0 });
+  }
+  function onSeeked() {
+    if (suppressSeeked) {
+      suppressSeeked = false;
+      return;
+    }
+    if (!applyingRemote) dispatch('playstate', { action: 'seek', position: videoEl?.currentTime || 0 });
   }
 
   // Server diblokir: buka langsung di situs sumber — di TAB YANG SAMA
@@ -116,6 +150,9 @@
           bind:this={videoEl}
           on:timeupdate={onTime}
           on:loadedmetadata={onMeta}
+          on:play={onPlay}
+          on:pause={onPause}
+          on:seeked={onSeeked}
         >
           {#each readySubs as s}
             <track
